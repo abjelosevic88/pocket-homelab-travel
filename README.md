@@ -1,77 +1,180 @@
-<p align="center"><img src="docs/icon.png" width="96" height="96" alt="Pocket Travel icon"></p>
+<p align="center">
+  <img src="web/public/favicon.svg" width="72" alt="">
+</p>
 <h1 align="center">Pocket Travel</h1>
-<p align="center">A self-hosted trip planner that keeps the whole trip on one page.</p>
-<p align="center"><a href="https://github.com/abjelosevic88/pocket-homelab-travel/actions/workflows/ci.yml"><img src="https://github.com/abjelosevic88/pocket-homelab-travel/actions/workflows/ci.yml/badge.svg" alt="CI"></a> <a href="https://github.com/abjelosevic88/pocket-homelab-travel/releases"><img src="https://img.shields.io/github/v/release/abjelosevic88/pocket-homelab-travel" alt="Release"></a> <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"></p>
+<p align="center">
+  A trip planner that keeps the whole trip on one page — the plan, what it really cost, where you actually went and what you photographed — as a small self-hosted server.<br>
+  <b>One binary · one SQLite file · one volume.</b>
+</p>
+<p align="center">
+  <a href="https://github.com/abjelosevic88/pocket-homelab-travel/actions"><img src="https://github.com/abjelosevic88/pocket-homelab-travel/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/abjelosevic88/pocket-homelab-travel/pkgs/container/pocket-homelab-travel"><img src="https://img.shields.io/badge/ghcr.io-amd64%20%7C%20arm64%20%7C%20armv7-blue" alt="image"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT"></a>
+</p>
 
-![Trip overview](docs/screenshots/overview.png)
+---
 
-A self-hosted trip planner that keeps the whole trip on one page: the itinerary, the places you want to see, where you sleep, how you get there, what it costs, what to pack and what happened — plus three things no other planner shows together:
+Every trip I plan ends up spread over five apps: the list of places in one, the bookings in a mail folder, the budget in Firefly III, the route my phone recorded in Dawarich, the photos in Immich. This puts the plan next to the record, on one page per trip, on your own server. Built around four things:
 
-- **Firefly III** — tag your withdrawals and the trip shows what it *really* cost, by day and category, in any currency.
-- **Dawarich** — the route you actually travelled drawn over the plan, kilometres per day, the stops it detected.
-- **Immich** — every photo taken between the trip dates, by day, the geotagged ones on the map.
-- **OpenAI (optional)** — suggest popular places for the destination, plan the days, describe a place, write a packing list for the weather and activities, and turn the journal into a recap.
+- **An itinerary you drag.** One row per day with the weather, the places in order, check-ins and transport legs. Ideas sit in a side list until you drop them on a day; tick them off as you go. The day's recorded journeys and stops from Dawarich appear inline, so the plan and what happened sit next to each other.
+- **Money that is real.** Stays and transport add their price as a planned cost. Tag your withdrawals in Firefly III with the trip's tag and they show up as spent — in their own currency, converted at the day's rate — with planned vs spent per category, per day, the burn rate and what is left. No key for the exchange rates (Frankfurter, open.er-api.com).
+- **The map that knows both.** Numbered itinerary order, stays, the route Dawarich recorded, the stops it detected and the geotagged Immich photos, each a toggleable layer. *Discover nearby* lists OpenStreetMap points of interest around any spot; place search is Nominatim; descriptions come from Wikipedia. Nothing needs an API key.
+- **Everything else a trip needs.** Checklists from templates (beach, city, hiking, winter, camping, car, kids, to-do before leaving), a journal with a mood per entry from everyone on the trip, documents (tickets, bookings, insurance), companions with roles, a calendar you can subscribe to, GPX and JSON exports, import from AdventureLog, duplicate last year's trip with shifted dates.
 
-One Go binary, one SQLite file, one volume. React UI, works on a phone, dark mode. No API keys needed for maps (OpenStreetMap), place search and discovery (Nominatim, Overpass), weather (Open-Meteo) or descriptions (Wikipedia).
+With an OpenAI key (or any compatible endpoint) five more buttons appear: **suggest popular places** for the destination (each located with OpenStreetMap before you add it), **plan my days** (ideas get a day and a time, nearby things together; you review before anything changes), **describe** a place with practical tips, a **packing list** written for the dates, weather and activities, and a **recap** of the trip in story, summary or caption form, written only from what the trip knows.
+
+<p align="center"><img src="docs/screenshots/overview.png" width="900" alt="A running trip: day 4 of 14, what is next, budget vs spent, progress, the weather for every day"></p>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/itinerary.png" alt="The itinerary: one row per day with weather, places in order, check-ins and legs, ideas on the side"></td>
+    <td width="50%"><img src="docs/screenshots/map.png" alt="The map with numbered places, the stay and the recorded route"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Itinerary: drag ideas onto days, tick places when visited, Dawarich journeys inline.</sub></td>
+    <td align="center"><sub>Map: itinerary order, stays, recorded route, detected stops, photo locations — each a layer.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/budget.png" alt="Budget: planned vs spent per category and per day, Firefly transactions in the list"></td>
+    <td width="50%"><img src="docs/screenshots/places.png" alt="Places as cards with category, day, status and price"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Budget: planned vs spent by category and by day; Firefly rows are marked and convert at the day's rate.</sub></td>
+    <td align="center"><sub>Places: cards or a table, filter by category and status, ✨ Suggest when a key is set.</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/screenshots/mobile.png" width="260" alt="The itinerary on a phone">&nbsp;&nbsp;
+  <img src="docs/screenshots/overview-dark.png" width="520" alt="The overview in dark mode"><br>
+  <sub>Installable PWA with a bottom tab bar, plus dark mode.</sub>
+</p>
 
 ## Features
 
-- **Trips** with dates, destination, budget in a home currency, cover photo, companions (owner / editor / viewer).
-- **Itinerary**: one row per day with weather, places in order, check-ins and legs. Drag ideas onto days, tick places off as visited. Dawarich journeys and stops appear inline.
-- **Places**: category, address, coordinates (search or click the map), opening link, price, rating, booking reference, notes, photo. *Discover nearby* lists OpenStreetMap points of interest around any spot; *Fill from Wikipedia* writes the description.
-- **Stays & transport** with reservation numbers, seats, carriers, prices — prices become planned costs automatically.
-- **Budget**: planned vs spent, per category, per day, burn rate, remaining. Spent money comes from Firefly III (every 30 min while the trip runs) or by hand; anything in another currency is converted at the day's rate.
-- **Checklists** from templates (beach, city, hiking, winter, camping, car, kids, to-do before leaving).
-- **Journal** entries per day with a mood, from everyone on the trip.
-- **Documents**: tickets, bookings, insurance — stored next to the database.
-- **Map** with numbered itinerary order, stays, the recorded route, detected stops and photo locations as toggleable layers.
-- **Exports**: calendar (.ics, subscribable), GPX (places, optionally the recorded track), JSON backup. **Import** from AdventureLog (collections → trips with everything in them) or a JSON backup. Duplicate a trip with shifted dates.
-- **AI, if you want it**: with an OpenAI key (or any compatible endpoint such as Ollama) five buttons appear — *Suggest places* (popular, well-rated places not yet in the plan, each located with OpenStreetMap before you add it), *Plan my days* (assigns ideas to days and times, nearby things together, meals at meal times; you review before anything changes), *Describe + tips* on a place, a *packing list* generated from the destination, dates, weather and activities, and a *recap* in story, summary or caption form written only from what the trip knows.
-- Dashboard endpoint for Homepage widgets, Prometheus metrics, API tokens, local / proxy / no-login auth.
-
-## Screenshots
-
-| Home | Itinerary |
+| Area | What you get |
 |---|---|
-| ![Home](docs/screenshots/home.png) | ![Itinerary](docs/screenshots/itinerary.png) |
+| **Trips** | Dates, destination (geocoded), home currency, budget, colour and cover photo, status, notes. Owner / editor / viewer per companion. Archive, duplicate with shifted dates, delete. |
+| **Itinerary** | Day rows with Open-Meteo weather (forecast 16 days ahead, archive for past days), drag and drop between days, start times and durations, visited ticks, check-in / check-out and transport legs inline, Dawarich journeys and stops per day. |
+| **Places** | Category, address, coordinates (search, click the map, or drag the pin), link, phone, price, rating, booking reference, tags, notes, photo. Status idea → planned → booked → visited / skipped. Nominatim search, Overpass *Discover nearby*, Wikipedia descriptions. |
+| **Stays & transport** | Hotels, apartments, camping…; flights, trains, buses, cars, ferries… with carrier, number, seat, booking reference, from/to with coordinates, distance. Prices become planned costs automatically. |
+| **Budget** | Planned vs spent in the trip currency, per category, per day, burn rate, remaining. Firefly III sync by tag (every 30 min for running and upcoming trips, on every save, on demand). Any currency, converted at the day's rate; the rate is cached. |
+| **Recorded** | Dawarich: simplified route polyline, kilometres per day (from Dawarich's own timeline), detected stops, GPX export of the track. Immich: photos and videos by day, geotagged ones on the map, thumbnails proxied so the key stays on the server. |
+| **Checklists, journal, documents** | Templates or a generated list, multi-line paste, assignees, progress. Journal entries with a mood from everyone on the trip. Documents stored next to the database, linked to a stay, leg or place. |
+| **AI (optional)** | Suggest places, plan the days, describe a place, packing list, recap. OpenAI or any compatible endpoint (Ollama, LM Studio, OpenRouter). Nothing runs unless you press the button. |
+| **Exports & imports** | iCalendar feed to subscribe to (stays, legs, scheduled places with references), GPX, JSON backup. Import from AdventureLog (collections with locations, lodging, transportation, notes, checklists and images) or a JSON backup. |
+| **Users & ops** | Built-in login (admin/member), SSO-proxy header, or no login on a trusted LAN. API tokens. SQLite backup from the UI/CLI/API, Prometheus `/metrics`, `GET /dashboard` for Homepage. |
 
-| Map with the recorded route | Budget: planned vs spent |
-|---|---|
-| ![Map](docs/screenshots/map.png) | ![Budget](docs/screenshots/budget.png) |
-
-| Places | Checklists |
-|---|---|
-| ![Places](docs/screenshots/places.png) | ![Checklists](docs/screenshots/checklists.png) |
-
-![Dark mode](docs/screenshots/overview-dark.png)
-
-## Quick start
+## Run it
 
 ```bash
-docker run -d --name pocket-travel -p 8080:8080 -v ./data:/data \
-  -e ADMIN_EMAIL=you@example.com -e ADMIN_PASSWORD=change-me-please \
+mkdir pocket-travel && cd pocket-travel
+curl -fsSLO https://raw.githubusercontent.com/abjelosevic88/pocket-homelab-travel/main/docker-compose.yml
+docker compose up -d
+# open http://localhost:8080 and create your account
+```
+
+Or with plain Docker:
+
+```bash
+docker run -d --name pocket-travel -p 8080:8080 -v ./data:/data -e TZ=Europe/Berlin \
   ghcr.io/abjelosevic88/pocket-homelab-travel:latest
 ```
 
-Open http://localhost:8080. Connect Firefly, Dawarich and Immich under *Settings → Integrations* (or via environment, see [docs/configuration.md](docs/configuration.md)). `docker-compose.yml` has the full example.
+Want to look around first? Add `-e DEMO_DATA=true -e AUTH_MODE=none` to get three sample trips (one running, one past, one upcoming) with no login.
 
-Try it without logging in, with demo trips: `DEMO_DATA=true AUTH_MODE=none`.
+Binaries for Linux, macOS and Windows are attached to every [release](https://github.com/abjelosevic88/pocket-homelab-travel/releases), and a systemd unit is in [deploy/systemd](deploy/systemd).
 
-## Build from source
+Then connect your other apps under **Settings → Integrations**: a Firefly III personal access token, a Dawarich API key, an Immich API key, optionally an OpenAI key. Each has a *Test connection* button.
+
+## Configuration
+
+Everything is an environment variable with a sensible default. The important ones:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `TZ` | `UTC` | Day boundaries for "today", the itinerary and Dawarich. Set it. |
+| `BASE_URL` | – | Public URL, used in calendar exports. |
+| `DATA_DIR` | `/data` | Database, uploaded files and backups live here. |
+| `AUTH_MODE` | `local` | `local` (built-in login, multi-user), `proxy` (trust `Remote-User` from your SSO proxy), `none` (single implicit user, trusted LAN only). |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | – | Create the first admin without the setup screen. |
+| `SECURE_COOKIES` | `false` | Set `true` behind HTTPS. |
+| `DEFAULT_CURRENCY` | `EUR` | Home currency until changed in Settings. |
+| `FIREFLY_URL` / `FIREFLY_TOKEN` | – | Firefly III base URL + personal access token. |
+| `DAWARICH_URL` / `DAWARICH_API_KEY` | – | Dawarich base URL + API key. |
+| `IMMICH_URL` / `IMMICH_API_KEY` | – | Immich base URL + API key (`IMMICH_PUBLIC_URL` for browser links when the API URL is internal). |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | – / `gpt-4o-mini` / OpenAI | Enables the ✨ features; any OpenAI-compatible endpoint works. |
+| `DEMO_DATA` | `false` | Seed sample trips into an empty database. |
+
+Integration settings saved in the UI win over the environment. The full list is in [docs/configuration.md](docs/configuration.md), and reverse-proxy snippets are in [docs/reverse-proxy.md](docs/reverse-proxy.md).
+
+## How it works
+
+- **A trip is the unit.** Places, stays, legs, costs, lists, journal and documents hang off it; its dates, currency and timezone drive everything else. A place with a day is on the itinerary, a place without one is an idea.
+- **Planned costs follow the items.** A stay or leg with a price owns one `source=item` expense that updates and disappears with it. Firefly rows are `source=firefly`, keyed by the transaction id, so a re-sync updates instead of duplicating; you may re-categorise them locally, everything else follows Firefly. Each expense stores its own currency, the rate of the day and the amount in the trip currency.
+- **Dawarich is read as the trip's date range** in the trip's timezone: slim points are simplified with Douglas–Peucker for drawing, the per-day distances come from Dawarich's own timeline (which knows about tracks and gaps the raw points miss), and the result is cached — an hour while the trip runs, a week after.
+- **Immich is searched by `takenAfter`/`takenBefore`** with timeline visibility (Live Photo companions stay hidden); thumbnails are fetched by the server with the key and streamed to the browser.
+- **The outside world is cached** in one table: Open-Meteo per trip and location, Overpass per spot and category, exchange rates per pair and day.
+- **AI only proposes.** Suggestions are geocoded with Nominatim before you can add them; the planner returns slots you edit and then apply; the recap uses only the trip's own facts.
+
+## Automation
+
+Create a token under **Settings → API tokens**, then:
 
 ```bash
-make          # web UI + Go binary (needs Node 22 and Go 1.26)
-make run      # demo data, no login, http://localhost:8080
-make dev      # API on :8080 + Vite dev server on :5173
-make test
+# the whole trip in one call
+curl -fsS https://travel.example.com/api/v1/trips/1/overview -H "Authorization: Bearer pt_…"
+
+# add a place
+curl -fsS -X POST https://travel.example.com/api/v1/trips/1/places -H "Authorization: Bearer pt_…" \
+  -H "Content-Type: application/json" -d '{"name":"Kotor old town","category":"sight","lat":42.4247,"lng":18.7712,"day_date":"2026-08-30","start_time":"09:30"}'
+
+# log what you just spent
+curl -fsS -X POST https://travel.example.com/api/v1/trips/1/expenses -H "Authorization: Bearer pt_…" \
+  -H "Content-Type: application/json" -d '{"name":"Dinner","category":"food","amount":4820,"currency":"EUR","kind":"actual","date":"2026-08-30"}'
+
+# pull Firefly now instead of waiting for the next sync
+curl -fsS -X POST https://travel.example.com/api/v1/trips/1/firefly/sync -H "Authorization: Bearer pt_…"
+
+# subscribe a phone's calendar to the trip
+https://travel.example.com/cal/1.ics?token=pt_…
+
+# compact status for a Homepage / Glance widget
+curl -H "Authorization: Bearer pt_…" https://travel.example.com/api/v1/dashboard
+# → {"trips":3,"upcoming":1,"days_traveled":41,"places":57,"next_trip_text":"Lisbon in spring in 62 days"}
 ```
 
-## Documentation
+Amounts are integers in minor units (`4820` = 48.20 EUR). Everything else, including the AI endpoints and the Homepage `customapi` widget, is in [docs/api.md](docs/api.md).
 
-[Configuration](docs/configuration.md) · [API](docs/api.md) · [Backup](docs/backup.md) · [Reverse proxy](docs/reverse-proxy.md) · [Roadmap](docs/roadmap.md)
+## Coming from AdventureLog
 
-## Sibling projects
+**Settings → Import → From AdventureLog**: enter the instance URL and your login, pick the collections, choose whether to download images. Locations become places (visited ones keep their date), lodging and transportation map one to one, notes become journal entries, checklists come with their items, and the old planned-costs note turns into planned expenses. Legs that AdventureLog itself imported from Dawarich are skipped — the route is live here. Running the import again adds only what is new.
 
-Pocket Habits, Pocket Inventory, Pocket Bookshelf, Pocket Split, Pocket Clips, Pocket Subtitles, Pocket Invoicing — the same stack, the same conventions.
+## Backups
 
-MIT.
+The database is a single file; uploaded documents and images are plain files next to it.
+
+- **UI:** Settings → Backup & data → *Download database* (a consistent `VACUUM INTO` copy).
+- **CLI:** `docker exec pocket-travel pocket-travel backup` writes to `/data/backups/`.
+- **API:** `GET /api/v1/backup`.
+- **Per trip:** JSON backup under the trip's Settings tab, re-importable.
+
+Restic / Borg / Backrest users: back up `DATA_DIR`, but snapshot the live `pocket-travel.db` through one of the methods above rather than copying the WAL files raw. See [docs/backup.md](docs/backup.md).
+
+## Development
+
+```bash
+make dev      # Go API on :8080 (demo data, no login) + Vite on :5173
+make test     # go vet + go test + tsc
+make all      # production build: web UI embedded into ./pocket-travel
+```
+
+Requires Go 1.22+ and Node 20+. Stack: Go + chi + modernc SQLite (no CGO), and React 19 + Vite + TypeScript with Leaflet for the maps and no UI framework. Planned next steps are in [docs/roadmap.md](docs/roadmap.md).
+
+## Credits
+
+The shape of a trip — collections of places, lodging, transportation, notes and checklists — follows [AdventureLog](https://github.com/seanmorley15/AdventureLog), which this replaces for me by putting the plan next to the record. Maps © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors; place search by Nominatim, points of interest by Overpass, weather by [Open-Meteo](https://open-meteo.com), exchange rates by Frankfurter and open.er-api.com. Sibling projects built the same way are [Pocket Habits](https://github.com/abjelosevic88/pocket-homelab-habit-tracker), [Pocket Inventory](https://github.com/abjelosevic88/pocket-homelab-inventory), [Pocket Bookshelf](https://github.com/abjelosevic88/pocket-homelab-bookshelf), [Pocket Split](https://github.com/abjelosevic88/pocket-homelab-cost-split), [Pocket Clips](https://github.com/abjelosevic88/pocket-homelab-clips), [Pocket Subtitles](https://github.com/abjelosevic88/pocket-homelab-subtitles) and [Pocket Invoicing](https://github.com/abjelosevic88/pocket-homelab-invoicing).
+
+## License
+
+MIT

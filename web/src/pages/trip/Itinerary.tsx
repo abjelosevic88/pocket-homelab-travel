@@ -56,7 +56,7 @@ export function Itinerary() {
   }
   const hasRecorded = timeline.length > 0
   return (
-    <div className="two-col" style={{ gridTemplateColumns: 'minmax(0, 1fr) 280px' }}>
+    <div className="itin-grid">
       {plan && <PlanModal onClose={() => setPlan(false)} />}
       <Card flush>
         <div className="pad" style={{ paddingBottom: 0 }}>
