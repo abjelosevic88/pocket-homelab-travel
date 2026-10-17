@@ -165,21 +165,22 @@ type Location struct {
 
 // Lodging is an AdventureLog stay.
 type Lodging struct {
-	ID                string   `json:"id"`
-	Name              string   `json:"name"`
-	Description       string   `json:"description"`
-	Type              string   `json:"type"`
-	Rating            *float64 `json:"rating"`
-	Link              *string  `json:"link"`
-	CheckIn           *string  `json:"check_in"`
-	CheckOut          *string  `json:"check_out"`
-	ReservationNumber *string  `json:"reservation_number"`
-	Price             *string  `json:"price"`
-	PriceCurrency     *string  `json:"price_currency"`
-	Latitude          *float64 `json:"latitude"`
-	Longitude         *float64 `json:"longitude"`
-	Location          *string  `json:"location"`
-	Images            []Image  `json:"images"`
+	ID                string       `json:"id"`
+	Name              string       `json:"name"`
+	Description       string       `json:"description"`
+	Type              string       `json:"type"`
+	Rating            *float64     `json:"rating"`
+	Link              *string      `json:"link"`
+	CheckIn           *string      `json:"check_in"`
+	CheckOut          *string      `json:"check_out"`
+	ReservationNumber *string      `json:"reservation_number"`
+	Price             *string      `json:"price"`
+	PriceCurrency     *string      `json:"price_currency"`
+	Latitude          *float64     `json:"latitude"`
+	Longitude         *float64     `json:"longitude"`
+	Location          *string      `json:"location"`
+	Images            []Image      `json:"images"`
+	Attachments       []Attachment `json:"attachments"`
 }
 
 // Transportation is an AdventureLog leg.
@@ -232,6 +233,7 @@ type Collection struct {
 	Transportations []Transportation `json:"transportations"`
 	Notes           []Note           `json:"notes"`
 	Checklists      []Checklist      `json:"checklists"`
+	Attachments     []Attachment     `json:"attachments"`
 }
 
 // Collection loads one collection with everything in it.

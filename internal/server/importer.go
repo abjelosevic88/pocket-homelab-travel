@@ -375,6 +375,80 @@ func (s *Server) importCollection(ctx context.Context, c *adventurelog.Client, u
 			}
 		}
 	}
+	// Attachments: the collection's own files, then those on stays, places and legs.
+	existingDocs, _ := s.store.ListDocuments(ctx, t.ID)
+	dseen := map[string]bool{}
+	for _, d := range existingDocs {
+		dseen[d.Name] = true
+	}
+	saveDoc := func(a adventurelog.Attachment, linkKind string, linkID int64) {
+		name := strings.TrimSpace(a.Name)
+		if name == "" {
+			name = "attachment"
+		}
+		if a.Extension != "" && !strings.HasSuffix(strings.ToLower(name), "."+strings.ToLower(a.Extension)) {
+			name += "." + a.Extension
+		}
+		if dseen[name] || a.File == "" {
+			return
+		}
+		b, ct, err := c.Download(ctx, a.File)
+		if err != nil || len(b) == 0 {
+			s.log.Warn("adventurelog attachment", "name", name, "err", err)
+			return
+		}
+		rel, err := s.saveFile(t.ID, extOf(name, ct), b)
+		if err != nil {
+			return
+		}
+		d := &store.Document{TripID: t.ID, UserID: u.ID, Name: name, Filename: rel, Mime: ct, Bytes: int64(len(b)), Kind: docKind(name), LinkKind: linkKind, LinkID: linkID}
+		if err := s.store.CreateDocument(ctx, d); err == nil {
+			dseen[name] = true
+			counts["documents"]++
+		}
+	}
+	for _, a := range col.Attachments {
+		saveDoc(a, "", 0)
+	}
+	lodgingByExt := map[string]int64{}
+	for _, l := range existingLodging {
+		lodgingByExt[l.ExternalID] = l.ID
+	}
+	if ls, err := s.store.ListLodging(ctx, t.ID); err == nil {
+		for _, l := range ls {
+			lodgingByExt[l.ExternalID] = l.ID
+		}
+	}
+	for _, l := range col.Lodging {
+		for _, a := range l.Attachments {
+			saveDoc(a, "lodging", lodgingByExt["al:"+l.ID])
+		}
+	}
+	placeByExt := map[string]int64{}
+	if ps, err := s.store.ListPlaces(ctx, t.ID); err == nil {
+		for _, p := range ps {
+			placeByExt[p.ExternalID] = p.ID
+		}
+	}
+	for _, l := range col.Locations {
+		for _, a := range l.Attachments {
+			saveDoc(a, "place", placeByExt["al:"+l.ID])
+		}
+	}
+	transportByExt := map[string]int64{}
+	if ts, err := s.store.ListTransport(ctx, t.ID); err == nil {
+		for _, x := range ts {
+			transportByExt[x.ExternalID] = x.ID
+		}
+	}
+	for _, tr := range col.Transportations {
+		if strings.HasPrefix(tr.Name, "[Dawarich]") {
+			continue
+		}
+		for _, a := range tr.Attachments {
+			saveDoc(a, "transport", transportByExt["al:"+tr.ID])
+		}
+	}
 	// Centre the trip on its places when it has none.
 	if t.Lat == nil {
 		if lat, lng, ok := s.tripCenter(ctx, t); ok {
@@ -382,7 +456,7 @@ func (s *Server) importCollection(ctx context.Context, c *adventurelog.Client, u
 			_ = s.store.UpdateTrip(ctx, t)
 		}
 	}
-	s.store.LogActivity(ctx, t.ID, u.ID, "imported", fmt.Sprintf("from AdventureLog: %d places, %d stays, %d legs, %d notes, %d checklists", counts["places"], counts["lodging"], counts["transport"], counts["notes"], counts["checklists"]))
+	s.store.LogActivity(ctx, t.ID, u.ID, "imported", fmt.Sprintf("from AdventureLog: %d places, %d stays, %d legs, %d notes, %d checklists, %d documents", counts["places"], counts["lodging"], counts["transport"], counts["notes"], counts["checklists"], counts["documents"]))
 	return map[string]any{"collection": col.ID, "trip_id": t.ID, "name": t.Name, "counts": counts}, nil
 }
 
@@ -436,4 +510,22 @@ func localStamp(s string) string {
 		return s[:16]
 	}
 	return shortDate(s)
+}
+
+// docKind guesses a document kind from its name (English and local words).
+func docKind(name string) string {
+	n := strings.ToLower(name)
+	switch {
+	case containsAny(n, "boarding", "ticket", "karta", "ulaznic", "e-ticket", "train", "flight"):
+		return "ticket"
+	case containsAny(n, "polisa", "insurance", "osiguranj", "pzo"):
+		return "insurance"
+	case containsAny(n, "racun", "račun", "invoice", "booking", "rezervac", "reservation", "confirmation", "potvrd", "smjestaj", "smještaj", "voucher"):
+		return "booking"
+	case containsAny(n, "passport", "pasoš", "pasos", "licna", "lična", "id card", "visa"):
+		return "id"
+	case containsAny(n, "map", "mapa", "gpx"):
+		return "map"
+	}
+	return "other"
 }
