@@ -29,7 +29,7 @@ export function BudgetTab() {
   return (
     <>
       <div className="stats">
-        <div className="stat"><div className="n"><Money minor={b.actual} code={b.currency} compact /></div><div className="l">spent{b.firefly_count > 0 && ` · ${b.firefly_count} from Firefly`}</div></div>
+        <div className="stat"><div className="n"><Money minor={b.total} code={b.currency} compact /></div><div className="l">total{b.bookings > 0 && <> · <Money minor={b.actual} code={b.currency} compact /> spent + bookings</>}{b.bookings === 0 && b.firefly_count > 0 && ` · ${b.firefly_count} from Firefly`}</div></div>
         <div className="stat"><div className="n"><Money minor={b.planned} code={b.currency} compact /></div><div className="l">planned</div></div>
         {trip.budget > 0 && <div className="stat"><div className={`n ${b.remaining < 0 ? 'bad' : ''}`}><Money minor={b.remaining} code={b.currency} compact /></div><div className="l">left of <Money minor={trip.budget} code={b.currency} compact /></div></div>}
         <div className="stat"><div className="n"><Money minor={b.per_day} code={b.currency} compact /></div><div className="l">per day{b.days_elapsed > 0 ? ` · ${b.days_elapsed} days so far` : trip.days ? ` · planned over ${trip.days}` : ''}</div></div>

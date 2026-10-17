@@ -344,7 +344,11 @@ func (s *Server) handleTripCover(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleTripCoverImage(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	s.serveFile(w, r, t.CoverPath, "", "")
+	p := t.CoverPath
+	if p == "" {
+		p = s.store.CoverFallback(r.Context(), t.ID)
+	}
+	s.serveFile(w, r, p, "", "")
 }
 
 func (s *Server) handleTripCoverDelete(w http.ResponseWriter, r *http.Request) {

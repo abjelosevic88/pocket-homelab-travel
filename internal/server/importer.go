@@ -266,7 +266,8 @@ func (s *Server) importCollection(ctx context.Context, c *adventurelog.Client, u
 		if seen["al:"+l.ID] {
 			continue
 		}
-		lo := store.Lodging{TripID: t.ID, Name: l.Name, Type: alLodging(l.Type), Notes: l.Description, Rating: l.Rating, Lat: l.Latitude, Lng: l.Longitude, ExternalID: "al:" + l.ID, Currency: t.Currency}
+		// A stay on a trip that already happened was paid; keep it as an estimate only for future trips.
+		lo := store.Lodging{TripID: t.ID, Name: l.Name, Type: alLodging(l.Type), Notes: l.Description, Rating: l.Rating, Lat: l.Latitude, Lng: l.Longitude, ExternalID: "al:" + l.ID, Currency: t.Currency, Paid: status == store.StatusCompleted}
 		if l.Location != nil {
 			lo.Address = *l.Location
 		}
@@ -289,7 +290,7 @@ func (s *Server) importCollection(ctx context.Context, c *adventurelog.Client, u
 		lo.ImagePath = fetchImage(l.Images)
 		if err := s.store.CreateLodging(ctx, &lo); err == nil {
 			counts["lodging"]++
-			s.syncItemCost(ctx, t, "lodging", lo.ID, lo.Name, "lodging", lo.Price, lo.Currency, lo.CheckIn)
+			s.syncItemCost(ctx, t, "lodging", lo.ID, lo.Name, "lodging", lo.Price, lo.Currency, lo.CheckIn, lo.Paid)
 		}
 	}
 	for _, tr := range col.Transportations {
@@ -328,7 +329,7 @@ func (s *Server) importCollection(ctx context.Context, c *adventurelog.Client, u
 		}
 		if err := s.store.CreateTransport(ctx, &x); err == nil {
 			counts["transport"]++
-			s.syncItemCost(ctx, t, "transport", x.ID, transportLabel(&x), "transport", x.Price, x.Currency, x.DepartAt)
+			s.syncItemCost(ctx, t, "transport", x.ID, transportLabel(&x), "transport", x.Price, x.Currency, x.DepartAt, x.Paid)
 		}
 	}
 	existingJournal, _ := s.store.ListJournal(ctx, t.ID)

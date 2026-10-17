@@ -94,6 +94,7 @@ type TripCounts struct {
 	Checked   int   `json:"checklist_done"`
 	Planned   int64 `json:"planned"` // minor units, trip currency
 	Actual    int64 `json:"actual"`
+	Total     int64 `json:"total"` // actual + unpaid booked stays/transport
 }
 
 // Place categories.

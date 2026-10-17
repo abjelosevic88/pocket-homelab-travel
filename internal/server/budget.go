@@ -58,7 +58,7 @@ func (s *Server) handleCurrencies(w http.ResponseWriter, r *http.Request) {
 
 // syncItemCost keeps a planned expense in step with an item's price
 // (lodging/transport): price 0 removes it.
-func (s *Server) syncItemCost(ctx context.Context, t *store.Trip, kind string, id int64, name, category string, price int64, cur, date string) {
+func (s *Server) syncItemCost(ctx context.Context, t *store.Trip, kind string, id int64, name, category string, price int64, cur, date string, paid bool) {
 	expenses, err := s.store.ListExpenses(ctx, t.ID)
 	if err != nil {
 		return
@@ -83,7 +83,11 @@ func (s *Server) syncItemCost(ctx context.Context, t *store.Trip, kind string, i
 		date = date[:10]
 	}
 	rate, _ := s.rate(ctx, cur, t.Currency, date)
-	e := store.Expense{TripID: t.ID, Name: name, Category: category, Amount: price, Currency: cur, AmountHome: currency.Convert(price, cur, t.Currency, rate), FXRate: rate, Date: date, Kind: "planned", Source: "item", LinkKind: kind, LinkID: id}
+	ek := "planned"
+	if paid {
+		ek = "actual"
+	}
+	e := store.Expense{TripID: t.ID, Name: name, Category: category, Amount: price, Currency: cur, AmountHome: currency.Convert(price, cur, t.Currency, rate), FXRate: rate, Date: date, Kind: ek, Source: "item", LinkKind: kind, LinkID: id}
 	if existing != nil {
 		e.ID = existing.ID
 		_ = s.store.UpdateExpense(ctx, &e)
@@ -264,6 +268,8 @@ type BudgetSummary struct {
 	Planned      int64             `json:"planned"`
 	Actual       int64             `json:"actual"`
 	Remaining    int64             `json:"remaining"` // budget - actual (or - planned when no actuals yet)
+	Total        int64             `json:"total"`     // actual + booked but unpaid stays/transport
+	Bookings     int64             `json:"bookings"`  // the unpaid stays/transport part of Total
 	PerDay       int64             `json:"per_day"`
 	ByCategory   []CategoryTotal   `json:"by_category"`
 	ByDay        []DayTotal        `json:"by_day"`
@@ -322,6 +328,9 @@ func (s *Server) budgetSummary(t *store.Trip, expenses []store.Expense) BudgetSu
 		} else {
 			b.Planned += e.AmountHome
 			c.Planned += e.AmountHome
+			if e.Source == "item" {
+				b.Bookings += e.AmountHome
+			}
 		}
 	}
 	for _, c := range cats {
@@ -348,6 +357,7 @@ func (s *Server) budgetSummary(t *store.Trip, expenses []store.Expense) BudgetSu
 	if b.ByDay == nil {
 		b.ByDay = []DayTotal{}
 	}
+	b.Total = b.Actual + b.Bookings
 	if t.Budget > 0 {
 		if b.Actual > 0 {
 			b.Remaining = t.Budget - b.Actual

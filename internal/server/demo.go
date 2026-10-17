@@ -56,7 +56,7 @@ func (s *Server) seedDemo(ctx context.Context) error {
 	}
 	l := &store.Lodging{TripID: t.ID, Name: "Luštica Bay Vacation Homes", Type: "apartment", Address: "Novo Naselje b.b., Radovići, Tivat", Lat: f(42.3866), Lng: f(18.6642), CheckIn: d(-3), CheckOut: d(11), ReservationNumber: "123171", Link: "https://lusticabay.com/", Phone: "+382 67 070 104", Price: 168000, Currency: "EUR", Paid: true, Rating: f(4.8)}
 	_ = s.store.CreateLodging(ctx, l)
-	s.syncItemCost(ctx, t, "lodging", l.ID, l.Name, "lodging", l.Price, l.Currency, l.CheckIn)
+	s.syncItemCost(ctx, t, "lodging", l.ID, l.Name, "lodging", l.Price, l.Currency, l.CheckIn, l.Paid)
 	tr := []store.Transport{
 		{TripID: t.ID, Type: "car", Name: "Drive down", FromName: "Banja Luka", FromLat: f(44.7722), FromLng: f(17.1910), ToName: "Luštica Bay", ToLat: f(42.3866), ToLng: f(18.6642), DepartAt: d(-3) + "T06:30", ArriveAt: d(-3) + "T13:00", DistanceKm: 420, Price: 9000, Currency: "EUR", Notes: "Via Trebinje, coffee stop in Bileća."},
 		{TripID: t.ID, Type: "ferry", Name: "Kamenari–Lepetane ferry", FromName: "Lepetane", ToName: "Kamenari", DepartAt: d(2) + "T09:15", Price: 450, Currency: "EUR"},
@@ -64,7 +64,7 @@ func (s *Server) seedDemo(ctx context.Context) error {
 	}
 	for i := range tr {
 		_ = s.store.CreateTransport(ctx, &tr[i])
-		s.syncItemCost(ctx, t, "transport", tr[i].ID, transportLabel(&tr[i]), "transport", tr[i].Price, tr[i].Currency, tr[i].DepartAt)
+		s.syncItemCost(ctx, t, "transport", tr[i].ID, transportLabel(&tr[i]), "transport", tr[i].Price, tr[i].Currency, tr[i].DepartAt, tr[i].Paid)
 	}
 	exp := []store.Expense{
 		{Name: "Travel insurance", Category: "insurance", Amount: 2710, Currency: "EUR", Kind: "planned", Date: d(-10)},
@@ -117,9 +117,8 @@ func (s *Server) seedDemo(ctx context.Context) error {
 	}
 	pl := &store.Lodging{TripID: p.ID, Name: "Hotel Beethoven", Type: "hotel", Address: "Papagenogasse 6, Wien", Lat: f(48.1990), Lng: f(16.3650), CheckIn: p.StartDate, CheckOut: p.EndDate, Price: 54000, Currency: "EUR", Paid: true}
 	_ = s.store.CreateLodging(ctx, pl)
-	s.syncItemCost(ctx, p, "lodging", pl.ID, pl.Name, "lodging", pl.Price, pl.Currency, pl.CheckIn)
+	s.syncItemCost(ctx, p, "lodging", pl.ID, pl.Name, "lodging", pl.Price, pl.Currency, pl.CheckIn, pl.Paid)
 	for _, e := range []store.Expense{
-		{Name: "Hotel Beethoven", Category: "lodging", Amount: 54000, Kind: "actual", Date: p.EndDate},
 		{Name: "Opera tickets", Category: "activities", Amount: 19200, Kind: "actual", Date: p.StartDate},
 		{Name: "Coffee & cake, repeatedly", Category: "food", Amount: 8700, Kind: "actual", Date: p.StartDate},
 		{Name: "Train Vienna", Category: "transport", Amount: 15800, Kind: "actual", Date: p.StartDate},

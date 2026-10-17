@@ -81,7 +81,16 @@ func (s *Store) ListTrips(ctx context.Context, f TripFilter) ([]Trip, error) {
 		}
 		out = append(out, t)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close() // the pool has one connection; release it before the lookups below
+	for i := range out {
+		if !out[i].HasCover {
+			out[i].HasCover = s.CoverFallback(ctx, out[i].ID) != ""
+		}
+	}
+	return out, nil
 }
 
 // GetTrip loads one trip with members; role is filled for userID.
@@ -93,6 +102,9 @@ func (s *Store) GetTrip(ctx context.Context, id, userID int64) (*Trip, error) {
 	t.Members, err = s.TripMembers(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if !t.HasCover {
+		t.HasCover = s.CoverFallback(ctx, t.ID) != ""
 	}
 	if t.OwnerID == userID {
 		t.Role = "owner"
@@ -213,12 +225,28 @@ func (s *Store) TripCounts(ctx context.Context, id int64) (*TripCounts, error) {
 		(SELECT COUNT(1) FROM checklist_items i JOIN checklists c ON c.id = i.checklist_id WHERE c.trip_id = ?),
 		(SELECT COUNT(1) FROM checklist_items i JOIN checklists c ON c.id = i.checklist_id WHERE c.trip_id = ? AND i.done = 1),
 		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND kind = 'planned'),
-		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND kind = 'actual')`,
-		id, id, id, id, id, id, id, id, id, id)
-	if err := row.Scan(&c.Places, &c.Visited, &c.Lodging, &c.Transport, &c.Documents, &c.Journal, &c.Checklist, &c.Checked, &c.Planned, &c.Actual); err != nil {
+		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND kind = 'actual'),
+		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND kind = 'planned' AND source = 'item')`,
+		id, id, id, id, id, id, id, id, id, id, id)
+	var bookings int64
+	if err := row.Scan(&c.Places, &c.Visited, &c.Lodging, &c.Transport, &c.Documents, &c.Journal, &c.Checklist, &c.Checked, &c.Planned, &c.Actual, &bookings); err != nil {
 		return nil, err
 	}
+	c.Total = c.Actual + bookings
 	return &c, nil
+}
+
+// CoverFallback returns an image to use as the banner when no cover was
+// uploaded: the stay's photo, then the first place photo.
+func (s *Store) CoverFallback(ctx context.Context, tripID int64) string {
+	var p string
+	if err := s.DB.QueryRowContext(ctx, `SELECT image_path FROM lodging WHERE trip_id = ? AND image_path <> '' ORDER BY check_in, id LIMIT 1`, tripID).Scan(&p); err == nil && p != "" {
+		return p
+	}
+	if err := s.DB.QueryRowContext(ctx, `SELECT image_path FROM places WHERE trip_id = ? AND image_path <> '' ORDER BY CASE WHEN day_date = '' THEN 1 ELSE 0 END, day_date, sort_order, id LIMIT 1`, tripID).Scan(&p); err == nil {
+		return p
+	}
+	return ""
 }
 
 // LogActivity appends to the trip's change log.

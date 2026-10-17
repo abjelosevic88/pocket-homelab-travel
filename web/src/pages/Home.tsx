@@ -87,7 +87,7 @@ function TripList({ trips }: { trips: Trip[] }) {
             <td><Link to={`/trips/${t.id}`} onClick={e => e.stopPropagation()}><b>{t.name}</b></Link><div className="small muted">{t.destination}</div></td>
             <td className="muted small">{fmtRange(t.start_date, t.end_date)}</td>
             <td className="right"><span className="badge">{STATUS_LABEL[t.status]}</span></td>
-            <td className="num small">{t.counts && t.counts.actual > 0 ? <Money minor={t.counts.actual} code={t.currency} compact /> : t.counts && t.counts.planned > 0 ? <span className="muted"><Money minor={t.counts.planned} code={t.currency} compact /></span> : ''}</td>
+            <td className="num small">{t.counts && t.counts.total > 0 ? <Money minor={t.counts.total} code={t.currency} compact /> : t.counts && t.counts.planned > 0 ? <span className="muted"><Money minor={t.counts.planned} code={t.currency} compact /></span> : ''}</td>
           </tr>
         ))}
       </tbody>

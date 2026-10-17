@@ -4,7 +4,7 @@ export interface Currency { code: string; name: string; decimals: number }
 
 export type TripStatus = 'planning' | 'booked' | 'active' | 'completed' | 'cancelled'
 export interface TripMember { user_id: number; name: string; email: string; role: string }
-export interface TripCounts { places: number; visited: number; lodging: number; transport: number; documents: number; journal: number; checklist_items: number; checklist_done: number; planned: number; actual: number }
+export interface TripCounts { places: number; visited: number; lodging: number; transport: number; documents: number; journal: number; checklist_items: number; checklist_done: number; planned: number; actual: number; total: number }
 export interface Trip {
   id: number; owner_id: number; name: string; destination: string; description: string
   start_date: string; end_date: string; status: TripStatus; currency: string; budget: number
@@ -43,7 +43,7 @@ export interface Activity { id: number; trip_id: number; user_id: number | null;
 
 export interface CategoryTotal { category: string; planned: number; actual: number }
 export interface Budget {
-  currency: string; budget: number; planned: number; actual: number; remaining: number; per_day: number
+  currency: string; budget: number; planned: number; actual: number; remaining: number; per_day: number; total: number; bookings: number
   by_category: CategoryTotal[]; by_day: { date: string; actual: number; count: number }[]; by_currency: Record<string, number>
   top: Expense[]; firefly_count: number; days: number; days_elapsed: number; sources: Record<string, number>
 }

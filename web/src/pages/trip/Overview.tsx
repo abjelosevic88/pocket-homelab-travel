@@ -48,7 +48,8 @@ export function OverviewTab() {
         {next.length > 0 && <div className="mt"><div className="muted small mb-sm">Next up</div><div className="day-items">{next.map((n, i) => <div key={i} className="item" onClick={n.onClick}><span className="ico">{n.icon}</span><span className="txt"><span className="title">{n.label}</span><span className="sub">{n.sub}</span></span></div>)}</div></div>}
       </Card>
       <Card title="Budget" actions={<button className="btn ghost sm" onClick={() => go('budget')}>Details</button>}>
-        <div className="row" style={{ alignItems: 'baseline', gap: 6 }}><span style={{ fontSize: 26, fontWeight: 700 }}><Money minor={b.actual > 0 ? b.actual : b.planned} code={b.currency} /></span><span className="muted small">{b.actual > 0 ? 'spent' : 'planned'}{trip.budget > 0 && <> of <Money minor={trip.budget} code={b.currency} /></>}</span></div>
+        <div className="row" style={{ alignItems: 'baseline', gap: 6 }}><span style={{ fontSize: 26, fontWeight: 700 }}><Money minor={b.total > 0 ? b.total : b.planned} code={b.currency} /></span><span className="muted small">{b.total > 0 ? 'total' : 'planned'}{trip.budget > 0 && <> of <Money minor={trip.budget} code={b.currency} /></>}</span></div>
+        {b.total > 0 && b.bookings > 0 && <div className="muted small"><Money minor={b.actual} code={b.currency} /> spent + <Money minor={b.bookings} code={b.currency} /> booked stays & transport not marked paid</div>}
         {trip.budget > 0 && <div className={`budget-bar mt-sm ${b.actual > trip.budget ? 'over' : ''}`}><div className="actual" style={{ width: `${Math.min(100, b.actual / trip.budget * 100)}%` }} /><div className="planned" style={{ width: `${Math.max(0, Math.min(100 - b.actual / trip.budget * 100, (b.planned - b.actual) / trip.budget * 100))}%` }} /></div>}
         <div className="kv mt-sm">
           {b.actual > 0 && <><dt>Planned</dt><dd><Money minor={b.planned} code={b.currency} /></dd></>}

@@ -370,7 +370,7 @@ func (s *Server) handleCreateLodging(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "create lodging")
 		return
 	}
-	s.syncItemCost(r.Context(), t, "lodging", l.ID, l.Name, "lodging", l.Price, l.Currency, l.CheckIn)
+	s.syncItemCost(r.Context(), t, "lodging", l.ID, l.Name, "lodging", l.Price, l.Currency, l.CheckIn, l.Paid)
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "added stay", l.Name)
 	writeJSON(w, http.StatusCreated, l)
 }
@@ -399,7 +399,7 @@ func (s *Server) handleUpdateLodging(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "update lodging")
 		return
 	}
-	s.syncItemCost(r.Context(), t, "lodging", l.ID, l.Name, "lodging", l.Price, l.Currency, l.CheckIn)
+	s.syncItemCost(r.Context(), t, "lodging", l.ID, l.Name, "lodging", l.Price, l.Currency, l.CheckIn, l.Paid)
 	writeJSON(w, http.StatusOK, l)
 }
 
@@ -418,7 +418,7 @@ func (s *Server) handleDeleteLodging(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.removeFile(l.ImagePath)
-	s.syncItemCost(r.Context(), t, "lodging", l.ID, l.Name, "lodging", 0, "", "")
+	s.syncItemCost(r.Context(), t, "lodging", l.ID, l.Name, "lodging", 0, "", "", false)
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "removed stay", l.Name)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -570,7 +570,7 @@ func (s *Server) handleCreateTransport(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "create transport")
 		return
 	}
-	s.syncItemCost(r.Context(), t, "transport", tr.ID, transportLabel(tr), "transport", tr.Price, tr.Currency, tr.DepartAt)
+	s.syncItemCost(r.Context(), t, "transport", tr.ID, transportLabel(tr), "transport", tr.Price, tr.Currency, tr.DepartAt, tr.Paid)
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "added transport", transportLabel(tr))
 	writeJSON(w, http.StatusCreated, tr)
 }
@@ -606,7 +606,7 @@ func (s *Server) handleUpdateTransport(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "update transport")
 		return
 	}
-	s.syncItemCost(r.Context(), t, "transport", tr.ID, transportLabel(tr), "transport", tr.Price, tr.Currency, tr.DepartAt)
+	s.syncItemCost(r.Context(), t, "transport", tr.ID, transportLabel(tr), "transport", tr.Price, tr.Currency, tr.DepartAt, tr.Paid)
 	writeJSON(w, http.StatusOK, tr)
 }
 
@@ -624,7 +624,7 @@ func (s *Server) handleDeleteTransport(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "delete transport")
 		return
 	}
-	s.syncItemCost(r.Context(), t, "transport", tr.ID, "", "transport", 0, "", "")
+	s.syncItemCost(r.Context(), t, "transport", tr.ID, "", "transport", 0, "", "", false)
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "removed transport", transportLabel(tr))
 	w.WriteHeader(http.StatusNoContent)
 }

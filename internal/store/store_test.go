@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func testStore(t *testing.T) *Store {
@@ -78,5 +79,36 @@ func TestDaysBetween(t *testing.T) {
 	}
 	if DaysBetween("2026-01-05", "2026-01-01") != 0 {
 		t.Fatal("reversed = 0")
+	}
+}
+
+func TestListTripsCoverFallbackDoesNotDeadlock(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	u := &User{Email: "x@y.z", Role: "admin"}
+	if err := s.CreateUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		tr := &Trip{OwnerID: u.ID, Name: "T", Currency: "EUR"}
+		if err := s.CreateTrip(ctx, tr); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.CreatePlace(ctx, &Place{TripID: tr.ID, Name: "P", ImagePath: "1/x.jpg"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	done := make(chan struct{})
+	go func() {
+		trips, err := s.ListTrips(ctx, TripFilter{UserID: u.ID})
+		if err != nil || len(trips) != 3 || !trips[0].HasCover {
+			t.Errorf("list: %v %+v", err, trips)
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("ListTrips deadlocked")
 	}
 }

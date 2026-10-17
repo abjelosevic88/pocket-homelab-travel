@@ -64,7 +64,7 @@ export function TripCard({ t }: { t: Trip }) {
           {c.lodging > 0 && <span>🛏 {c.lodging}</span>}
           {c.transport > 0 && <span>🚗 {c.transport}</span>}
           {c.checklist_items > 0 && <span>☑ {c.checklist_done}/{c.checklist_items}</span>}
-          {(c.actual > 0 || c.planned > 0) && <span className="spacer right"><Money minor={c.actual > 0 ? c.actual : c.planned} code={t.currency} compact />{c.actual === 0 && <span className="muted"> planned</span>}</span>}
+          {(c.total > 0 || c.planned > 0) && <span className="spacer right" title={c.total > 0 ? "Spent plus booked stays and transport" : "Planned"}><Money minor={c.total > 0 ? c.total : c.planned} code={t.currency} compact />{c.total === 0 && <span className="muted"> planned</span>}</span>}
         </div>}
         {t.budget > 0 && c && <div className={`budget-bar ${c.actual > t.budget ? 'over' : ''}`} style={{ height: 6 }}><div className="actual" style={{ width: `${Math.min(100, c.actual / t.budget * 100)}%` }} /><div className="planned" style={{ width: `${Math.max(0, Math.min(100 - c.actual / t.budget * 100, (c.planned - c.actual) / t.budget * 100))}%` }} /></div>}
       </div>
