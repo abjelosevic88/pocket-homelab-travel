@@ -288,6 +288,9 @@ type Settings struct {
 	ImmichURL       string `json:"immich_url"`
 	ImmichAPIKey    string `json:"immich_api_key"`
 	ImmichPublicURL string `json:"immich_public_url"` // what the browser opens; defaults to the API URL
-	MapTiles        string `json:"map_tiles"`         // osm | carto | topo
+	OpenAIKey       string `json:"openai_api_key"`
+	OpenAIModel     string `json:"openai_model"`
+	OpenAIBaseURL   string `json:"openai_base_url"` // any OpenAI-compatible endpoint
+	MapTiles        string `json:"map_tiles"`       // osm | carto | topo
 	SetupComplete   bool   `json:"setup_complete"`
 }

@@ -80,20 +80,25 @@ function ListCard({ c, canEdit, onToggle, onAdd, onRemove, onRename, onClearDone
 function NewListModal({ tripId, onClose, onSaved }: { tripId: number; onClose: () => void; onSaved: (c: Checklist) => void }) {
   const { meta } = useApp()
   const { toast } = useToast()
-  const [f, setF] = useState({ name: 'Packing', kind: 'packing', template: 'essentials', items: '' })
+  const { settings } = useApp()
+  const [f, setF] = useState({ name: 'Packing', kind: 'packing', template: 'essentials', items: '', ai: false, notes: '' })
   const [busy, setBusy] = useState(false)
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true)
-    try { const c = await api.post<Checklist>(`${V1}/trips/${tripId}/checklists`, { name: f.name, kind: f.kind, template: f.template, items: f.items.split('\n').filter(Boolean) }); toast('List created'); onSaved(c) } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
+    try {
+      if (f.ai) { const c = await api.post<Checklist>(`${V1}/trips/${tripId}/ai/packing`, { name: f.name, notes: f.notes, create: true }); toast(`List created with ${c.items.length} items`); onSaved(c); return }
+ const c = await api.post<Checklist>(`${V1}/trips/${tripId}/checklists`, { name: f.name, kind: f.kind, template: f.template, items: f.items.split('\n').filter(Boolean) }); toast('List created'); onSaved(c) } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
   }
   return (
     <Modal title="New checklist" onClose={onClose}>
       <form onSubmit={save} className="grid" style={{ gap: 14 }}>
         <Field label="Name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} required autoFocus /></Field>
         <Field group label="Kind"><Segmented value={f.kind} onChange={v => setF({ ...f, kind: v })} options={[{ value: 'packing', label: 'Packing' }, { value: 'todo', label: 'To-do' }, { value: 'shopping', label: 'Shopping' }, { value: 'custom', label: 'Other' }]} size="sm" /></Field>
-        <Field label="Start from a template" help="Items are added to the list; remove what you don't need."><Select value={f.template} onChange={v => setF({ ...f, template: v })} options={[{ value: '', label: 'Empty list' }, ...(meta?.packing_templates || []).map(t => ({ value: t, label: cap(t) }))]} /></Field>
-        <Field label="Extra items" help="One per line."><textarea value={f.items} onChange={e => setF({ ...f, items: e.target.value })} rows={3} /></Field>
-        <div className="form-actions"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>Create</button></div>
+        {settings?.openai_configured && <label className="row"><input type="checkbox" checked={f.ai} onChange={e => setF({ ...f, ai: e.target.checked })} style={{ width: 'auto' }} /> ✨ Generate it for this trip (destination, dates, weather, activities)</label>}
+        {f.ai && <Field label="Who is going, anything special?"><input value={f.notes} onChange={e => setF({ ...f, notes: e.target.value })} placeholder="two adults and a toddler, we'll hike one day, no checked luggage" /></Field>}
+        {!f.ai && <Field label="Start from a template" help="Items are added to the list; remove what you don't need."><Select value={f.template} onChange={v => setF({ ...f, template: v })} options={[{ value: '', label: 'Empty list' }, ...(meta?.packing_templates || []).map(t => ({ value: t, label: cap(t) }))]} /></Field>}
+        {!f.ai && <Field label="Extra items" help="One per line."><textarea value={f.items} onChange={e => setF({ ...f, items: e.target.value })} rows={3} /></Field>}
+        <div className="form-actions"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{busy ? (f.ai ? 'Writing the list…' : 'Creating…') : 'Create'}</button></div>
       </form>
     </Modal>
   )

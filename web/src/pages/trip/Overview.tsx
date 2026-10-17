@@ -7,10 +7,13 @@ import { ago, daysBetween, fmtClock, fmtDate, fmtDateTime, fmtKm, plural, todayI
 import { Card, useAsync } from '../../components/ui'
 import { Money } from '../../components/Money'
 import { useTrip } from './ctx'
+import { RecapModal } from './ai'
+import { useState } from 'react'
 
 export function OverviewTab() {
   const { ov, trip, weather, route, timeline, photos, extErrors, refreshExternal, canEdit, edit, go } = useTrip()
   const { settings } = useApp()
+  const [recap, setRecap] = useState(false)
   const { data: activity } = useAsync(() => api.get<Activity[]>(`${V1}/trips/${trip.id}/activity?limit=8`), [trip.id, trip.updated_at])
   const today = todayISO()
   const b = ov.budget
@@ -86,6 +89,11 @@ export function OverviewTab() {
         {extErrors.immich ? <p className="bad small">{extErrors.immich}</p> : photos.length === 0 ? <p className="muted">No photos from Immich in this date range{!past && !running ? ' yet' : ''}.</p> : (
           <div className="photo-grid sm">{photos.slice(0, 12).map(p => <a key={p.id} href={`${integ.immich.url}/photos/${p.id}`} target="_blank" rel="noreferrer"><img src={`${V1}/trips/${trip.id}/photos/${p.id}/thumb`} loading="lazy" alt="" />{p.type === 'VIDEO' && <span className="vid">▶</span>}</a>)}</div>
         )}
+      </Card>}
+      {integ.ai.configured && (past || running) && <Card title="✨ Recap">
+        <p className="muted small">Turn the visited places, journal entries, spending and recorded distance into a story, a factual summary or a caption — and keep it in the journal.</p>
+        <button className="btn sm" onClick={() => setRecap(true)}>Write a recap</button>
+        {recap && <RecapModal onClose={() => setRecap(false)} />}
       </Card>}
       {activity && activity.length > 0 && <Card title="Recent changes">
         <ul className="activity">{activity.map(a => <li key={a.id}><span className="muted" style={{ width: 70, flexShrink: 0 }}>{ago(a.created_at)}</span><span>{a.user_name && <b>{a.user_name.split(' ')[0]} </b>}{a.action} <i>{a.subject}</i></span></li>)}</ul>

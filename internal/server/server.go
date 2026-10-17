@@ -101,6 +101,9 @@ func (s *Server) Bootstrap(ctx context.Context) error {
 	set(&st.ImmichURL, s.cfg.ImmichURL)
 	set(&st.ImmichAPIKey, s.cfg.ImmichAPIKey)
 	set(&st.ImmichPublicURL, s.cfg.ImmichPublicURL)
+	set(&st.OpenAIKey, s.cfg.OpenAIKey)
+	set(&st.OpenAIModel, s.cfg.OpenAIModel)
+	set(&st.OpenAIBaseURL, s.cfg.OpenAIBaseURL)
 	if st.HomeCurrency == "EUR" && s.cfg.DefaultCurrency != "EUR" {
 		st.HomeCurrency = s.cfg.DefaultCurrency
 		changed = true
@@ -256,6 +259,12 @@ func (s *Server) Router() http.Handler {
 				r.Get("/export/calendar.ics", s.handleExportICS)
 				r.Get("/export/trip.gpx", s.handleExportGPX)
 				r.Get("/export/trip.json", s.handleExportJSON)
+
+				r.Post("/ai/suggest", s.handleAISuggest)
+				r.Post("/ai/plan", s.handleAIPlan)
+				r.Post("/ai/describe", s.handleAIDescribe)
+				r.Post("/ai/packing", s.handleAIPacking)
+				r.Post("/ai/recap", s.handleAIRecap)
 			})
 
 			r.Get("/firefly/tags", s.handleFireflyTags)

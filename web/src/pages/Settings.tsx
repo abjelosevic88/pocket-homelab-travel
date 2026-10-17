@@ -84,7 +84,7 @@ function Integrations() {
   const { toast } = useToast()
   const [test, setTest] = useState<Record<string, string>>({})
   if (!f) return <Loading />
-  const run = async (which: 'firefly' | 'dawarich' | 'immich', url: string, key: string) => {
+  const run = async (which: 'firefly' | 'dawarich' | 'immich' | 'openai', url: string, key: string) => {
     setTest(t => ({ ...t, [which]: 'testing…' }))
     try { const r = await api.post<{ ok: boolean; message?: string; error?: string }>(`${V1}/integrations/test`, { which, url, key }); setTest(t => ({ ...t, [which]: r.ok ? `✓ ${r.message}` : `✕ ${r.error}` })) } catch (e) { setTest(t => ({ ...t, [which]: `✕ ${(e as Error).message}` })) }
   }
@@ -103,6 +103,17 @@ function Integrations() {
     <div className="grid" style={{ gap: 16 }}>
       {block('firefly', '💶 Firefly III', 'firefly_url', 'firefly_token', 'What the trip really cost. Tag the withdrawals in Firefly (e.g. "lisbon 2027") and set the same tag on the trip; they appear as spent, in their own currency, converted at the day\'s rate. Synced every 30 minutes while a trip is running or upcoming, and on demand.', 'Create the token under Firefly → Options → Profile → OAuth → Personal access tokens.')}
       {block('dawarich', '🛰 Dawarich', 'dawarich_url', 'dawarich_api_key', 'Where you actually went. The recorded route is drawn on the map, each day shows the distance and the detected stops, and the GPX export can include the track.', 'Dawarich → Account → API key. Behind HTTPS use the public name; plain http works too.')}
+      <Card title="✨ OpenAI (or any compatible API)" actions={<span className={`badge ${f.openai_configured ? 'cat' : ''}`}>{f.openai_configured ? 'connected' : 'not set'}</span>}>
+        <p className="muted small">Optional. Adds five buttons: <b>Suggest places</b> (popular, well-rated places for the destination, located with OpenStreetMap), <b>Plan my days</b> (assigns ideas to days and times), <b>Describe</b> a place with practical tips, a <b>packing list</b> tailored to the trip and weather, and a <b>recap</b> written from your journal, visited places and spending. Trip details are sent to the provider when you use them; nothing runs automatically.</p>
+        <div className="grid" style={{ gap: 12 }}>
+          <Field label="API key" help="platform.openai.com → API keys. Stored on the server; shown masked."><input value={f.openai_api_key} onChange={e => setF({ ...f, openai_api_key: e.target.value })} disabled={!isAdmin} autoComplete="off" placeholder="sk-…" /></Field>
+          <div className="two-col tight">
+            <Field label="Model" help="Default gpt-4o-mini (cheap, good enough). gpt-4o or gpt-4.1 give better suggestions."><input value={f.openai_model} onChange={e => setF({ ...f, openai_model: e.target.value })} disabled={!isAdmin} placeholder="gpt-4o-mini" /></Field>
+            <Field label="Base URL (optional)" help="For OpenAI-compatible servers: Ollama, LM Studio, OpenRouter…"><input value={f.openai_base_url} onChange={e => setF({ ...f, openai_base_url: e.target.value })} disabled={!isAdmin} placeholder="https://api.openai.com/v1" /></Field>
+          </div>
+          <div className="row"><button className="btn sm" onClick={() => run('openai', f.openai_base_url, f.openai_api_key)} disabled={!f.openai_api_key}>Test connection</button><span className={`small ${test.openai?.startsWith('✓') ? 'ok' : test.openai?.startsWith('✕') ? 'bad' : 'muted'}`}>{test.openai}</span></div>
+        </div>
+      </Card>
       {block('immich', '📷 Immich', 'immich_url', 'immich_api_key', 'Every photo and video taken between the trip dates, grouped by day; the geotagged ones land on the map. Thumbnails are proxied so the browser never sees the key.', 'Immich → Account settings → API keys.')}
       {isAdmin && <div><button className="btn primary" onClick={() => save()} disabled={busy}>Save integrations</button></div>}
     </div>
@@ -284,7 +295,7 @@ function About() {
   return (
     <Card title="About">
       <p><b>Pocket Travel</b> is a self-hosted trip planner: itinerary, places, stays, transport, budget, packing lists and a journal — with the real spending from Firefly III, the recorded route from Dawarich and the photos from Immich on the same page. One binary, one SQLite file, one volume.</p>
-      <p className="muted small">Open source (MIT) — <a href="https://github.com/abjelosevic88/pocket-homelab-travel" target="_blank" rel="noreferrer">github.com/abjelosevic88/pocket-homelab-travel</a>. Sibling projects: Pocket Habits, Pocket Inventory, Pocket Bookshelf, Pocket Split, Pocket Clips, Pocket Subtitles and Pocket Invoicing. Maps © OpenStreetMap contributors; weather by Open-Meteo.</p>
+      <p className="muted small">Open source (MIT) — <a href="https://github.com/abjelosevic88/pocket-homelab-travel" target="_blank" rel="noreferrer">github.com/abjelosevic88/pocket-homelab-travel</a>. Sibling projects: Pocket Habits, Pocket Inventory, Pocket Bookshelf, Pocket Split, Pocket Clips, Pocket Subtitles and Pocket Invoicing. Maps © OpenStreetMap contributors; weather by Open-Meteo; optional AI features via your own OpenAI-compatible key.</p>
       {data && (
         <table className="table compact mt">
           <tbody>

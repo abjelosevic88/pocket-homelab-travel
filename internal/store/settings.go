@@ -57,6 +57,12 @@ func (s *Store) GetSettings(ctx context.Context) (Settings, error) {
 			st.ImmichAPIKey = v
 		case "immich_public_url":
 			st.ImmichPublicURL = v
+		case "openai_api_key":
+			st.OpenAIKey = v
+		case "openai_model":
+			st.OpenAIModel = v
+		case "openai_base_url":
+			st.OpenAIBaseURL = v
 		case "map_tiles":
 			if v != "" {
 				st.MapTiles = v
@@ -85,6 +91,9 @@ func (s *Store) SaveSettings(ctx context.Context, st Settings) error {
 		"immich_url":        st.ImmichURL,
 		"immich_api_key":    st.ImmichAPIKey,
 		"immich_public_url": st.ImmichPublicURL,
+		"openai_api_key":    st.OpenAIKey,
+		"openai_model":      st.OpenAIModel,
+		"openai_base_url":   st.OpenAIBaseURL,
 		"map_tiles":         st.MapTiles,
 		"setup_complete":    b[st.SetupComplete],
 	}

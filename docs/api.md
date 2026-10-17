@@ -42,6 +42,16 @@ All endpoints live under `/api/v1`. Authenticate with the session cookie (the UI
 
 Add `?refresh=1` to the Dawarich / Immich / weather endpoints to bypass the cache.
 
+## AI (needs an OpenAI key)
+
+| Method | Path | |
+|---|---|---|
+| POST | `/trips/{id}/ai/suggest` | `{interests, near, category, count}` → `{suggestions:[{name, category, why, area, lat, lng, address, website, geocoded, duration_min, best_time, exists}]}` |
+| POST | `/trips/{id}/ai/plan` | `{pace: relaxed\|\|packed, notes, reschedule}` → `{items:[{place_id, name, day_date, start_time, duration_min, note}], summary, unplaced}`; `{apply:true, items}` writes it |
+| POST | `/trips/{id}/ai/describe` | `{place_id}` or `{name, address, category}` → `{description, tips, duration_min, best_time}` |
+| POST | `/trips/{id}/ai/packing` | `{notes, name, create}` → groups of items; `create:true` makes the checklist |
+| POST | `/trips/{id}/ai/recap` | `{style: story\|summary\|social, save}` → `{text}` |
+
 ## Outside world
 
 `GET /geo/search?q=` (Nominatim), `GET /geo/reverse?lat&lng`, `GET /geo/discover?lat&lng&radius=3000&category=food` (Overpass), `GET /geo/wiki?q=` (Wikipedia summary), `GET /geo/weather?lat&lng&start&end` (Open-Meteo).

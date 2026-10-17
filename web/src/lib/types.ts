@@ -50,7 +50,7 @@ export interface Budget {
 export interface Overview {
   trip: Trip; places: Place[]; lodging: Lodging[]; transport: Transport[]; expenses: Expense[]; checklists: Checklist[]
   journal: JournalEntry[]; documents: Doc[]; budget: Budget
-  integrations: { firefly: { configured: boolean; tag: string; synced_at: string }; dawarich: { configured: boolean; enabled: boolean }; immich: { configured: boolean; enabled: boolean; url: string } }
+  integrations: { firefly: { configured: boolean; tag: string; synced_at: string }; dawarich: { configured: boolean; enabled: boolean }; immich: { configured: boolean; enabled: boolean; url: string }; ai: { configured: boolean; model: string } }
 }
 export interface DayWeather { date: string; code: number; label: string; tmax: number; tmin: number; precip_mm: number; wind_kmh: number; sunrise?: string; sunset?: string; source: 'forecast' | 'archive' }
 export interface Route { points: [number, number, number][]; raw_count: number; distance_km: number; days_km: Record<string, number>; bounds?: [number, number, number, number] }
@@ -63,6 +63,7 @@ export interface Settings {
   firefly_url: string; firefly_token: string; firefly_configured: boolean
   dawarich_url: string; dawarich_api_key: string; dawarich_configured: boolean
   immich_url: string; immich_public_url: string; immich_api_key: string; immich_configured: boolean
+  openai_api_key: string; openai_model: string; openai_base_url: string; openai_configured: boolean
   max_upload_bytes: number; setup_complete: boolean
 }
 export interface Meta { place_categories: string[]; expense_categories: string[]; discover_categories: string[]; packing_templates: string[]; lodging_types: string[]; transport_types: string[] }

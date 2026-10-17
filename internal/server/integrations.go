@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abjelosevic88/pocket-homelab-travel/internal/ai"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/currency"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/dawarich"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/export"
@@ -42,6 +43,7 @@ func (s *Server) publicSettings(st store.Settings) map[string]any {
 		"firefly_url": st.FireflyURL, "firefly_token": mask(st.FireflyToken), "firefly_configured": st.FireflyURL != "" && st.FireflyToken != "",
 		"dawarich_url": st.DawarichURL, "dawarich_api_key": mask(st.DawarichAPIKey), "dawarich_configured": st.DawarichURL != "" && st.DawarichAPIKey != "",
 		"immich_url": st.ImmichURL, "immich_public_url": st.ImmichPublicURL, "immich_api_key": mask(st.ImmichAPIKey), "immich_configured": st.ImmichURL != "" && st.ImmichAPIKey != "",
+		"openai_api_key": mask(st.OpenAIKey), "openai_model": st.OpenAIModel, "openai_base_url": st.OpenAIBaseURL, "openai_configured": st.OpenAIKey != "",
 		"max_upload_bytes": s.cfg.MaxUploadBytes, "setup_complete": st.SetupComplete,
 	}
 }
@@ -116,6 +118,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		cur.ImmichURL = strings.TrimRight(strings.TrimSpace(in.ImmichURL), "/")
 	}
 	secret("immich_api_key", &cur.ImmichAPIKey, in.ImmichAPIKey)
+	secret("openai_api_key", &cur.OpenAIKey, in.OpenAIKey)
+	if keys["openai_model"] {
+		cur.OpenAIModel = strings.TrimSpace(in.OpenAIModel)
+	}
+	if keys["openai_base_url"] {
+		cur.OpenAIBaseURL = strings.TrimRight(strings.TrimSpace(in.OpenAIBaseURL), "/")
+	}
 	if keys["immich_public_url"] {
 		cur.ImmichPublicURL = strings.TrimRight(strings.TrimSpace(in.ImmichPublicURL), "/")
 	}
@@ -167,6 +176,29 @@ func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 			msg = "Dawarich reachable"
 			if err == nil && len(pts) > 0 {
 				msg += ", points in the last 30 days"
+			}
+		}
+	case "openai":
+		key := in.Key
+		if strings.Contains(key, "••") || key == "" {
+			key = st.OpenAIKey
+		}
+		var ids []string
+		ids, err = ai.New(in.URL, key, st.OpenAIModel, 15*time.Second).Models(ctx)
+		model := st.OpenAIModel
+		if model == "" {
+			model = ai.DefaultModel
+		}
+		msg = fmt.Sprintf("OpenAI reachable, %d models, using %s", len(ids), model)
+		if err == nil {
+			found := false
+			for _, id := range ids {
+				if id == model {
+					found = true
+				}
+			}
+			if !found && len(ids) > 0 {
+				msg += " (not in the model list — check the name)"
 			}
 		}
 	case "immich":

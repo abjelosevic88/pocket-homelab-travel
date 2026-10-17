@@ -487,6 +487,7 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 			"firefly":  map[string]any{"configured": ff.Configured(), "tag": t.FireflyTag, "synced_at": syncedAt},
 			"dawarich": map[string]any{"configured": dw.Configured(), "enabled": t.Dawarich},
 			"immich":   map[string]any{"configured": im.Configured(), "enabled": t.Immich, "url": firstNonEmpty(st.ImmichPublicURL, st.ImmichURL)},
+			"ai":       map[string]any{"configured": st.OpenAIKey != "", "model": firstNonEmpty(st.OpenAIModel, "gpt-4o-mini")},
 		},
 	})
 }

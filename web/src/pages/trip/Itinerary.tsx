@@ -7,6 +7,7 @@ import { dateRange, fmtClock, fmtDate, fmtDateTime, fmtDuration, fmtISOTime, fmt
 import { Card, Empty, useToast } from '../../components/ui'
 import { useTrip } from './ctx'
 import { lodgingSub, placeSub, transportSub } from './Overview'
+import { PlanModal } from './ai'
 
 type Row = { key: string; when: string; kind: 'place' | 'lodging-in' | 'lodging-out' | 'transport' | 'journey' | 'visit'; icon: string; title: string; sub: string; place?: Place; onClick?: () => void; cls?: string }
 
@@ -17,6 +18,7 @@ export function Itinerary() {
   const [dragId, setDragId] = useState<number | null>(null)
   const [over, setOver] = useState<string | null>(null)
   const [showRecorded, setShowRecorded] = useState(true)
+  const [plan, setPlan] = useState(false)
   const today = todayISO()
   const unit = settings?.distance_unit || 'km'
   const days = dateRange(trip.start_date, trip.end_date)
@@ -55,11 +57,13 @@ export function Itinerary() {
   const hasRecorded = timeline.length > 0
   return (
     <div className="two-col" style={{ gridTemplateColumns: 'minmax(0, 1fr) 280px' }}>
+      {plan && <PlanModal onClose={() => setPlan(false)} />}
       <Card flush>
         <div className="pad" style={{ paddingBottom: 0 }}>
           <div className="row wrap" style={{ marginBottom: 6 }}>
             <span className="muted small">{days.length} days · drag places between days to reschedule · tick when visited</span>
             <span className="spacer" />
+            {canEdit && ov.integrations.ai.configured && <button className="btn sm" onClick={() => setPlan(true)}>✨ Plan my days</button>}
             {hasRecorded && <label className="row small muted" style={{ gap: 4 }}><input type="checkbox" checked={showRecorded} onChange={e => setShowRecorded(e.target.checked)} style={{ width: 'auto' }} /> show Dawarich</label>}
           </div>
         </div>

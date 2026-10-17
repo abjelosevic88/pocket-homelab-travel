@@ -47,6 +47,9 @@ type Config struct {
 	ImmichURL       string
 	ImmichAPIKey    string
 	ImmichPublicURL string
+	OpenAIKey       string
+	OpenAIModel     string
+	OpenAIBaseURL   string
 
 	// Outbound lookups (Nominatim, Overpass, Open-Meteo, Wikipedia) identify as this.
 	UserAgent string
@@ -134,6 +137,9 @@ func Load() (*Config, error) {
 		ImmichURL:       strings.TrimRight(env("IMMICH_URL", ""), "/"),
 		ImmichAPIKey:    env("IMMICH_API_KEY", ""),
 		ImmichPublicURL: strings.TrimRight(env("IMMICH_PUBLIC_URL", ""), "/"),
+		OpenAIKey:       env("OPENAI_API_KEY", ""),
+		OpenAIModel:     env("OPENAI_MODEL", ""),
+		OpenAIBaseURL:   strings.TrimRight(env("OPENAI_BASE_URL", ""), "/"),
 
 		UserAgent: env("USER_AGENT", "PocketTravel/1.0 (+https://github.com/abjelosevic88/pocket-homelab-travel)"),
 

@@ -24,6 +24,9 @@ Everything is an environment variable with a sensible default. Integration setti
 | `DAWARICH_URL` / `DAWARICH_API_KEY` | | Dawarich base URL + API key |
 | `IMMICH_URL` / `IMMICH_API_KEY` | | Immich base URL + API key |
 | `IMMICH_PUBLIC_URL` | | Browser-facing Immich URL for "Open in Immich" links when `IMMICH_URL` is internal |
+| `OPENAI_API_KEY` | | Enables the AI features (suggest places, plan days, describe, packing list, recap) |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Any chat model of the provider |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible endpoint (Ollama, LM Studio, OpenRouter…) |
 | `USER_AGENT` | `PocketTravel/1.0 (+repo)` | Sent to Nominatim, Overpass, Open-Meteo, Wikipedia |
 | `DEMO_DATA` | `false` | Seed three example trips on first start |
 | `TZ` | | Container timezone (day boundaries for Dawarich and "today") |
@@ -33,5 +36,7 @@ Everything is an environment variable with a sensible default. Integration setti
 - **Firefly III** — create a personal access token under Options → Profile → OAuth. Tag the withdrawals of a trip (e.g. `lisbon 2027`) and set the same tag on the trip. Every withdrawal with the tag is synced as a *spent* expense; the user may re-categorise them locally, everything else follows Firefly. Sync runs every 30 minutes for running and upcoming trips, on every trip save, and on demand (Budget → Sync).
 - **Dawarich** — Account → API key. The trip's date range (in the trip's timezone, or the server's) is fetched as slim points, simplified for drawing, and summed per day. The timeline endpoint supplies journeys and stops. Cached for an hour while the trip runs, a week after.
 - **Immich** — Account settings → API keys. Photos are searched by `takenAfter`/`takenBefore`; thumbnails are proxied through the app so the key stays on the server.
+
+- **OpenAI** — platform.openai.com → API keys. Nothing runs automatically: trip details (destination, dates, places, journal, spending totals) are sent only when you press one of the ✨ buttons. Suggested places are geocoded with Nominatim (one request a second, so a batch of 8 takes ~10 s). The planner only proposes; the itinerary changes when you apply. Set `OPENAI_BASE_URL` to use a local model server instead.
 
 Inside Docker, reach services on the same host with `http://host.docker.internal:<port>` (the compose file adds the `host-gateway` alias). Services that force HTTPS redirects are fine too — the Dawarich client sends `X-Forwarded-Proto: https`.

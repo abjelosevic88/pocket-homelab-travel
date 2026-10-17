@@ -10,6 +10,7 @@ import { AmountInput, Money } from '../../components/Money'
 import { GeoSearch } from '../../components/GeoSearch'
 import { MapView } from '../../components/Map'
 import { useTrip } from './ctx'
+import { SuggestModal, describePlace } from './ai'
 
 export function Places() {
   const { ov, trip, canEdit, edit } = useTrip()
@@ -18,6 +19,7 @@ export function Places() {
   const [cat, setCat] = useState('')
   const [status, setStatus] = useState('')
   const [view, setView] = useState<'cards' | 'table'>('cards')
+  const [suggest, setSuggest] = useState(false)
   const list = ov.places.filter(p => (!q || `${p.name} ${p.address} ${p.tags} ${p.notes}`.toLowerCase().includes(q.toLowerCase())) && (!cat || p.category === cat) && (!status || p.status === status))
   const cats = Array.from(new Set(ov.places.map(p => p.category)))
   return (
@@ -27,9 +29,11 @@ export function Places() {
         <Select value={cat} onChange={setCat} options={cats.map(c => ({ value: c, label: `${PLACE_ICONS[c] || ''} ${cap(c)}` }))} placeholder="All categories" clearLabel="All categories" />
         <Select value={status} onChange={setStatus} options={Object.entries(PLACE_STATUS_LABEL).map(([v, l]) => ({ value: v, label: l }))} placeholder="Any status" clearLabel="Any status" />
         <Segmented value={view} onChange={setView} options={[{ value: 'cards', label: '▦' }, { value: 'table', label: '☰' }]} size="sm" />
+        {canEdit && ov.integrations.ai.configured && <button className="btn" onClick={() => setSuggest(true)}>✨ Suggest</button>}
         {canEdit && <button className="btn primary" onClick={() => edit('place', null, {})}>+ Place</button>}
       </div>
-      {list.length === 0 ? <Empty title={ov.places.length ? 'Nothing matches' : 'No places yet'}>{!ov.places.length && 'Add the sights, restaurants and beaches you want to see. Use the map tab to discover what is nearby.'}</Empty> : view === 'cards' ? (
+      {suggest && <SuggestModal onClose={() => setSuggest(false)} />}
+      {list.length === 0 ? <Empty title={ov.places.length ? 'Nothing matches' : 'No places yet'}>{!ov.places.length && (ov.integrations.ai.configured ? 'Add the sights, restaurants and beaches you want to see, or press ✨ Suggest for popular places at the destination.' : 'Add the sights, restaurants and beaches you want to see. Use the map tab to discover what is nearby.')}</Empty> : view === 'cards' ? (
         <div className="pool">
           {list.map(p => (
             <div key={p.id} className="place-card" onClick={() => edit('place', p)}>
@@ -63,6 +67,8 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
   const [del, setDel] = useState(false)
   const [tab, setTab] = useState<'main' | 'more'>('main')
   const [wikiBusy, setWikiBusy] = useState(false)
+  const [aiBusy, setAiBusy] = useState(false)
+  const { settings } = useApp()
   const set = <K extends keyof Place>(k: K, v: Place[K]) => setF(x => ({ ...x, [k]: v }))
   const base = `${V1}/trips/${trip.id}/places`
   useEffect(() => { if (f.day_date && f.status === 'idea') set('status', 'planned') }, [f.day_date]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -79,6 +85,10 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
   const wiki = async () => {
     setWikiBusy(true)
     try { const w = await api.get<{ extract: string; url: string }>(`${V1}/geo/wiki?q=${encodeURIComponent(f.name || '')}`); set('description', w.extract); if (!f.link) set('link', w.url) } catch (e) { toast((e as Error).message, 'err') } finally { setWikiBusy(false) }
+  }
+  const describe = async () => {
+    setAiBusy(true)
+    try { const d = await describePlace(trip.id, { place_id: item?.id, name: f.name || '', address: f.address, category: f.category }); setF(x => ({ ...x, description: d.description, notes: x.notes ? x.notes + '\n\n' + d.tips : d.tips, duration_min: x.duration_min || d.duration_min })) } catch (e) { toast((e as Error).message, 'err') } finally { setAiBusy(false) }
   }
   const upload = async (file: File) => {
     if (!item) return
@@ -120,7 +130,7 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
             <Field label="Phone"><input value={f.phone || ''} onChange={e => set('phone', e.target.value)} /></Field>
             <Field label="Tags" help="Comma separated."><input value={f.tags || ''} onChange={e => set('tags', e.target.value)} placeholder="sunset, kids, rainy day" /></Field>
           </div>
-          <Field label={<span className="row">Description <button type="button" className="btn ghost sm" onClick={wiki} disabled={wikiBusy || !f.name}>{wikiBusy ? 'Looking up…' : 'Fill from Wikipedia'}</button></span>}><textarea value={f.description || ''} onChange={e => set('description', e.target.value)} rows={4} /></Field>
+          <Field label={<span className="row">Description <button type="button" className="btn ghost sm" onClick={wiki} disabled={wikiBusy || !f.name}>{wikiBusy ? 'Looking up…' : 'Fill from Wikipedia'}</button>{settings?.openai_configured && <button type="button" className="btn ghost sm" onClick={describe} disabled={aiBusy || !f.name}>{aiBusy ? 'Writing…' : '✨ Describe + tips'}</button>}</span>}><textarea value={f.description || ''} onChange={e => set('description', e.target.value)} rows={4} /></Field>
           <Field label="Notes" help="Tips, opening hours, what to order."><textarea value={f.notes || ''} onChange={e => set('notes', e.target.value)} rows={3} /></Field>
           {item && <Field label="Photo"><div className="row">{item.has_image && <img src={`${V1}/trips/${trip.id}/places/${item.id}/image?v=${item.updated_at}`} alt="" style={{ height: 60, borderRadius: 8 }} />}<label className="btn sm">Upload image…<input type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && upload(e.target.files[0])} /></label></div></Field>}
         </>}
