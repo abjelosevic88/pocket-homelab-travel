@@ -7,6 +7,7 @@ import { Select } from '../../components/Select'
 import { useTrip } from './ctx'
 
 const KINDS = ['ticket', 'booking', 'insurance', 'id', 'map', 'other']
+const KIND_ICON: Record<string, string> = { ticket: '🎫', booking: '🛏', insurance: '🛡', id: '🪪', map: '🗺', other: '📄' }
 
 export function Documents() {
   const { ov, trip, canEdit, patch } = useTrip()
@@ -14,31 +15,45 @@ export function Documents() {
   const [kind, setKind] = useState('other')
   const [busy, setBusy] = useState(false)
   const [del, setDel] = useState<Doc | null>(null)
+  const [drag, setDrag] = useState(false)
   const base = `${V1}/trips/${trip.id}/documents`
-  const upload = async (files: FileList | null) => {
-    if (!files?.length) return
+  const upload = async (files: FileList | File[] | null) => {
+    if (!files || !files.length) return
     setBusy(true)
     try { const added: Doc[] = []; for (const f of Array.from(files)) added.push(await uploadForm<Doc>(base, f, { kind })); patch({ documents: [...ov.documents, ...added] }); toast(`Uploaded ${added.length}`) } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
   }
   const remove = async () => { if (!del) return; try { await api.del(`${base}/${del.id}`); patch({ documents: ov.documents.filter(d => d.id !== del.id) }); setDel(null) } catch (e) { toast((e as Error).message, 'err') } }
-  const rename = async (d: Doc, name: string) => { if (!name.trim() || name === d.name) return; try { const nd = await api.put<Doc>(`${base}/${d.id}`, { name }); patch({ documents: ov.documents.map(x => x.id === d.id ? nd : x) }) } catch (e) { toast((e as Error).message, 'err') } }
-  const setDocKind = async (d: Doc, k: string) => { try { const nd = await api.put<Doc>(`${base}/${d.id}`, { kind: k }); patch({ documents: ov.documents.map(x => x.id === d.id ? nd : x) }) } catch (e) { toast((e as Error).message, 'err') } }
-  const ext = (d: Doc) => (d.name.split('.').pop() || d.mime.split('/').pop() || 'file').slice(0, 4)
+  const save = async (d: Doc, body: Partial<Doc>) => { try { const nd = await api.put<Doc>(`${base}/${d.id}`, body); patch({ documents: ov.documents.map(x => x.id === d.id ? nd : x) }) } catch (e) { toast((e as Error).message, 'err') } }
+  const ext = (d: Doc) => (d.name.includes('.') ? d.name.split('.').pop()! : d.mime.split('/').pop() || 'file').slice(0, 4)
+  const linked = (d: Doc) => {
+    if (d.link_kind === 'lodging') return ov.lodging.find(l => l.id === d.link_id)?.name
+    if (d.link_kind === 'place') return ov.places.find(p => p.id === d.link_id)?.name
+    if (d.link_kind === 'transport') { const t = ov.transport.find(t => t.id === d.link_id); return t && (t.name || `${t.from_name} → ${t.to_name}`) }
+    return undefined
+  }
+  const groups = KINDS.filter(k => ov.documents.some(d => d.kind === k)).map(k => ({ kind: k, docs: ov.documents.filter(d => d.kind === k) }))
   return (
-    <Card title={`Documents · ${ov.documents.length}`} actions={canEdit && <span className="row"><Select value={kind} onChange={setKind} options={KINDS.map(k => ({ value: k, label: cap(k) }))} /><label className="btn primary sm">{busy ? 'Uploading…' : 'Upload…'}<input type="file" multiple hidden onChange={e => upload(e.target.files)} /></label></span>}>
-      <p className="muted small">Tickets, booking confirmations, insurance, passport scans. Stored on the server next to the database and backed up with it.</p>
-      {ov.documents.length === 0 ? <Empty title="No documents yet" /> : ov.documents.map(d => (
-        <div key={d.id} className="doc-row">
-          <a className="ext" href={`${base}/${d.id}/file`} target="_blank" rel="noreferrer">{ext(d)}</a>
-          <div className="grow">
-            <input className="inline-edit" defaultValue={d.name} disabled={!canEdit} onBlur={e => rename(d, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} style={{ fontWeight: 600 }} />
-            <div className="small muted">{fmtBytes(d.bytes)} · {fmtDate(d.created_at)}</div>
+    <Card title={`Documents · ${ov.documents.length}`} actions={canEdit && <span className="row"><span className="muted small">Upload as</span><Select className="doc-kind" value={kind} onChange={setKind} options={KINDS.map(k => ({ value: k, label: `${KIND_ICON[k]} ${cap(k)}` }))} /><label className="btn primary sm">{busy ? 'Uploading…' : 'Upload…'}<input type="file" multiple hidden onChange={e => upload(e.target.files)} /></label></span>}>
+      <div className={`dropzone ${drag ? 'over' : ''}`} onDragOver={e => { if (canEdit) { e.preventDefault(); setDrag(true) } }} onDragLeave={() => setDrag(false)} onDrop={e => { e.preventDefault(); setDrag(false); if (canEdit) upload(e.dataTransfer.files) }}>
+        {ov.documents.length === 0 ? <Empty title="No documents yet">{canEdit ? 'Tickets, booking confirmations, insurance, passport scans — drop files here or use Upload. They are stored next to the database and backed up with it.' : 'Tickets, bookings and insurance would show up here.'}</Empty> : groups.map(g => (
+          <div key={g.kind} className="doc-group">
+            <h3>{KIND_ICON[g.kind]} {cap(g.kind)} <span className="muted small">· {g.docs.length}</span></h3>
+            {g.docs.map(d => (
+              <div key={d.id} className="doc-row">
+                <a className="ext" href={`${base}/${d.id}/file`} target="_blank" rel="noreferrer" title="Open">{ext(d)}</a>
+                <div className="doc-main">
+                  {canEdit ? <input className="inline-edit doc-name" defaultValue={d.name} onBlur={e => e.target.value.trim() && e.target.value !== d.name && save(d, { name: e.target.value.trim() })} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} /> : <a className="doc-name" href={`${base}/${d.id}/file`} target="_blank" rel="noreferrer">{d.name}</a>}
+                  <div className="small muted">{fmtBytes(d.bytes)} · {fmtDate(d.created_at)}{linked(d) && <> · <span title={d.link_kind}>{d.link_kind === 'lodging' ? '🛏' : d.link_kind === 'place' ? '📍' : '🚗'} {linked(d)}</span></>}</div>
+                </div>
+                {canEdit ? <Select className="doc-kind" value={d.kind} onChange={k => save(d, { kind: k })} options={KINDS.map(k => ({ value: k, label: `${KIND_ICON[k]} ${cap(k)}` }))} /> : <span className="badge">{d.kind}</span>}
+                <a className="btn ghost sm" href={`${base}/${d.id}/file?download=1`} title="Download">↓</a>
+                {canEdit && <button className="btn ghost sm danger-text" onClick={() => setDel(d)} title="Delete">✕</button>}
+              </div>
+            ))}
           </div>
-          {canEdit ? <Select value={d.kind} onChange={k => setDocKind(d, k)} options={KINDS.map(k => ({ value: k, label: cap(k) }))} className="toolbar" /> : <span className="badge">{d.kind}</span>}
-          <a className="btn ghost sm" href={`${base}/${d.id}/file?download=1`}>↓</a>
-          {canEdit && <button className="btn ghost sm danger-text" onClick={() => setDel(d)}>✕</button>}
-        </div>
-      ))}
+        ))}
+        {ov.documents.length > 0 && canEdit && <p className="muted small mt" style={{ margin: '12px 0 0' }}>Drop files anywhere on this card to upload them as “{cap(kind)}”. Click a name to rename it.</p>}
+      </div>
       {del && <Confirm title={`Delete ${del.name}?`} message="The file is removed from the server." onCancel={() => setDel(null)} onConfirm={remove} />}
     </Card>
   )
