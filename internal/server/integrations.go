@@ -2,6 +2,10 @@ package server
 
 import (
 	"context"
+	"io"
+	"net/url"
+	"regexp"
+	"strconv"
 
 	"encoding/json"
 	"fmt"
@@ -371,7 +375,28 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 // ---- geo ----
 
 func (s *Server) handleGeoSearch(w http.ResponseWriter, r *http.Request) {
-	res, err := s.geo.Search(r.Context(), r.URL.Query().Get("q"), queryInt(r, "limit"))
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	// "42.42, 18.77", a Google/Apple Maps link, or a maps.app.goo.gl short link:
+	// resolve to coordinates and reverse-geocode instead of text search.
+	if lat, lng, ok := s.coordsFromInput(r.Context(), q); ok {
+		res, err := s.geo.Reverse(r.Context(), lat, lng)
+		if err != nil {
+			res = &geo.Result{Name: fmt.Sprintf("%.5f, %.5f", lat, lng), Source: "coords"}
+		}
+		res.Lat, res.Lng = lat, lng
+		// A Google Maps place link carries the place name: /place/Kastel+Fortress/…
+		if m := placeNameRe.FindStringSubmatch(q); m != nil {
+			if n, err := url.PathUnescape(strings.ReplaceAll(m[1], "+", " ")); err == nil && n != "" {
+				res.Name = n
+			}
+		}
+		if res.Display == "" {
+			res.Display = fmt.Sprintf("%.5f, %.5f", lat, lng)
+		}
+		writeJSON(w, http.StatusOK, []geo.Result{*res})
+		return
+	}
+	res, err := s.geo.Search(r.Context(), q, queryInt(r, "limit"))
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "search failed: "+err.Error())
 		return
@@ -945,4 +970,67 @@ func (s *Server) handleImportJSON(w http.ResponseWriter, r *http.Request) {
 	s.store.LogActivity(ctx, t.ID, u.ID, "imported", "from JSON")
 	out, _ := s.store.GetTrip(ctx, t.ID, u.ID)
 	writeJSON(w, http.StatusCreated, out)
+}
+
+var (
+	placeNameRe = regexp.MustCompile(`/maps/place/([^/@?]+)`)
+	coordPairRe = regexp.MustCompile(`^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$`)
+	atCoordsRe  = regexp.MustCompile(`@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)`)
+	bangCoords  = regexp.MustCompile(`!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)`)
+	qCoordsRe   = regexp.MustCompile(`[?&](?:q|ll|query|destination|daddr|sll)=(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)`)
+)
+
+// coordsFromInput understands "lat, lng" and the common map-link shapes.
+func (s *Server) coordsFromInput(ctx context.Context, q string) (float64, float64, bool) {
+	parse := func(m []string) (float64, float64, bool) {
+		if m == nil {
+			return 0, 0, false
+		}
+		lat, e1 := strconv.ParseFloat(m[1], 64)
+		lng, e2 := strconv.ParseFloat(m[2], 64)
+		if e1 != nil || e2 != nil || lat < -90 || lat > 90 || lng < -180 || lng > 180 {
+			return 0, 0, false
+		}
+		return lat, lng, true
+	}
+	if lat, lng, ok := parse(coordPairRe.FindStringSubmatch(q)); ok {
+		return lat, lng, true
+	}
+	if !strings.HasPrefix(q, "http://") && !strings.HasPrefix(q, "https://") {
+		return 0, 0, false
+	}
+	try := func(u string) (float64, float64, bool) {
+		for _, re := range []*regexp.Regexp{bangCoords, atCoordsRe, qCoordsRe} {
+			if lat, lng, ok := parse(re.FindStringSubmatch(u)); ok {
+				return lat, lng, true
+			}
+		}
+		return 0, 0, false
+	}
+	if lat, lng, ok := try(q); ok {
+		return lat, lng, true
+	}
+	// Short links (maps.app.goo.gl, goo.gl/maps, apple) redirect to a long URL with the coordinates.
+	client := &http.Client{Timeout: 8 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 6 {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, q, nil)
+	if err != nil {
+		return 0, 0, false
+	}
+	req.Header.Set("User-Agent", s.cfg.UserAgent)
+	res, err := client.Do(req)
+	if err != nil {
+		return 0, 0, false
+	}
+	defer res.Body.Close()
+	if lat, lng, ok := try(res.Request.URL.String()); ok {
+		return lat, lng, true
+	}
+	// Last resort: the page body of a Google Maps place often carries the coordinates.
+	b, _ := io.ReadAll(io.LimitReader(res.Body, 512<<10))
+	return try(string(b))
 }

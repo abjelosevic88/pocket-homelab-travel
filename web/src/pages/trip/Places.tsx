@@ -68,6 +68,8 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
   const [tab, setTab] = useState<'main' | 'more'>('main')
   const [wikiBusy, setWikiBusy] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
+  const [catTouched, setCatTouched] = useState(!!item)
+  const [picked, setPicked] = useState<string>('')
   const { settings } = useApp()
   const set = <K extends keyof Place>(k: K, v: Place[K]) => setF(x => ({ ...x, [k]: v }))
   const base = `${V1}/trips/${trip.id}/places`
@@ -81,7 +83,14 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
     } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
   }
   const remove = async () => { try { await api.del(`${base}/${item!.id}`); toast('Place removed'); onSaved() } catch (e) { toast((e as Error).message, 'err') } }
-  const pick = (r: GeoResult) => { setF(x => ({ ...x, name: x.name || r.name, address: r.display, lat: r.lat, lng: r.lng, link: x.link || r.website || '', phone: x.phone || r.phone || '' })) }
+  const pick = (r: GeoResult) => {
+    setPicked(r.display)
+    setF(x => ({ ...x, name: x.name || r.name, address: r.display, lat: r.lat, lng: r.lng, link: x.link || r.website || '', phone: x.phone || r.phone || '', category: !catTouched && r.suggest ? r.suggest : x.category }))
+  }
+  const dropPin = async (lat: number, lng: number) => {
+    setF(x => ({ ...x, lat, lng }))
+    try { const r = await api.get<GeoResult>(`${V1}/geo/reverse?lat=${lat}&lng=${lng}`); setPicked(r.display); setF(x => ({ ...x, address: r.display, name: x.name || r.name })) } catch { /* keep the coordinates */ }
+  }
   const wiki = async () => {
     setWikiBusy(true)
     try { const w = await api.get<{ extract: string; url: string }>(`${V1}/geo/wiki?q=${encodeURIComponent(f.name || '')}`); set('description', w.extract); if (!f.link) set('link', w.url) } catch (e) { toast((e as Error).message, 'err') } finally { setWikiBusy(false) }
@@ -103,9 +112,13 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
         {tab === 'main' && <>
           <div className="two-col tight">
             <Field label="Name"><input value={f.name || ''} onChange={e => set('name', e.target.value)} required autoFocus={!item} maxLength={120} /></Field>
-            <Field label="Category"><Select value={f.category || 'sight'} onChange={v => set('category', v)} options={(meta?.place_categories || []).map(c => ({ value: c, label: `${PLACE_ICONS[c] || ''} ${cap(c)}` }))} /></Field>
+            <Field label="Category"><Select value={f.category || 'sight'} onChange={v => { setCatTouched(true); set('category', v) }} options={(meta?.place_categories || []).map(c => ({ value: c, label: `${PLACE_ICONS[c] || ''} ${cap(c)}` }))} /></Field>
           </div>
-          {!item && <Field label="Find it on the map" help="Search OpenStreetMap; picking a result fills the address and coordinates."><GeoSearch onPick={pick} /></Field>}
+          <Field label="Where is it" help="Search OpenStreetMap, paste a Google/Apple Maps link, or type coordinates — or click the map to drop the pin. The category is guessed from what the place is.">
+            <GeoSearch onPick={pick} placeholder="Search a place, paste a maps link, or 42.42, 18.77…" initial={item?.address || ''} />
+            <MapView className="sm" markers={marker} center={f.lat != null ? [f.lat, f.lng!] : trip.lat != null ? [trip.lat, trip.lng!] : undefined} zoom={f.lat != null ? 15 : 10} onClick={dropPin} fitKey={`${f.lat}:${f.lng}`} />
+            <div className="small muted" style={{ marginTop: 4 }}>{f.lat != null ? <>📍 {picked || f.address || `${f.lat.toFixed(5)}, ${f.lng!.toFixed(5)}`} <a href="#" onClick={e => { e.preventDefault(); setF(x => ({ ...x, lat: null, lng: null })); setPicked('') }}>clear</a></> : 'No location yet — the place will not show on the map.'}</div>
+          </Field>
           <div className="two-col tight">
             <Field label="Day"><Select value={f.day_date || ''} onChange={v => set('day_date', v)} options={days.map((d, i) => ({ value: d, label: `Day ${i + 1} · ${fmtDate(d, false)}` }))} placeholder="Unscheduled (idea)" clearLabel="Unscheduled" /></Field>
             <div className="two-col tight">
@@ -124,8 +137,7 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
           </div>
         </>}
         {tab === 'more' && <>
-          <Field label="Address"><input value={f.address || ''} onChange={e => set('address', e.target.value)} /></Field>
-          <Field label="Move the pin" help="Click the map to set the coordinates; search above to jump somewhere."><GeoSearch onPick={pick} placeholder="Search to re-centre…" /><MapView className="sm" markers={marker} center={f.lat != null ? [f.lat, f.lng!] : trip.lat != null ? [trip.lat, trip.lng!] : undefined} zoom={13} onClick={(lat, lng) => setF(x => ({ ...x, lat, lng }))} fitKey={`${f.lat}:${f.lng}`} /></Field>
+          <Field label="Address" help="Shown in lists and the calendar; the pin on the Details tab is what the map uses."><input value={f.address || ''} onChange={e => set('address', e.target.value)} /></Field>
           <div className="two-col tight">
             <Field label="Phone"><input value={f.phone || ''} onChange={e => set('phone', e.target.value)} /></Field>
             <Field label="Tags" help="Comma separated."><input value={f.tags || ''} onChange={e => set('tags', e.target.value)} placeholder="sunset, kids, rainy day" /></Field>

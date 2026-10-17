@@ -59,7 +59,7 @@ export const DAY_COLORS = ['#0ea5e9', '#f97316', '#22c55e', '#a855f7', '#ef4444'
 export interface TimelineEntry { type: 'journey' | 'visit'; track_id?: number; visit_id?: number; name?: string; status?: string; started_at: string; ended_at: string; duration: number; distance: number; dominant_mode?: string; avg_speed?: number; elevation_gain?: number; latitude?: number; longitude?: number; point_count?: number }
 export interface TimelineDay { date: string; summary: { total_distance: number; distance_unit: string; places_visited: number; time_moving_minutes: number; time_stationary_minutes: number; mode_distances: Record<string, number> }; entries: TimelineEntry[] }
 export interface Photo { id: string; type: 'IMAGE' | 'VIDEO'; file_name: string; taken_at: string; lat: number | null; lng: number | null; city: string; country: string; thumbhash: string; favorite: boolean; duration?: string }
-export interface GeoResult { name: string; display: string; lat: number; lng: number; type: string; category: string; country: string; city: string; website?: string; phone?: string; hours?: string; source: string; osm_id?: string }
+export interface GeoResult { name: string; display: string; lat: number; lng: number; type: string; category: string; country: string; city: string; website?: string; phone?: string; hours?: string; source: string; osm_id?: string; suggest?: string }
 export interface Settings {
   title: string; home_currency: string; date_format: string; time_format: string; distance_unit: 'km' | 'mi'; fx_auto: boolean; fx_provider: string; map_tiles: string
   firefly_url: string; firefly_token: string; firefly_configured: boolean

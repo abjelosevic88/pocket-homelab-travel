@@ -61,6 +61,7 @@ type Result struct {
 	Hours    string  `json:"hours,omitempty"`
 	Source   string  `json:"source"`
 	OSMID    string  `json:"osm_id,omitempty"`
+	Suggest  string  `json:"suggest,omitempty"` // our place category guessed from the OSM tags
 }
 
 // Search runs a free-text Nominatim search.
@@ -78,14 +79,16 @@ func (c *Client) Search(ctx context.Context, q string, limit int) ([]Result, err
 		Lat         string `json:"lat"`
 		Lon         string `json:"lon"`
 		Type        string `json:"type"`
-		Class       string `json:"class"`
+		Class       string `json:"category"` // jsonv2 calls the OSM class "category"
 		OSMType     string `json:"osm_type"`
 		OSMID       int64  `json:"osm_id"`
 		Address     struct {
-			Country string `json:"country"`
-			City    string `json:"city"`
-			Town    string `json:"town"`
-			Village string `json:"village"`
+			Country     string `json:"country"`
+			City        string `json:"city"`
+			Town        string `json:"town"`
+			Village     string `json:"village"`
+			Road        string `json:"road"`
+			HouseNumber string `json:"house_number"`
 		} `json:"address"`
 	}
 	u := fmt.Sprintf("https://nominatim.openstreetmap.org/search?q=%s&format=jsonv2&addressdetails=1&limit=%d", url.QueryEscape(q), limit)
@@ -97,10 +100,7 @@ func (c *Client) Search(ctx context.Context, q string, limit int) ([]Result, err
 		var lat, lng float64
 		fmt.Sscanf(r.Lat, "%f", &lat)
 		fmt.Sscanf(r.Lon, "%f", &lng)
-		name := r.Name
-		if name == "" {
-			name = strings.SplitN(r.DisplayName, ",", 2)[0]
-		}
+		name := prettyName(r.Name, r.Address.Road, r.Address.HouseNumber, r.DisplayName)
 		city := r.Address.City
 		if city == "" {
 			city = r.Address.Town
@@ -108,7 +108,7 @@ func (c *Client) Search(ctx context.Context, q string, limit int) ([]Result, err
 		if city == "" {
 			city = r.Address.Village
 		}
-		out = append(out, Result{Name: name, Display: r.DisplayName, Lat: lat, Lng: lng, Type: r.Type, Category: r.Class, Country: r.Address.Country, City: city, Source: "nominatim", OSMID: fmt.Sprintf("%s/%d", r.OSMType, r.OSMID)})
+		out = append(out, Result{Name: name, Display: r.DisplayName, Lat: lat, Lng: lng, Type: r.Type, Category: r.Class, Suggest: SuggestCategory(r.Class, r.Type), Country: r.Address.Country, City: city, Source: "nominatim", OSMID: fmt.Sprintf("%s/%d", r.OSMType, r.OSMID)})
 	}
 	return out, nil
 }
@@ -121,10 +121,12 @@ func (c *Client) Reverse(ctx context.Context, lat, lng float64) (*Result, error)
 		Type        string `json:"type"`
 		Class       string `json:"category"`
 		Address     struct {
-			Country string `json:"country"`
-			City    string `json:"city"`
-			Town    string `json:"town"`
-			Village string `json:"village"`
+			Country     string `json:"country"`
+			City        string `json:"city"`
+			Town        string `json:"town"`
+			Village     string `json:"village"`
+			Road        string `json:"road"`
+			HouseNumber string `json:"house_number"`
 		} `json:"address"`
 	}
 	u := fmt.Sprintf("https://nominatim.openstreetmap.org/reverse?lat=%f&lon=%f&format=jsonv2&addressdetails=1", lat, lng)
@@ -138,7 +140,7 @@ func (c *Client) Reverse(ctx context.Context, lat, lng float64) (*Result, error)
 	if city == "" {
 		city = raw.Address.Village
 	}
-	return &Result{Name: raw.Name, Display: raw.DisplayName, Lat: lat, Lng: lng, Type: raw.Type, Category: raw.Class, Country: raw.Address.Country, City: city, Source: "nominatim"}, nil
+	return &Result{Name: prettyName(raw.Name, raw.Address.Road, raw.Address.HouseNumber, raw.DisplayName), Display: raw.DisplayName, Lat: lat, Lng: lng, Type: raw.Type, Category: raw.Class, Suggest: SuggestCategory(raw.Class, raw.Type), Country: raw.Address.Country, City: city, Source: "nominatim"}, nil
 }
 
 // Discover categories map to Overpass tag filters.
@@ -512,4 +514,87 @@ func PathLength(pts []Pt) float64 {
 		d += Haversine(pts[i-1].Lat, pts[i-1].Lng, pts[i].Lat, pts[i].Lng)
 	}
 	return d
+}
+
+// prettyName turns Nominatim's name (often just a house number for address
+// hits) into something readable: "Zmaj Ognjenog Vuka 238" rather than "238".
+func prettyName(name, road, house, display string) string {
+	n := strings.TrimSpace(name)
+	isNumber := n != "" && strings.Trim(n, "0123456789abcdefABCDEF/- ") == ""
+	if n == "" || isNumber || n == house {
+		if road != "" {
+			if house != "" {
+				return road + " " + house
+			}
+			return road
+		}
+		if n != "" {
+			return n
+		}
+		return strings.TrimSpace(strings.SplitN(display, ",", 2)[0])
+	}
+	return n
+}
+
+// SuggestCategory maps OSM class/type to one of the app's place categories.
+func SuggestCategory(class, typ string) string {
+	switch class {
+	case "amenity":
+		switch typ {
+		case "restaurant", "fast_food", "food_court":
+			return "food"
+		case "cafe", "ice_cream":
+			return "cafe"
+		case "bar", "pub", "biergarten", "nightclub":
+			if typ == "nightclub" {
+				return "nightlife"
+			}
+			return "bar"
+		case "theatre", "cinema", "arts_centre":
+			return "event"
+		case "marketplace":
+			return "shop"
+		case "fuel", "parking", "bus_station", "ferry_terminal", "charging_station", "taxi":
+			return "transport"
+		case "place_of_worship":
+			return "sight"
+		}
+	case "tourism":
+		switch typ {
+		case "museum", "gallery":
+			return "museum"
+		case "viewpoint":
+			return "viewpoint"
+		case "attraction", "artwork", "theme_park", "zoo", "aquarium":
+			if typ == "theme_park" || typ == "zoo" || typ == "aquarium" {
+				return "activity"
+			}
+			return "sight"
+		case "hotel", "guest_house", "hostel", "apartment", "camp_site":
+			return "other"
+		}
+	case "natural":
+		if typ == "beach" {
+			return "beach"
+		}
+		if typ == "peak" {
+			return "viewpoint"
+		}
+		return "nature"
+	case "leisure":
+		switch typ {
+		case "park", "nature_reserve", "garden":
+			return "nature"
+		case "spa", "sauna", "swimming_pool":
+			return "wellness"
+		}
+		return "activity"
+	case "historic":
+		return "sight"
+	case "shop":
+		return "shop"
+	case "aeroway", "railway", "highway":
+		return "transport"
+	}
+	return ""
 }
