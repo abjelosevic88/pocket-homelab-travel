@@ -73,6 +73,9 @@ export interface HomeData {
   stats: { trips: number; upcoming: number; days: number; places: number; visited: number; destinations: string[]; next_trip_id: number }
   current: Trip | null; next: Trip | null; upcoming: Trip[]; recent: Trip[]
   today?: { date: string; day_number: number; places: Place[]; stay: Lodging | null; budget: Budget }
+  recorded_km: number; photos: number; journal: (JournalEntry & { trip_name?: string })[]
+  pins: { id: number; name: string; status: TripStatus; start_date: string; end_date: string; lat: number; lng: number; has_cover: boolean }[]
+  hero_weather: DayWeather | null
 }
 
 export const PLACE_ICONS: Record<string, string> = { sight: '🏛', museum: '🖼', nature: '🌿', beach: '🏖', viewpoint: '🌄', food: '🍽', cafe: '☕', bar: '🍸', shop: '🛍', activity: '🎟', event: '🎭', nightlife: '🌙', wellness: '🧖', transport: '🚏', other: '📍', historic: '🏰', lodging: '🛏' }

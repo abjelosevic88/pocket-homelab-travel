@@ -314,7 +314,83 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	if len(upcoming) > 0 {
 		next = &upcoming[0]
 	}
-	out := map[string]any{"stats": stats, "current": current, "next": next, "upcoming": upcoming, "recent": recent}
+	// Totals that live in the integration caches: recorded km and photo counts.
+	var recordedKm float64
+	photosN := 0
+	for i := range trips {
+		if trips[i].Archived {
+			continue
+		}
+		if v, _, ok := s.store.CacheGet(ctx, cacheKey(trips[i].ID, "dawarich-route")); ok {
+			var rr RouteResponse
+			if json.Unmarshal([]byte(v), &rr) == nil {
+				recordedKm += rr.DistanceKm
+			}
+		}
+		if v, _, ok := s.store.CacheGet(ctx, cacheKey(trips[i].ID, "immich-photos")); ok {
+			var ph []json.RawMessage
+			if json.Unmarshal([]byte(v), &ph) == nil {
+				photosN += len(ph)
+			}
+		}
+	}
+	journal, _ := s.store.LatestJournal(ctx, u.ID, 6)
+	// Pins for the "where you've been" map: the trip's centre, else its first located place.
+	type pin struct {
+		ID     int64   `json:"id"`
+		Name   string  `json:"name"`
+		Status string  `json:"status"`
+		Start  string  `json:"start_date"`
+		End    string  `json:"end_date"`
+		Lat    float64 `json:"lat"`
+		Lng    float64 `json:"lng"`
+		Cover  bool    `json:"has_cover"`
+	}
+	pins := []pin{}
+	for i := range trips {
+		t := &trips[i]
+		if t.Archived || t.Status == store.StatusCancelled {
+			continue
+		}
+		if lat, lng, ok := s.tripCenter(ctx, t); ok {
+			pins = append(pins, pin{ID: t.ID, Name: t.Name, Status: t.Status, Start: t.StartDate, End: t.EndDate, Lat: lat, Lng: lng, Cover: t.HasCover})
+		}
+	}
+	// Weather at the destination of the trip that matters now (today, or the start day of the next one).
+	var hero *store.Trip
+	if current != nil {
+		hero = current
+	} else if next != nil {
+		hero = next
+	}
+	var heroWx any
+	if hero != nil {
+		if lat, lng, ok := s.tripCenter(ctx, hero); ok {
+			day := today
+			if hero.StartDate > today {
+				day = hero.StartDate
+			}
+			key := cacheKey(hero.ID, "wx-home:"+day)
+			if v, at, ok := s.store.CacheGet(ctx, key); ok {
+				if ts, err := time.Parse(time.RFC3339Nano, at); err == nil && time.Since(ts) < 3*time.Hour {
+					var w any
+					if json.Unmarshal([]byte(v), &w) == nil {
+						heroWx = w
+					}
+				}
+			}
+			if heroWx == nil {
+				if days, err := s.geo.Weather(ctx, lat, lng, day, day); err == nil && len(days) > 0 {
+					heroWx = days[0]
+					if b, err := json.Marshal(days[0]); err == nil {
+						_ = s.store.CachePut(ctx, key, string(b))
+					}
+				}
+			}
+		}
+	}
+	out := map[string]any{"stats": stats, "current": current, "next": next, "upcoming": upcoming, "recent": recent,
+		"recorded_km": recordedKm, "photos": photosN, "journal": journal, "pins": pins, "hero_weather": heroWx}
 	// Today's plan for a running trip.
 	if current != nil {
 		places, _ := s.store.ListPlaces(ctx, current.ID)

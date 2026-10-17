@@ -1,96 +1,121 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, V1 } from '../lib/api'
 import { useApp } from '../lib/app-context'
-import type { HomeData, Trip } from '../lib/types'
-import { PLACE_ICONS, STATUS_LABEL } from '../lib/types'
-import { daysBetween, fmtClock, fmtRange, plural, todayISO } from '../lib/format'
+import type { HomeData } from '../lib/types'
+import { PLACE_ICONS, WX_ICON } from '../lib/types'
+import { daysBetween, fmtClock, fmtDate, fmtKm, fmtRange, plural, todayISO, weekday } from '../lib/format'
 import { Card, Empty, Loading, PageHeader, useAsync } from '../components/ui'
 import { Money } from '../components/Money'
+import { MapView, type Marker } from '../components/Map'
+import { TripCard } from './Trips'
 
 export default function Home() {
-  const { user } = useApp()
+  const { user, settings } = useApp()
+  const navigate = useNavigate()
   const { data, error, loading } = useAsync(() => api.get<HomeData>(`${V1}/home`), [])
   if (loading && !data) return <Loading />
   if (error) return <div className="callout danger">{error}</div>
   if (!data) return null
-  const { stats, current, next, upcoming, recent, today } = data
+  const { stats, current, next, upcoming, recent, today, journal, pins, hero_weather: wx } = data
+  const unit = settings?.distance_unit || 'km'
   const hour = new Date().getHours()
   const greet = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+  const first = (user?.name || '').split(' ')[0] || 'traveller'
+  const hero = current || next
+  const until = next ? daysBetween(todayISO(), next.start_date) : 0
+  const heroStyle = hero?.has_cover ? { backgroundImage: `url(${V1}/trips/${hero.id}/cover?v=${hero.updated_at})` } : { background: `linear-gradient(135deg, ${hero?.color || '#0284c7'} 0%, #0f172a 100%)` }
+  const markers: Marker[] = pins.map(p => ({ id: String(p.id), lat: p.lat, lng: p.lng, label: p.name, icon: p.status === 'completed' ? '✓' : p.status === 'active' ? '✈' : '🧳', kind: p.status === 'completed' ? 'visited' : p.status === 'planning' ? 'idea' : 'booked', popup: `<b>${esc(p.name)}</b><br>${fmtRange(p.start_date, p.end_date)}`, onClick: () => navigate(`/trips/${p.id}`) }))
+  const c = next?.counts
   return (
     <>
-      <PageHeader title={`${greet}, ${(user?.name || '').split(' ')[0] || 'traveller'}`} sub={current ? `You are on the road: ${current.name}, day ${today?.day_number} of ${current.days}.` : next ? `Next up: ${next.name} in ${daysBetween(todayISO(), next.start_date)} days.` : 'Nothing planned yet. Where to next?'} actions={<Link className="btn primary" to="/trips?new=1">+ New trip</Link>} />
+      <PageHeader title={`${greet}, ${first}`} sub={current ? `You are on the road.` : next ? `Next up in ${until} days.` : 'Where to next?'} actions={<Link className="btn primary" to="/trips?new=1">+ New trip</Link>} />
+
+      {hero ? (
+        <div className={`hero home-hero ${hero.has_cover ? 'has-cover' : ''}`} style={heroStyle} onClick={() => navigate(`/trips/${hero.id}`)}>
+          <div className="hero-body">
+            <div>
+              <div className="row" style={{ gap: 8, marginBottom: 6 }}><span className="status-pill">{current && today ? `Day ${today.day_number} of ${hero.days}` : `In ${until} days`}</span>{wx && <span className="status-pill">{WX_ICON(wx.code)} {Math.round(wx.tmax)}° / {Math.round(wx.tmin)}° {current ? 'today' : 'on arrival'}</span>}</div>
+              <h1>{hero.name}</h1>
+              <div className="meta-line"><span>{hero.destination}</span><span>{fmtRange(hero.start_date, hero.end_date)}</span><span>{plural(hero.days, 'day')}</span></div>
+            </div>
+            <div className="row" onClick={e => e.stopPropagation()}>
+              <Link className="btn ghost" to={`/trips/${hero.id}/itinerary`}>Itinerary</Link>
+              <Link className="btn ghost" to={`/trips/${hero.id}/budget`}>Budget</Link>
+              <Link className="btn ghost" to={`/trips/${hero.id}/lists`}>Checklists</Link>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <Card className="mb"><Empty title="No trip on the horizon">Create one and start dropping in ideas — or import your collections from AdventureLog under Settings → Import.</Empty></Card>
+      )}
+
+      {current && today && (
+        <div className="overview-grid mb">
+          <Card title="Today" actions={<Link className="btn ghost sm" to={`/trips/${current.id}/itinerary`}>Full day</Link>}>
+            {today.places.length === 0 ? <p className="muted">Nothing scheduled — a free day, or drag some ideas onto it.</p> : (
+              <div className="day-items">{today.places.map(p => <Link key={p.id} className="item" to={`/trips/${current.id}/itinerary`} style={{ color: 'inherit' }}><span className="time">{fmtClock(p.start_time)}</span><span className={`ico ${p.status === 'visited' ? 'visited' : ''}`}>{PLACE_ICONS[p.category] || '📍'}</span><span className="txt"><span className="title">{p.name}</span><span className="sub">{p.address || p.notes}</span></span></Link>)}</div>
+            )}
+            {today.stay && <p className="muted small mt-sm">Sleeping at <b>{today.stay.name}</b>{today.stay.check_out && <> · check-out {fmtDate(today.stay.check_out, false)}</>}</p>}
+          </Card>
+          <Card title="Spending so far" actions={<Link className="btn ghost sm" to={`/trips/${current.id}/budget`}>Budget</Link>}>
+            <div style={{ fontSize: 28, fontWeight: 700 }}><Money minor={today.budget.total} code={today.budget.currency} /></div>
+            {today.budget.budget > 0 && <>
+              <div className={`budget-bar mt-sm ${today.budget.actual > today.budget.budget ? 'over' : ''}`}><div className="actual" style={{ width: `${Math.min(100, today.budget.actual / today.budget.budget * 100)}%` }} /></div>
+              <div className="small muted mt-sm"><Money minor={today.budget.remaining} code={today.budget.currency} /> left · ~<Money minor={today.budget.per_day} code={today.budget.currency} /> a day</div>
+            </>}
+          </Card>
+        </div>
+      )}
+
+      {!current && next && c && (
+        <div className="overview-grid mb">
+          <Card title="Getting ready">
+            <div className="kv">
+              <dt>Places</dt><dd>{c.places} collected{c.places > 0 && <>, {c.places - (next.counts?.visited || 0)} to schedule</>}</dd>
+              <dt>Stays</dt><dd>{c.lodging > 0 ? plural(c.lodging, 'stay') + ' booked' : <span className="bad">nothing booked yet</span>}</dd>
+              <dt>Transport</dt><dd>{c.transport > 0 ? plural(c.transport, 'leg') : <span className="muted">none yet</span>}</dd>
+              <dt>Checklists</dt><dd>{c.checklist_items > 0 ? `${c.checklist_done} of ${c.checklist_items} done` : <span className="muted">empty</span>}</dd>
+              <dt>Planned cost</dt><dd>{c.planned > 0 ? <Money minor={c.planned} code={next.currency} /> : <span className="muted">—</span>}{next.budget > 0 && <> of <Money minor={next.budget} code={next.currency} /></>}</dd>
+            </div>
+            {c.checklist_items > 0 && <div className="bar lg mt-sm"><span className="fill" style={{ width: `${c.checklist_done / c.checklist_items * 100}%` }} /></div>}
+          </Card>
+          <Card title="Countdown"><div className="countdown">{until}<small>days</small></div><p className="muted mt-sm">{weekday(next.start_date, true)}, {fmtDate(next.start_date)}{wx && <> · {WX_ICON(wx.code)} {wx.label.toLowerCase()}, {Math.round(wx.tmax)}°</>}</p></Card>
+        </div>
+      )}
+
       <div className="stats">
         <Link className="stat" to="/trips"><div className="n">{stats.trips}</div><div className="l">trips</div></Link>
-        <div className="stat"><div className="n">{stats.days}</div><div className="l">days travelled</div></div>
+        <div className="stat"><div className="n">{stats.days}</div><div className="l">days away</div></div>
         <div className="stat"><div className="n">{stats.visited}<span className="muted" style={{ fontSize: 14 }}> / {stats.places}</span></div><div className="l">places visited</div></div>
         <div className="stat"><div className="n">{stats.destinations.length}</div><div className="l">destinations</div></div>
+        {data.recorded_km > 0 && <div className="stat"><div className="n">{fmtKm(data.recorded_km, unit)}</div><div className="l">recorded by Dawarich</div></div>}
+        {data.photos > 0 && <div className="stat"><div className="n">{data.photos.toLocaleString()}</div><div className="l">photos in Immich</div></div>}
       </div>
-      {current && today && (
-        <Card title={<span>Today · {current.name}</span>} actions={<Link className="btn sm" to={`/trips/${current.id}/itinerary`}>Open itinerary</Link>} className="mb">
-          <div className="overview-grid">
-            <div>
-              <div className="muted small mb-sm">Day {today.day_number} of {current.days}</div>
-              {today.places.length === 0 ? <p className="muted">Nothing scheduled for today — a free day, or drag some ideas onto it.</p> : (
-                <div className="day-items">
-                  {today.places.map(p => (
-                    <Link key={p.id} className="item" to={`/trips/${current.id}/itinerary`} style={{ color: 'inherit' }}>
-                      <span className="time">{fmtClock(p.start_time)}</span>
-                      <span className={`ico ${p.status === 'visited' ? 'visited' : ''}`}>{PLACE_ICONS[p.category] || '📍'}</span>
-                      <span className="txt"><span className="title">{p.name}</span><span className="sub">{p.address || p.notes}</span></span>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="grid" style={{ gap: 12 }}>
-              {today.stay && <div><div className="muted small">Staying at</div><b>{today.stay.name}</b><div className="small muted">{today.stay.address}</div></div>}
-              <div>
-                <div className="muted small">Spent so far</div>
-                <div style={{ fontSize: 22, fontWeight: 700 }}><Money minor={today.budget.actual} code={today.budget.currency} /></div>
-                {today.budget.budget > 0 && <div className="small muted"><Money minor={today.budget.remaining} code={today.budget.currency} /> left of the budget · ~<Money minor={today.budget.per_day} code={today.budget.currency} /> a day</div>}
-              </div>
-            </div>
-          </div>
+
+      {pins.length > 0 && (
+        <Card title="Where you've been — and where you're going" className="mb" flush>
+          <MapView className="home-map" markers={markers} zoom={4} />
+          <div className="legend pad" style={{ paddingTop: 8, paddingBottom: 12 }}><span style={{ '--d': '#16a34a' } as React.CSSProperties}>done</span><span style={{ '--d': '#d97706' } as React.CSSProperties}>booked / running</span><span style={{ '--d': '#94a3b8' } as React.CSSProperties}>planning</span><span className="muted">· click a pin to open the trip</span></div>
         </Card>
       )}
-      {!current && next && (
-        <Card className="mb">
-          <div className="next-up">
-            <div className="countdown">{daysBetween(todayISO(), next.start_date)}<small>days until</small></div>
-            <div className="grow">
-              <h2><Link to={`/trips/${next.id}`}>{next.name}</Link></h2>
-              <div className="muted">{next.destination} · {fmtRange(next.start_date, next.end_date)} · {plural(next.days, 'day')}</div>
-              {next.counts && <div className="small muted mt-sm">{plural(next.counts.places, 'place')} planned · {next.counts.checklist_done}/{next.counts.checklist_items} checklist items done{next.counts.lodging === 0 && ' · no stay booked yet'}</div>}
+
+      <div className="two-col" style={{ gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 2fr)' }}>
+        <div>
+          {upcoming.length > 0 && <><h2 className="mb-sm">Upcoming</h2><div className="trip-grid mb">{upcoming.map(t => <TripCard key={t.id} t={t} />)}</div></>}
+          {recent.length > 0 && <><h2 className="mb-sm">Past trips</h2><div className="trip-grid mb">{recent.map(t => <TripCard key={t.id} t={t} />)}</div></>}
+          {upcoming.length === 0 && recent.length === 0 && <Card><Empty title="No trips yet" /></Card>}
+        </div>
+        <Card title="From the journal">
+          {journal.length === 0 ? <p className="muted">Entries you write during a trip show up here. A few lines a day beats a blank page later.</p> : journal.map(j => (
+            <div key={j.id} className="journal-entry" onClick={() => navigate(`/trips/${j.trip_id}/journal`)} style={{ cursor: 'pointer' }}>
+              <div className="j-head">{j.mood && <span style={{ fontSize: 16 }}>{j.mood}</span>}<b>{j.title || fmtDate(j.date)}</b><span className="muted small">{j.trip_name} · {fmtDate(j.date, false)}</span></div>
+              <div className="j-body small" style={{ whiteSpace: 'normal', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>{j.body}</div>
             </div>
-            <Link className="btn primary" to={`/trips/${next.id}`}>Plan</Link>
-          </div>
-        </Card>
-      )}
-      <div className="two-col">
-        <Card title="Upcoming" actions={<Link className="btn ghost sm" to="/trips">All trips</Link>}>
-          {upcoming.length === 0 ? <Empty title="No upcoming trips">Create one and start collecting ideas.</Empty> : <TripList trips={upcoming} />}
-        </Card>
-        <Card title="Past trips">
-          {recent.length === 0 ? <Empty title="Nothing yet">Finished trips show up here with what they cost and where you went.</Empty> : <TripList trips={recent} />}
+          ))}
         </Card>
       </div>
     </>
   )
 }
 
-function TripList({ trips }: { trips: Trip[] }) {
-  return (
-    <table className="table compact">
-      <tbody>
-        {trips.map(t => (
-          <tr key={t.id} className="clickable" onClick={() => (window.location.href = `/trips/${t.id}`)}>
-            <td><Link to={`/trips/${t.id}`} onClick={e => e.stopPropagation()}><b>{t.name}</b></Link><div className="small muted">{t.destination}</div></td>
-            <td className="muted small">{fmtRange(t.start_date, t.end_date)}</td>
-            <td className="right"><span className="badge">{STATUS_LABEL[t.status]}</span></td>
-            <td className="num small">{t.counts && t.counts.total > 0 ? <Money minor={t.counts.total} code={t.currency} compact /> : t.counts && t.counts.planned > 0 ? <span className="muted"><Money minor={t.counts.planned} code={t.currency} compact /></span> : ''}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
-}
+function esc(s: string): string { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] || c)) }

@@ -280,6 +280,25 @@ func (s *Store) ListJournal(ctx context.Context, tripID int64) ([]JournalEntry, 
 	return out, rows.Err()
 }
 
+// LatestJournal returns the newest entries across the trips a user can see.
+func (s *Store) LatestJournal(ctx context.Context, userID int64, limit int) ([]JournalEntry, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT `+journalCols+`, t.name FROM journal j JOIN trips t ON t.id = j.trip_id LEFT JOIN users u ON u.id = j.user_id
+		WHERE t.archived = 0 AND (t.owner_id = ? OR t.id IN (SELECT trip_id FROM trip_members WHERE user_id = ?)) ORDER BY j.date DESC, j.id DESC LIMIT ?`, userID, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []JournalEntry{}
+	for rows.Next() {
+		var j JournalEntry
+		if err := rows.Scan(&j.ID, &j.TripID, &j.UserID, &j.UserName, &j.Date, &j.Title, &j.Body, &j.Mood, &j.Lat, &j.Lng, &j.CreatedAt, &j.UpdatedAt, &j.TripName); err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
 // GetJournal loads one entry.
 func (s *Store) GetJournal(ctx context.Context, tripID, id int64) (*JournalEntry, error) {
 	return scanJournal(s.DB.QueryRowContext(ctx, `SELECT `+journalCols+` FROM journal j LEFT JOIN users u ON u.id = j.user_id WHERE j.id = ? AND j.trip_id = ?`, id, tripID))

@@ -246,6 +246,7 @@ type JournalEntry struct {
 	Lng       *float64 `json:"lng"`
 	CreatedAt string   `json:"created_at"`
 	UpdatedAt string   `json:"updated_at"`
+	TripName  string   `json:"trip_name,omitempty"`
 }
 
 // Document is an uploaded file.
