@@ -552,11 +552,23 @@ func (s *Server) cached(r *http.Request, t *store.Trip, key string, fetch func()
 
 // RouteResponse is the recorded route, simplified for the map.
 type RouteResponse struct {
-	Points     [][3]float64       `json:"points"` // lat, lng, ts
+	Points     [][3]float64       `json:"points"` // lat, lng, ts — every kept point, for GPX
 	RawCount   int                `json:"raw_count"`
 	DistanceKm float64            `json:"distance_km"`
 	Days       map[string]float64 `json:"days_km"`
+	ByDay      []RouteDay         `json:"days"`             // what the map draws
 	Bounds     *[4]float64        `json:"bounds,omitempty"` // minLat, minLng, maxLat, maxLng
+}
+
+// RouteDay is one day's track as separate segments: a segment ends where
+// the recording stopped (a gap, a teleport), so no straight lines are drawn
+// across what the phone did not see.
+type RouteDay struct {
+	Date     string         `json:"date"`
+	Km       float64        `json:"km"`
+	Segments [][][2]float64 `json:"segments"`
+	Start    string         `json:"start,omitempty"`
+	End      string         `json:"end,omitempty"`
 }
 
 func (s *Server) fetchRoute(ctx context.Context, dw *dawarich.Client, t *store.Trip) (*RouteResponse, error) {
@@ -604,28 +616,77 @@ func (s *Server) fetchRoute(ctx context.Context, dw *dawarich.Client, t *store.T
 	for _, v := range days {
 		total += v
 	}
-	simp := geo.Simplify(raw, 15)
-	if len(simp) > 6000 {
-		simp = geo.Simplify(raw, 40)
+	// Cut the recording into segments at gaps, then simplify each.
+	var segs [][]geo.Pt
+	var cur []geo.Pt
+	for i, p := range raw {
+		if i > 0 {
+			prev := raw[i-1]
+			d := geo.Haversine(prev.Lat, prev.Lng, p.Lat, p.Lng)
+			dt := p.TS - prev.TS
+			// 20 minutes of silence, or a jump faster than 250 km/h: the line would be fiction.
+			if dt > 20*60 || (dt > 0 && d > 300 && d/float64(dt) > 70) || (dt <= 0 && d > 300) {
+				if len(cur) > 1 {
+					segs = append(segs, cur)
+				}
+				cur = nil
+			}
+		}
+		cur = append(cur, p)
 	}
-	out := &RouteResponse{Points: make([][3]float64, 0, len(simp)), RawCount: len(raw), DistanceKm: total, Days: days}
-	for _, p := range simp {
-		out.Points = append(out.Points, [3]float64{p.Lat, p.Lng, float64(p.TS)})
+	if len(cur) > 1 {
+		segs = append(segs, cur)
+	}
+	tol := 15.0
+	if len(raw) > 60000 {
+		tol = 40
+	}
+	byDay := map[string]*RouteDay{}
+	var order []string
+	out := &RouteResponse{RawCount: len(raw), DistanceKm: total, Days: days, Points: [][3]float64{}, ByDay: []RouteDay{}}
+	for _, sg := range segs {
+		simp := geo.Simplify(sg, tol)
+		if len(simp) < 2 {
+			continue
+		}
+		day := time.Unix(simp[0].TS, 0).In(loc).Format("2006-01-02")
+		rd := byDay[day]
+		if rd == nil {
+			rd = &RouteDay{Date: day, Km: days[day]}
+			byDay[day] = rd
+			order = append(order, day)
+		}
+		seg := make([][2]float64, 0, len(simp))
+		for _, p := range simp {
+			seg = append(seg, [2]float64{p.Lat, p.Lng})
+			out.Points = append(out.Points, [3]float64{p.Lat, p.Lng, float64(p.TS)})
+		}
+		rd.Segments = append(rd.Segments, seg)
+		if rd.Start == "" {
+			rd.Start = time.Unix(simp[0].TS, 0).In(loc).Format("15:04")
+		}
+		rd.End = time.Unix(simp[len(simp)-1].TS, 0).In(loc).Format("15:04")
+	}
+	sort.Strings(order)
+	for _, d := range order {
+		out.ByDay = append(out.ByDay, *byDay[d])
+	}
+	for _, p := range out.Points {
 		if out.Bounds == nil {
-			out.Bounds = &[4]float64{p.Lat, p.Lng, p.Lat, p.Lng}
-		} else {
-			if p.Lat < out.Bounds[0] {
-				out.Bounds[0] = p.Lat
-			}
-			if p.Lng < out.Bounds[1] {
-				out.Bounds[1] = p.Lng
-			}
-			if p.Lat > out.Bounds[2] {
-				out.Bounds[2] = p.Lat
-			}
-			if p.Lng > out.Bounds[3] {
-				out.Bounds[3] = p.Lng
-			}
+			out.Bounds = &[4]float64{p[0], p[1], p[0], p[1]}
+			continue
+		}
+		if p[0] < out.Bounds[0] {
+			out.Bounds[0] = p[0]
+		}
+		if p[1] < out.Bounds[1] {
+			out.Bounds[1] = p[1]
+		}
+		if p[0] > out.Bounds[2] {
+			out.Bounds[2] = p[0]
+		}
+		if p[1] > out.Bounds[3] {
+			out.Bounds[3] = p[1]
 		}
 	}
 	return out, nil
@@ -635,7 +696,7 @@ func (s *Server) handleDawarichRoute(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
 	_, _, dw, _ := s.clients(r.Context())
 	if !dw.Configured() || !t.Dawarich {
-		writeJSON(w, http.StatusOK, RouteResponse{Points: [][3]float64{}, Days: map[string]float64{}})
+		writeJSON(w, http.StatusOK, RouteResponse{Points: [][3]float64{}, Days: map[string]float64{}, ByDay: []RouteDay{}})
 		return
 	}
 	b, err := s.cached(r, t, "dawarich-route", func() (any, error) { return s.fetchRoute(r.Context(), dw, t) })

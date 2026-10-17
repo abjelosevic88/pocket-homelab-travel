@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import { useApp } from '../lib/app-context'
 
 export interface Marker { id: string; lat: number; lng: number; label: string; icon?: string; kind?: string; number?: number; popup?: string; onClick?: () => void }
-export interface Line { points: [number, number][]; color?: string; dashed?: boolean; weight?: number; noFit?: boolean }
+export interface Line { points: [number, number][]; color?: string; dashed?: boolean; weight?: number; noFit?: boolean; opacity?: number; tooltip?: string }
 
 const TILES: Record<string, { url: string; attr: string }> = {
   osm: { url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' },
@@ -48,7 +48,8 @@ export function MapView({ markers, lines = [], className = '', center, zoom, onC
     const bounds: [number, number][] = []
     for (const ln of lines) {
       if (ln.points.length < 2) continue
-      L.polyline(ln.points, { color: ln.color || '#0284c7', weight: ln.weight || 3, opacity: .85, dashArray: ln.dashed ? '6 6' : undefined }).addTo(g)
+      const pl = L.polyline(ln.points, { color: ln.color || '#0284c7', weight: ln.weight || 3, opacity: ln.opacity ?? .85, dashArray: ln.dashed ? '6 6' : undefined, lineJoin: 'round', lineCap: 'round' }).addTo(g)
+      if (ln.tooltip) pl.bindTooltip(ln.tooltip, { sticky: true })
       if (!ln.noFit) bounds.push(...ln.points)
     }
     for (const mk of markers) {

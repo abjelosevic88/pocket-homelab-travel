@@ -408,3 +408,6 @@ textarea.tall { min-height: 160px; }
 .dropzone { border-radius: 10px; }
 .dropzone.over { outline: 2px dashed var(--accent); outline-offset: 6px; background: var(--accent-soft); }
 @media (max-width: 700px) { .doc-row { grid-template-columns: 40px minmax(0, 1fr) auto; } .doc-row .sel.doc-kind { grid-column: 2; width: 100%; } .doc-row .btn:last-child { grid-column: 3; } }
+.day-strip { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.day-strip .chip .swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; vertical-align: middle; margin-right: 2px; }
+.day-strip .chip.active { border-color: var(--c, var(--accent)); }

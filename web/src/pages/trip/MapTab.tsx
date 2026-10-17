@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react'
 import { api, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
 import type { GeoResult } from '../../lib/types'
-import { LODGING_ICONS, PLACE_ICONS } from '../../lib/types'
-import { cap, fmtDate, fmtKm } from '../../lib/format'
+import { DAY_COLORS, LODGING_ICONS, PLACE_ICONS } from '../../lib/types'
+import { cap, fmtDate, fmtKm, weekday } from '../../lib/format'
 import { Card, useToast } from '../../components/ui'
 import { Select } from '../../components/Select'
 import { MapView, type Line, type Marker } from '../../components/Map'
@@ -16,30 +16,38 @@ export function MapTab() {
   const [layers, setLayers] = useState({ places: true, lodging: true, route: true, visits: false, photos: false, numbers: true })
   const [discover, setDiscover] = useState<{ cat: string; radius: number; results: GeoResult[]; busy: boolean; open: boolean }>({ cat: 'sight', radius: 3000, results: [], busy: false, open: false })
   const [center, setCenter] = useState<[number, number] | null>(null)
+  const [day, setDay] = useState<string>('all')
+  const routeDays = route?.days || []
+  const dayIndex = (d: string) => routeDays.findIndex(x => x.date === d)
+  const dayColor = (d: string) => DAY_COLORS[Math.max(0, dayIndex(d)) % DAY_COLORS.length]
   const unit = settings?.distance_unit || 'km'
   const markers = useMemo(() => {
     const out: Marker[] = []
     if (layers.places) {
       const scheduled = ov.places.filter(p => p.lat != null && p.day_date).sort((a, b) => a.day_date.localeCompare(b.day_date) || a.sort_order - b.sort_order)
-      scheduled.forEach((p, i) => out.push({ id: `p${p.id}`, lat: p.lat!, lng: p.lng!, label: p.name, icon: PLACE_ICONS[p.category], kind: p.status, number: layers.numbers ? i + 1 : undefined, popup: `<b>${esc(p.name)}</b><br>${cap(p.category)} · ${fmtDate(p.day_date, false)}${p.address ? '<br>' + esc(p.address) : ''}`, onClick: () => edit('place', p) }))
-      ov.places.filter(p => p.lat != null && !p.day_date).forEach(p => out.push({ id: `p${p.id}`, lat: p.lat!, lng: p.lng!, label: p.name, icon: PLACE_ICONS[p.category], kind: p.status === 'visited' ? 'visited' : 'idea', popup: `<b>${esc(p.name)}</b><br>${cap(p.category)} · idea`, onClick: () => edit('place', p) }))
+      scheduled.filter(p => day === 'all' || p.day_date === day).forEach((p, i) => out.push({ id: `p${p.id}`, lat: p.lat!, lng: p.lng!, label: p.name, icon: PLACE_ICONS[p.category], kind: p.status, number: layers.numbers ? (day === 'all' ? i + 1 : i + 1) : undefined, popup: `<b>${esc(p.name)}</b><br>${cap(p.category)} · ${fmtDate(p.day_date, false)}${p.address ? '<br>' + esc(p.address) : ''}`, onClick: () => edit('place', p) }))
+      if (day === 'all') ov.places.filter(p => p.lat != null && !p.day_date).forEach(p => out.push({ id: `p${p.id}`, lat: p.lat!, lng: p.lng!, label: p.name, icon: PLACE_ICONS[p.category], kind: p.status === 'visited' ? 'visited' : 'idea', popup: `<b>${esc(p.name)}</b><br>${cap(p.category)} · idea`, onClick: () => edit('place', p) }))
     }
     if (layers.lodging) ov.lodging.filter(l => l.lat != null).forEach(l => out.push({ id: `l${l.id}`, lat: l.lat!, lng: l.lng!, label: l.name, icon: LODGING_ICONS[l.type] || '🛏', kind: 'lodging', popup: `<b>${esc(l.name)}</b><br>${fmtDate(l.check_in, false)} – ${fmtDate(l.check_out, false)}`, onClick: () => edit('lodging', l) }))
-    if (layers.visits) for (const d of timeline) for (const e of d.entries) if (e.type === 'visit' && e.latitude != null && e.longitude != null) out.push({ id: `v${e.visit_id}`, lat: e.latitude, lng: e.longitude, label: e.name || 'stop', icon: '📌', kind: 'visit', popup: `<b>${esc(e.name || 'Stop')}</b><br>${fmtDate(d.date, false)} · ${Math.round(e.duration / 60)} min` })
-    if (layers.photos) photos.filter(p => p.lat != null).forEach(p => out.push({ id: `ph${p.id}`, lat: p.lat!, lng: p.lng!, label: p.file_name, icon: '📷', kind: 'photo', popup: `<img src="${V1}/trips/${trip.id}/photos/${p.id}/thumb" style="width:160px;border-radius:6px"><br>${fmtDate(p.taken_at.slice(0, 10), false)}` }))
+    if (layers.visits) for (const d of timeline) for (const e of d.entries) if (day === 'all' || d.date === day) if (e.type === 'visit' && e.latitude != null && e.longitude != null) out.push({ id: `v${e.visit_id}`, lat: e.latitude, lng: e.longitude, label: e.name || 'stop', icon: '📌', kind: 'visit', popup: `<b>${esc(e.name || 'Stop')}</b><br>${fmtDate(d.date, false)} · ${Math.round(e.duration / 60)} min` })
+    if (layers.photos) photos.filter(p => p.lat != null && (day === 'all' || p.taken_at.slice(0, 10) === day)).forEach(p => out.push({ id: `ph${p.id}`, lat: p.lat!, lng: p.lng!, label: p.file_name, icon: '📷', kind: 'photo', popup: `<img src="${V1}/trips/${trip.id}/photos/${p.id}/thumb" style="width:160px;border-radius:6px"><br>${fmtDate(p.taken_at.slice(0, 10), false)}` }))
     discover.results.forEach((r, i) => out.push({ id: `d${i}`, lat: r.lat, lng: r.lng, label: r.name, icon: '✚', kind: 'idea', popup: `<b>${esc(r.name)}</b><br>${esc(r.type || '')}${r.hours ? '<br>' + esc(r.hours) : ''}`, onClick: () => canEdit && edit('place', null, { name: r.name, category: discover.cat === 'historic' ? 'sight' : discover.cat === 'lodging' ? 'other' : discover.cat, lat: r.lat, lng: r.lng, link: r.website || '', phone: r.phone || '', address: r.display.replace(/^[\d.]+ km( · )?/, '') }) }))
     return out
-  }, [ov, layers, timeline, photos, discover.results, discover.cat, trip.id, canEdit, edit])
+  }, [ov, layers, timeline, photos, discover.results, discover.cat, trip.id, canEdit, edit, day])
   const lines = useMemo(() => {
     const out: Line[] = []
-    if (layers.route && route && route.points.length > 1) out.push({ points: route.points.map(p => [p[0], p[1]] as [number, number]), color: '#0ea5e9', weight: 3 })
+    if (layers.route && route) for (const rd of route.days) {
+      if (day !== 'all' && rd.date !== day) continue
+      const i = dayIndex(rd.date)
+      for (const seg of rd.segments) out.push({ points: seg, color: DAY_COLORS[i % DAY_COLORS.length], weight: day === 'all' ? 3 : 4, opacity: day === 'all' ? .7 : .9, tooltip: `Day ${i + 1} · ${fmtDate(rd.date, false)} · ${fmtKm(rd.km, unit)}` })
+    }
     if (layers.places && layers.numbers) {
-      const scheduled = ov.places.filter(p => p.lat != null && p.day_date).sort((a, b) => a.day_date.localeCompare(b.day_date) || a.sort_order - b.sort_order)
+      const scheduled = ov.places.filter(p => p.lat != null && p.day_date && (day === 'all' || p.day_date === day)).sort((a, b) => a.day_date.localeCompare(b.day_date) || a.sort_order - b.sort_order)
       if (scheduled.length > 1) out.push({ points: scheduled.map(p => [p.lat!, p.lng!] as [number, number]), color: '#64748b', dashed: true, weight: 2 })
     }
-    for (const t of ov.transport) if (t.from_lat != null && t.to_lat != null) out.push({ points: [[t.from_lat, t.from_lng!], [t.to_lat, t.to_lng!]], color: '#7c3aed', dashed: true, weight: 2, noFit: true })
+    if (day === 'all') for (const t of ov.transport) if (t.from_lat != null && t.to_lat != null) out.push({ points: [[t.from_lat, t.from_lng!], [t.to_lat, t.to_lng!]], color: '#7c3aed', dashed: true, weight: 2, noFit: true })
     return out
-  }, [ov, layers, route])
+  }, [ov, layers, route, day, unit]) // eslint-disable-line react-hooks/exhaustive-deps
   const runDiscover = async (lat?: number, lng?: number) => {
     const c = lat != null ? [lat, lng!] : center || (trip.lat != null ? [trip.lat, trip.lng!] : ov.lodging.find(l => l.lat != null) ? [ov.lodging.find(l => l.lat != null)!.lat!, ov.lodging.find(l => l.lat != null)!.lng!] : null)
     if (!c) { toast('Set the trip destination or click the map to choose where to look', 'err'); return }
@@ -47,7 +55,8 @@ export function MapTab() {
     try { const r = await api.get<GeoResult[]>(`${V1}/geo/discover?lat=${c[0]}&lng=${c[1]}&radius=${discover.radius}&category=${discover.cat}`); setDiscover(d => ({ ...d, results: r, busy: false })); if (r.length === 0) toast('Nothing found there — try a bigger radius') } catch (e) { toast((e as Error).message, 'err'); setDiscover(d => ({ ...d, busy: false })) }
   }
   const tog = (k: keyof typeof layers) => setLayers(l => ({ ...l, [k]: !l[k] }))
-  const fitKey = `${markers.length}:${lines.length}:${discover.results.length}`
+  const fitKey = `${day}:${markers.length}:${lines.length}:${discover.results.length}`
+  const selected = routeDays.find(d => d.date === day)
   return (
     <>
       <div className="toolbar">
@@ -74,8 +83,18 @@ export function MapTab() {
         </Card>
       )}
       {extErrors.dawarich && <div className="callout danger mb">Dawarich: {extErrors.dawarich}</div>}
+      {routeDays.length > 0 && layers.route && (
+        <div className="day-strip">
+          <button className={`chip sm ${day === 'all' ? 'active' : ''}`} onClick={() => setDay('all')}>All days · {fmtKm(route!.distance_km, unit)}</button>
+          {routeDays.map((d, i) => <button key={d.date} className={`chip sm ${day === d.date ? 'active' : ''}`} style={{ '--c': DAY_COLORS[i % DAY_COLORS.length] } as React.CSSProperties} onClick={() => setDay(day === d.date ? 'all' : d.date)} title={`${weekday(d.date, true)} ${fmtDate(d.date)}${d.start ? ` · ${d.start}–${d.end}` : ''}`}><span className="swatch" style={{ background: DAY_COLORS[i % DAY_COLORS.length] }} /> {i + 1} <span className="muted">{fmtKm(d.km, unit)}</span></button>)}
+          <span className="spacer" />
+          <button className="btn ghost sm" onClick={() => setDay(d => { const i = dayIndex(d); return routeDays[(i - 1 + routeDays.length) % routeDays.length].date })} title="Previous day">‹</button>
+          <button className="btn ghost sm" onClick={() => setDay(d => { const i = dayIndex(d); return routeDays[(i + 1) % routeDays.length].date })} title="Next day">›</button>
+        </div>
+      )}
+      {selected && <div className="hint-strip"><b>Day {dayIndex(selected.date) + 1}</b> · {weekday(selected.date, true)}, {fmtDate(selected.date)}{selected.start && ` · recorded ${selected.start}–${selected.end}`} · {fmtKm(selected.km, unit)}{(() => { const tl = timeline.find(x => x.date === selected.date); return tl ? ` · ${Object.entries(tl.summary.mode_distances || {}).filter(([, v]) => v >= 0.5).map(([m, v]) => `${m} ${fmtKm(v, unit)}`).join(', ')} · ${tl.entries.filter(e => e.type === 'visit').length} stops` : '' })()}<span className="spacer" /><span className="muted">Only this day's places{layers.photos ? ', photos' : ''}{layers.visits ? ', stops' : ''} are shown.</span></div>}
       <MapView className="tall" markers={markers} lines={lines} center={trip.lat != null ? [trip.lat, trip.lng!] : undefined} zoom={10} fitKey={fitKey} onClick={(lat, lng) => { setCenter([lat, lng]); if (discover.open) runDiscover(lat, lng) }} />
-      <div className="legend"><span style={{ '--d': '#0284c7' } as React.CSSProperties}>planned</span><span style={{ '--d': '#d97706' } as React.CSSProperties}>booked</span><span style={{ '--d': '#16a34a' } as React.CSSProperties}>visited</span><span style={{ '--d': '#94a3b8' } as React.CSSProperties}>idea</span><span style={{ '--d': '#7c3aed' } as React.CSSProperties}>stay</span><span style={{ '--d': '#0ea5e9' } as React.CSSProperties}>recorded route</span>{layers.visits && <span style={{ '--d': '#0ea5e9' } as React.CSSProperties}>stops</span>}{layers.photos && <span style={{ '--d': '#db2777' } as React.CSSProperties}>photos</span>}</div>
+      <div className="legend"><span style={{ '--d': '#0284c7' } as React.CSSProperties}>planned</span><span style={{ '--d': '#d97706' } as React.CSSProperties}>booked</span><span style={{ '--d': '#16a34a' } as React.CSSProperties}>visited</span><span style={{ '--d': '#94a3b8' } as React.CSSProperties}>idea</span><span style={{ '--d': '#7c3aed' } as React.CSSProperties}>stay</span><span style={{ '--d': '#0ea5e9' } as React.CSSProperties}>recorded route (one colour per day)</span>{layers.visits && <span style={{ '--d': '#0ea5e9' } as React.CSSProperties}>stops</span>}{layers.photos && <span style={{ '--d': '#db2777' } as React.CSSProperties}>photos</span>}</div>
     </>
   )
 }
