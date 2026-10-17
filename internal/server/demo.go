@@ -9,7 +9,7 @@ import (
 
 func f(v float64) *float64 { return &v }
 
-// seedDemo creates a user and two trips (one running now, one past) so the
+// seedDemo creates a user and three trips (one running now, one past, one ahead) so the
 // UI has something to show. Idempotent.
 func (s *Server) seedDemo(ctx context.Context) error {
 	if n, _ := s.store.CountUsers(ctx); n > 0 {
@@ -29,23 +29,26 @@ func (s *Server) seedDemo(ctx context.Context) error {
 	today := time.Now()
 	d := func(off int) string { return today.AddDate(0, 0, off).Format("2006-01-02") }
 
-	// A running trip: Montenegro coast, started 3 days ago.
-	t := &store.Trip{OwnerID: u.ID, Name: "Luštica 2026", Destination: "Montenegro", Description: "Two weeks on the Luštica peninsula: beaches, the Bay of Kotor and too much seafood.", StartDate: d(-3), EndDate: d(10), Status: store.StatusActive, Currency: "EUR", Budget: 320000, Lat: f(42.3866), Lng: f(18.6642), Timezone: "Europe/Podgorica", FireflyTag: "lustica 2026", Dawarich: true, Immich: true, Color: "#0284c7"}
+	// A running trip: Barcelona, started 3 days ago.
+	t := &store.Trip{OwnerID: u.ID, Name: "Barcelona 2026", Destination: "Barcelona, Spain", Description: "Ten days of Gaudí, tapas, the beach and one day in the mountains at Montserrat.", StartDate: d(-3), EndDate: d(6), Status: store.StatusActive, Currency: "EUR", Budget: 260000, Lat: f(41.3874), Lng: f(2.1686), Timezone: "Europe/Madrid", FireflyTag: "barcelona 2026", Dawarich: true, Immich: true, Color: "#0284c7"}
 	if err := s.store.CreateTrip(ctx, t); err != nil {
 		return err
 	}
 	_ = s.store.SetTripMember(ctx, t.ID, m.ID, "editor")
 	places := []store.Place{
-		{Name: "Plavi Horizonti beach", Category: "beach", Address: "Pržno, Luštica", Lat: f(42.3836), Lng: f(18.6579), DayDate: d(-2), StartTime: "10:00", DurationMin: 240, Status: "visited", VisitedAt: d(-2), Rating: f(5), Notes: "Shallow, warm, sandy. Get there before 10 for a spot."},
-		{Name: "Kotor old town", Category: "sight", Address: "Kotor", Lat: f(42.4247), Lng: f(18.7712), DayDate: d(-1), StartTime: "09:30", DurationMin: 300, Status: "visited", VisitedAt: d(-1), Link: "https://en.wikipedia.org/wiki/Kotor", Price: 1500, Currency: "EUR"},
-		{Name: "Konoba Ćatovića Mlini", Category: "food", Address: "Morinj", Lat: f(42.4902), Lng: f(18.6498), DayDate: d(0), StartTime: "19:30", DurationMin: 120, Status: "booked", Phone: "+382 32 373 030", BookingRef: "table for 4"},
-		{Name: "Blue Cave boat tour", Category: "activity", Address: "Herceg Novi marina", Lat: f(42.4530), Lng: f(18.5370), DayDate: d(1), StartTime: "08:30", DurationMin: 360, Status: "booked", Price: 12000, Currency: "EUR", Link: "https://www.bokaboat.me/"},
-		{Name: "Mamula island", Category: "sight", Lat: f(42.3952), Lng: f(18.5590), DayDate: d(1), StartTime: "14:30", Status: "planned"},
-		{Name: "Perast & Our Lady of the Rocks", Category: "sight", Address: "Perast", Lat: f(42.4869), Lng: f(18.6995), DayDate: d(2), StartTime: "10:00", DurationMin: 240, Status: "planned", Price: 800, Currency: "EUR"},
-		{Name: "Lovćen mausoleum", Category: "viewpoint", Lat: f(42.3990), Lng: f(18.8375), DayDate: d(4), StartTime: "09:00", DurationMin: 360, Status: "planned", Notes: "461 steps. Go early, clouds roll in after lunch."},
-		{Name: "Žanjic beach", Category: "beach", Lat: f(42.3975), Lng: f(18.5945), Status: "idea"},
-		{Name: "Forte Rose", Category: "food", Address: "Rose", Lat: f(42.4287), Lng: f(18.5562), Status: "idea", Link: "https://forterose.me/"},
-		{Name: "Tivat Porto Montenegro", Category: "shop", Lat: f(42.4353), Lng: f(18.6934), Status: "idea"},
+		{Name: "Sagrada Família", Category: "sight", Address: "Carrer de Mallorca 401", Lat: f(41.4036), Lng: f(2.1744), DayDate: d(-2), StartTime: "09:00", DurationMin: 120, Status: "visited", VisitedAt: d(-2), Rating: f(5), Price: 2600, Currency: "EUR", Link: "https://sagradafamilia.org/", BookingRef: "SF-88213", Notes: "Timed entry — the 9:00 slot had no queue. Tower ticket worth it."},
+		{Name: "Park Güell", Category: "nature", Address: "Carrer d'Olot", Lat: f(41.4145), Lng: f(2.1527), DayDate: d(-2), StartTime: "12:30", DurationMin: 120, Status: "visited", VisitedAt: d(-2), Rating: f(4), Price: 1000, Currency: "EUR"},
+		{Name: "La Boqueria market", Category: "food", Address: "La Rambla 91", Lat: f(41.3817), Lng: f(2.1716), DayDate: d(-1), StartTime: "10:00", DurationMin: 90, Status: "visited", VisitedAt: d(-1), Notes: "Juice stalls at the back are half the price of the front ones."},
+		{Name: "Gothic Quarter walk", Category: "sight", Address: "Barri Gòtic", Lat: f(41.3833), Lng: f(2.1766), DayDate: d(-1), StartTime: "12:00", DurationMin: 180, Status: "visited", VisitedAt: d(-1)},
+		{Name: "Bar del Pla", Category: "food", Address: "Carrer de Montcada 2", Lat: f(41.3853), Lng: f(2.1811), DayDate: d(0), StartTime: "20:30", DurationMin: 120, Status: "booked", Phone: "+34 932 68 30 03", BookingRef: "table for 4"},
+		{Name: "Barceloneta beach", Category: "beach", Lat: f(41.3785), Lng: f(2.1925), DayDate: d(0), StartTime: "11:00", DurationMin: 240, Status: "planned"},
+		{Name: "Montserrat monastery & hike", Category: "activity", Address: "Montserrat", Lat: f(41.5931), Lng: f(1.8378), DayDate: d(1), StartTime: "08:00", DurationMin: 480, Status: "booked", Price: 4200, Currency: "EUR", Link: "https://www.montserratvisita.com/", Notes: "R5 train from Plaça Espanya + rack railway. Boys' choir sings at 13:00."},
+		{Name: "Picasso Museum", Category: "museum", Address: "Carrer de Montcada 15-23", Lat: f(41.3852), Lng: f(2.1809), DayDate: d(2), StartTime: "10:00", DurationMin: 120, Status: "planned", Price: 1400, Currency: "EUR"},
+		{Name: "Bunkers del Carmel sunset", Category: "viewpoint", Lat: f(41.4192), Lng: f(2.1618), DayDate: d(2), StartTime: "19:00", DurationMin: 90, Status: "planned", Notes: "Bring a bottle; it gets crowded after 19:30."},
+		{Name: "Camp Nou tour", Category: "activity", Lat: f(41.3809), Lng: f(2.1228), DayDate: d(4), StartTime: "11:00", DurationMin: 150, Status: "planned", Price: 2800, Currency: "EUR"},
+		{Name: "Sitges day trip", Category: "beach", Address: "Sitges", Lat: f(41.2371), Lng: f(1.8056), Status: "idea"},
+		{Name: "Casa Batlló", Category: "sight", Address: "Passeig de Gràcia 43", Lat: f(41.3917), Lng: f(2.1650), Status: "idea", Price: 3500, Currency: "EUR", Link: "https://www.casabatllo.es/"},
+		{Name: "Tickets Bar", Category: "food", Address: "Av. del Paral·lel 164", Lat: f(41.3746), Lng: f(2.1590), Status: "idea"},
 	}
 	for i := range places {
 		places[i].TripID = t.ID
@@ -54,29 +57,31 @@ func (s *Server) seedDemo(ctx context.Context) error {
 		}
 		_ = s.store.CreatePlace(ctx, &places[i])
 	}
-	l := &store.Lodging{TripID: t.ID, Name: "Luštica Bay Vacation Homes", Type: "apartment", Address: "Novo Naselje b.b., Radovići, Tivat", Lat: f(42.3866), Lng: f(18.6642), CheckIn: d(-3), CheckOut: d(11), ReservationNumber: "123171", Link: "https://lusticabay.com/", Phone: "+382 67 070 104", Price: 168000, Currency: "EUR", Paid: true, Rating: f(4.8)}
+	l := &store.Lodging{TripID: t.ID, Name: "El Born apartment", Type: "apartment", Address: "Carrer de la Princesa 21, Barcelona", Lat: f(41.3857), Lng: f(2.1795), CheckIn: d(-3), CheckOut: d(7), ReservationNumber: "HM-4471920", Link: "https://www.airbnb.com/", Phone: "+34 600 000 000", Price: 118000, Currency: "EUR", Paid: true, Rating: f(4.7), Notes: "Key box code 2580. Third floor, no lift."}
 	_ = s.store.CreateLodging(ctx, l)
 	s.syncItemCost(ctx, t, "lodging", l.ID, l.Name, "lodging", l.Price, l.Currency, l.CheckIn, l.Paid)
 	tr := []store.Transport{
-		{TripID: t.ID, Type: "car", Name: "Drive down", FromName: "Banja Luka", FromLat: f(44.7722), FromLng: f(17.1910), ToName: "Luštica Bay", ToLat: f(42.3866), ToLng: f(18.6642), DepartAt: d(-3) + "T06:30", ArriveAt: d(-3) + "T13:00", DistanceKm: 420, Price: 9000, Currency: "EUR", Notes: "Via Trebinje, coffee stop in Bileća."},
-		{TripID: t.ID, Type: "ferry", Name: "Kamenari–Lepetane ferry", FromName: "Lepetane", ToName: "Kamenari", DepartAt: d(2) + "T09:15", Price: 450, Currency: "EUR"},
-		{TripID: t.ID, Type: "car", Name: "Drive home", FromName: "Luštica Bay", FromLat: f(42.3866), FromLng: f(18.6642), ToName: "Banja Luka", ToLat: f(44.7722), ToLng: f(17.1910), DepartAt: d(11) + "T08:00", ArriveAt: d(11) + "T15:00", DistanceKm: 420, Price: 9000, Currency: "EUR"},
+		{TripID: t.ID, Type: "flight", Name: "Flight out", Carrier: "Vueling", Number: "VY 8713", FromName: "Vienna (VIE)", FromLat: f(48.1103), FromLng: f(16.5697), ToName: "Barcelona (BCN)", ToLat: f(41.2974), ToLng: f(2.0833), DepartAt: d(-3) + "T07:05", ArriveAt: d(-3) + "T09:30", BookingRef: "K7XP2Q", Seat: "14A", Price: 17800, Currency: "EUR", Paid: true},
+		{TripID: t.ID, Type: "train", Name: "Aerobús to Plaça Catalunya", FromName: "BCN T1", ToName: "Plaça de Catalunya", DepartAt: d(-3) + "T10:00", ArriveAt: d(-3) + "T10:35", Price: 1500, Currency: "EUR"},
+		{TripID: t.ID, Type: "train", Name: "R5 to Montserrat", Carrier: "FGC", FromName: "Plaça Espanya", ToName: "Monistrol de Montserrat", DepartAt: d(1) + "T08:36", ArriveAt: d(1) + "T09:40", Price: 2400, Currency: "EUR", Notes: "Tot Montserrat ticket includes the rack railway."},
+		{TripID: t.ID, Type: "flight", Name: "Flight home", Carrier: "Vueling", Number: "VY 8712", FromName: "Barcelona (BCN)", FromLat: f(41.2974), FromLng: f(2.0833), ToName: "Vienna (VIE)", ToLat: f(48.1103), ToLng: f(16.5697), DepartAt: d(7) + "T18:20", ArriveAt: d(7) + "T20:45", BookingRef: "K7XP2Q", Seat: "14A", Price: 17800, Currency: "EUR", Paid: true},
 	}
 	for i := range tr {
 		_ = s.store.CreateTransport(ctx, &tr[i])
 		s.syncItemCost(ctx, t, "transport", tr[i].ID, transportLabel(&tr[i]), "transport", tr[i].Price, tr[i].Currency, tr[i].DepartAt, tr[i].Paid)
 	}
 	exp := []store.Expense{
-		{Name: "Travel insurance", Category: "insurance", Amount: 2710, Currency: "EUR", Kind: "planned", Date: d(-10)},
-		{Name: "Food budget", Category: "food", Amount: 70000, Currency: "EUR", Kind: "planned"},
-		{Name: "Boat tours", Category: "activities", Amount: 20000, Currency: "EUR", Kind: "planned"},
-		{Name: "Fuel Bileća", Category: "fuel", Amount: 6540, Currency: "BAM", Kind: "actual", Date: d(-3), Source: "firefly", ExternalID: "demo-1"},
-		{Name: "Konoba Portun", Category: "food", Amount: 4820, Currency: "EUR", Kind: "actual", Date: d(-3), Source: "firefly", ExternalID: "demo-2"},
-		{Name: "Voli supermarket", Category: "groceries", Amount: 6315, Currency: "EUR", Kind: "actual", Date: d(-2), Source: "firefly", ExternalID: "demo-3"},
-		{Name: "Kotor city walls", Category: "activities", Amount: 3000, Currency: "EUR", Kind: "actual", Date: d(-1), Source: "firefly", ExternalID: "demo-4"},
-		{Name: "Pizzeria Pronto", Category: "food", Amount: 2650, Currency: "EUR", Kind: "actual", Date: d(-1), Source: "firefly", ExternalID: "demo-5"},
-		{Name: "Parking Kotor", Category: "transport", Amount: 600, Currency: "EUR", Kind: "actual", Date: d(-1), Source: "firefly", ExternalID: "demo-6"},
-		{Name: "Ice cream", Category: "food", Amount: 700, Currency: "EUR", Kind: "actual", Date: d(0), Source: "firefly", ExternalID: "demo-7"},
+		{Name: "Travel insurance", Category: "insurance", Amount: 3190, Currency: "EUR", Kind: "planned", Date: d(-12)},
+		{Name: "Food budget", Category: "food", Amount: 60000, Currency: "EUR", Kind: "planned"},
+		{Name: "Museums & tickets", Category: "activities", Amount: 20000, Currency: "EUR", Kind: "planned"},
+		{Name: "Taxi from the airport", Category: "transport", Amount: 3800, Currency: "EUR", Kind: "actual", Date: d(-3), Source: "firefly", ExternalID: "demo-1"},
+		{Name: "Cal Pep", Category: "food", Amount: 8640, Currency: "EUR", Kind: "actual", Date: d(-3), Source: "firefly", ExternalID: "demo-2"},
+		{Name: "Mercadona", Category: "groceries", Amount: 4215, Currency: "EUR", Kind: "actual", Date: d(-2), Source: "firefly", ExternalID: "demo-3"},
+		{Name: "Sagrada Família tickets", Category: "activities", Amount: 10400, Currency: "EUR", Kind: "actual", Date: d(-2), Source: "firefly", ExternalID: "demo-4"},
+		{Name: "Park Güell", Category: "activities", Amount: 4000, Currency: "EUR", Kind: "actual", Date: d(-2), Source: "firefly", ExternalID: "demo-5"},
+		{Name: "La Boqueria", Category: "food", Amount: 2350, Currency: "EUR", Kind: "actual", Date: d(-1), Source: "firefly", ExternalID: "demo-6"},
+		{Name: "T-casual metro passes", Category: "transport", Amount: 4880, Currency: "EUR", Kind: "actual", Date: d(-1), Source: "firefly", ExternalID: "demo-7"},
+		{Name: "Gelato on the Rambla", Category: "food", Amount: 900, Currency: "EUR", Kind: "actual", Date: d(0), Source: "firefly", ExternalID: "demo-8"},
 	}
 	for i := range exp {
 		exp[i].TripID = t.ID
@@ -87,16 +92,16 @@ func (s *Server) seedDemo(ctx context.Context) error {
 	}
 	pack := &store.Checklist{TripID: t.ID, Name: "Packing", Kind: "packing"}
 	_ = s.store.CreateChecklist(ctx, pack)
-	for i, it := range PackingTemplates["beach"] {
-		_ = s.store.AddChecklistItem(ctx, t.ID, &store.ChecklistItem{ChecklistID: pack.ID, Text: it, Done: i < 6})
+	for i, it := range PackingTemplates["city"] {
+		_ = s.store.AddChecklistItem(ctx, t.ID, &store.ChecklistItem{ChecklistID: pack.ID, Text: it, Done: i < 5})
 	}
 	todo := &store.Checklist{TripID: t.ID, Name: "Before we leave", Kind: "todo"}
 	_ = s.store.CreateChecklist(ctx, todo)
 	for _, it := range PackingTemplates["todo"] {
 		_ = s.store.AddChecklistItem(ctx, t.ID, &store.ChecklistItem{ChecklistID: todo.ID, Text: it, Done: true})
 	}
-	_ = s.store.CreateJournal(ctx, &store.JournalEntry{TripID: t.ID, UserID: u.ID, Date: d(-3), Title: "Arrived", Body: "Seven hours with one coffee stop. The apartment looks out over the marina and the water is absurdly clear. Dinner at Portun: grilled squid, a litre of Vranac.", Mood: "😊"})
-	_ = s.store.CreateJournal(ctx, &store.JournalEntry{TripID: t.ID, UserID: m.ID, Date: d(-1), Title: "Kotor", Body: "Walls at 9am before the cruise ship crowd. 1,350 steps, worth every one. Marko found the cat museum.", Mood: "🥾"})
+	_ = s.store.CreateJournal(ctx, &store.JournalEntry{TripID: t.ID, UserID: u.ID, Date: d(-3), Title: "Landed", Body: "Up at four, in El Born by eleven. The apartment is three floors of narrow stairs and a terrace with a view of the church. Lunch at Cal Pep standing at the bar: razor clams, a tortilla, the house cava.", Mood: "😊"})
+	_ = s.store.CreateJournal(ctx, &store.JournalEntry{TripID: t.ID, UserID: m.ID, Date: d(-2), Title: "Gaudí day", Body: "Sagrada Família at nine before the crowds — the light through the west windows at that hour is unreal. Park Güell after, Marko fell asleep on the bench with the mosaic lizard.", Mood: "🤩"})
 
 	// A finished trip from last spring.
 	p := &store.Trip{OwnerID: u.ID, Name: "Vienna long weekend", Destination: "Austria", Description: "Museums, coffee houses, one opera.", StartDate: today.AddDate(0, -5, -4).Format("2006-01-02"), EndDate: today.AddDate(0, -5, 0).Format("2006-01-02"), Status: store.StatusCompleted, Currency: "EUR", Budget: 90000, Lat: f(48.2082), Lng: f(16.3738), Timezone: "Europe/Vienna", Dawarich: true, Immich: true, Color: "#7c3aed"}
@@ -128,23 +133,29 @@ func (s *Server) seedDemo(ctx context.Context) error {
 	}
 
 	// Something to look forward to.
-	n := &store.Trip{OwnerID: u.ID, Name: "Lisbon in spring", Destination: "Portugal", StartDate: d(62), EndDate: d(68), Status: store.StatusPlanning, Currency: "EUR", Budget: 150000, Lat: f(38.7223), Lng: f(-9.1393), Timezone: "Europe/Lisbon", Dawarich: true, Immich: true, Color: "#d97706"}
+	n := &store.Trip{OwnerID: u.ID, Name: "Tokyo in spring", Destination: "Tokyo, Japan", StartDate: d(62), EndDate: d(71), Status: store.StatusPlanning, Currency: "EUR", Budget: 380000, Lat: f(35.6762), Lng: f(139.6503), Timezone: "Asia/Tokyo", Dawarich: true, Immich: true, Color: "#d97706"}
 	if err := s.store.CreateTrip(ctx, n); err != nil {
 		return err
 	}
 	for _, pl := range []store.Place{
-		{Name: "Belém Tower", Category: "sight", Lat: f(38.6916), Lng: f(-9.2160), Status: "idea"},
-		{Name: "Time Out Market", Category: "food", Lat: f(38.7070), Lng: f(-9.1458), Status: "idea"},
-		{Name: "Sintra day trip", Category: "activity", Lat: f(38.7979), Lng: f(-9.3907), Status: "idea", Notes: "Pena Palace tickets sell out — book the 9:30 slot."},
+		{Name: "Senso-ji", Category: "sight", Address: "Asakusa", Lat: f(35.7148), Lng: f(139.7967), Status: "idea", Notes: "Go at 7am before the shops open on Nakamise."},
+		{Name: "Shibuya crossing & Sky", Category: "viewpoint", Lat: f(35.6595), Lng: f(139.7004), Status: "idea", Price: 250000, Currency: "JPY"},
+		{Name: "Tsukiji outer market", Category: "food", Lat: f(35.6654), Lng: f(139.7707), Status: "idea"},
+		{Name: "teamLab Planets", Category: "activity", Lat: f(35.6490), Lng: f(139.7899), Status: "idea", Price: 380000, Currency: "JPY", Link: "https://www.teamlab.art/e/planets/"},
+		{Name: "Fuji day trip (Kawaguchiko)", Category: "nature", Lat: f(35.5171), Lng: f(138.7510), Status: "idea", Notes: "Clear mornings only — check the forecast the night before."},
 	} {
-		pl.TripID, pl.Currency = n.ID, "EUR"
+		pl.TripID = n.ID
+		if pl.Currency == "" {
+			pl.Currency = "EUR"
+		}
 		_ = s.store.CreatePlace(ctx, &pl)
 	}
 	_ = s.store.CreateChecklist(ctx, &store.Checklist{TripID: n.ID, Name: "Packing", Kind: "packing"})
 	bl := &store.Checklist{TripID: n.ID, Name: "Before we leave", Kind: "todo"}
 	_ = s.store.CreateChecklist(ctx, bl)
 	_ = s.store.AddChecklistItem(ctx, n.ID, &store.ChecklistItem{ChecklistID: bl.ID, Text: "Book flights"})
-	_ = s.store.AddChecklistItem(ctx, n.ID, &store.ChecklistItem{ChecklistID: bl.ID, Text: "Pick a neighbourhood for the apartment"})
+	_ = s.store.AddChecklistItem(ctx, n.ID, &store.ChecklistItem{ChecklistID: bl.ID, Text: "Order the JR Pass"})
+	_ = s.store.AddChecklistItem(ctx, n.ID, &store.ChecklistItem{ChecklistID: bl.ID, Text: "Pick a neighbourhood for the hotel"})
 	s.log.Info("demo data seeded")
 	return nil
 }

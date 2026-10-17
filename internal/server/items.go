@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -18,6 +19,7 @@ func (s *Server) handleListPlaces(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "list places")
 		return
 	}
+	s.attachPhotos(r.Context(), t.ID, p)
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -153,6 +155,8 @@ func (s *Server) handleCreatePlace(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "added place", p.Name)
 	s.store.TouchTrip(r.Context(), t.ID)
+	p.Photos = []store.PlacePhoto{}
+	s.autoPhotos(t, p)
 	writeJSON(w, http.StatusCreated, p)
 }
 
@@ -201,11 +205,14 @@ func (s *Server) handleDeletePlace(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "get place")
 		return
 	}
+	paths := s.store.PlacePhotoPaths(r.Context(), p.ID)
 	if err := s.store.DeletePlace(r.Context(), t.ID, p.ID); err != nil {
 		s.fail(w, err, "delete place")
 		return
 	}
-	s.removeFile(p.ImagePath)
+	for _, f := range paths {
+		s.removeFile(f)
+	}
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "removed place", p.Name)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -251,12 +258,12 @@ func (s *Server) handlePlaceImage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "save image")
 		return
 	}
-	s.removeFile(p.ImagePath)
-	p.ImagePath = rel
-	if err := s.store.UpdatePlace(r.Context(), p); err != nil {
-		s.fail(w, err, "update place")
+	if err := s.store.AddPlacePhoto(r.Context(), &store.PlacePhoto{PlaceID: p.ID, Path: rel, Source: "upload"}); err != nil {
+		s.fail(w, err, "add photo")
 		return
 	}
+	p, _ = s.store.GetPlace(r.Context(), t.ID, p.ID)
+	p.Photos, _ = s.store.ListPlacePhotos(r.Context(), p.ID)
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -627,4 +634,20 @@ func (s *Server) handleDeleteTransport(w http.ResponseWriter, r *http.Request) {
 	s.syncItemCost(r.Context(), t, "transport", tr.ID, "", "transport", 0, "", "", false)
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "removed transport", transportLabel(tr))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// attachPhotos fills Photos on a list of places with one query.
+func (s *Server) attachPhotos(ctx context.Context, tripID int64, places []store.Place) {
+	m, err := s.store.PhotosForTrip(ctx, tripID)
+	if err != nil {
+		return
+	}
+	for i := range places {
+		if ph := m[places[i].ID]; ph != nil {
+			places[i].Photos = ph
+		} else {
+			places[i].Photos = []store.PlacePhoto{}
+		}
+		places[i].HasImage = len(places[i].Photos) > 0
+	}
 }

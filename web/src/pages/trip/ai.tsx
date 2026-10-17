@@ -40,7 +40,7 @@ export function SuggestModal({ onClose }: { onClose: () => void }) {
           <p className="muted small">The model proposes popular, well-rated places for <b>{trip.destination || trip.name}</b> that are not in your plan yet ({ov.places.length} places known). Each suggestion is located with OpenStreetMap before it is shown.</p>
           <Field label="What are you into? (optional)"><input value={interests} onChange={e => setInterests(e.target.value)} placeholder="seafood, hidden beaches, kid-friendly, history, no hikes over 2 h…" autoFocus /></Field>
           <div className="two-col tight">
-            <Field label="Around (optional)"><input value={near} onChange={e => setNear(e.target.value)} placeholder="Kotor, the old town, our apartment…" /></Field>
+            <Field label="Around (optional)"><input value={near} onChange={e => setNear(e.target.value)} placeholder="the old town, near our hotel, Montmartre…" /></Field>
             <Field group label="How many"><Segmented value={count} onChange={setCount} options={[5, 8, 12].map(n => ({ value: n, label: String(n) }))} size="sm" /></Field>
           </div>
           <div className="form-actions"><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={run} disabled={busy}>{busy ? 'Thinking and locating… ~15 s' : 'Suggest'}</button></div>
@@ -93,7 +93,7 @@ export function PlanModal({ onClose }: { onClose: () => void }) {
         <div className="grid" style={{ gap: 14 }}>
           <p className="muted small">Unscheduled places get a day and a start time: nearby things on the same day, meals at meal times, light arrival and departure days. Booked places and transport stay where they are. You review the proposal before anything changes.</p>
           <Field group label="Pace"><Segmented value={pace} onChange={setPace} options={[{ value: 'relaxed', label: 'Relaxed' }, { value: '', label: 'Normal' }, { value: 'packed', label: 'Packed' }]} size="sm" /></Field>
-          <Field label="Wishes (optional)"><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="beach every afternoon, Kotor on a weekday, nothing before 9…" /></Field>
+          <Field label="Wishes (optional)"><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="beach every afternoon, museums on a weekday, nothing before 9…" /></Field>
           <label className="row"><input type="checkbox" checked={reschedule} onChange={e => setReschedule(e.target.checked)} style={{ width: 'auto' }} /> Also move places that already have a day (except booked ones)</label>
           <div className="form-actions"><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={run} disabled={busy}>{busy ? 'Planning…' : 'Propose a plan'}</button></div>
         </div>

@@ -416,3 +416,12 @@ textarea.tall { min-height: 160px; }
 .home-hero:hover { filter: brightness(1.03); }
 .home-map { height: 300px; border: 0; border-radius: 0; }
 @media (max-width: 900px) { .home-map { height: 220px; } }
+/* ---- place photos ---- */
+.place-card .img { position: relative; }
+.img-count { position: absolute; right: 8px; bottom: 8px; background: rgba(0,0,0,.55); color: #fff; font-size: 11px; padding: 2px 7px; border-radius: 999px; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.g-item { margin: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface-2); }
+.g-item.cover { border-color: var(--accent); }
+.g-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+.g-item figcaption { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 11px; }
+.g-item .credit { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }

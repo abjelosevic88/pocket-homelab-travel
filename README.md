@@ -23,7 +23,7 @@ Every trip I plan ends up spread over five apps: the list of places in one, the 
 
 With an OpenAI key (or any compatible endpoint) five more buttons appear: **suggest popular places** for the destination (each located with OpenStreetMap before you add it), **plan my days** (ideas get a day and a time, nearby things together; you review before anything changes), **describe** a place with practical tips, a **packing list** written for the dates, weather and activities, and a **recap** of the trip in story, summary or caption form, written only from what the trip knows.
 
-<p align="center"><img src="docs/screenshots/overview.png" width="900" alt="A running trip: day 4 of 14, what is next, budget vs spent, progress, the weather for every day"></p>
+<p align="center"><img src="docs/screenshots/overview.png" width="900" alt="A running trip in Barcelona: day 4 of 10, what is next, budget vs spent, progress, the weather for every day"></p>
 
 <table>
   <tr>
@@ -58,7 +58,7 @@ With an OpenAI key (or any compatible endpoint) five more buttons appear: **sugg
 |---|---|
 | **Trips** | Dates, destination (geocoded), home currency, budget, colour and a cover photo for the banner (trip Settings → Upload cover), status, notes. Owner / editor / viewer per companion. Archive, duplicate with shifted dates, delete. |
 | **Itinerary** | Day rows with Open-Meteo weather (forecast 16 days ahead, archive for past days), drag and drop between days, start times and durations, visited ticks, check-in / check-out and transport legs inline, Dawarich journeys and stops per day. |
-| **Places** | Category, address, coordinates (search, click the map, or drag the pin), link, phone, price, rating, booking reference, tags, notes, photo. Status idea → planned → booked → visited / skipped. Nominatim search, Overpass *Discover nearby*, Wikipedia descriptions. |
+| **Places** | Category, address, coordinates (search, paste a Google/Apple Maps link, click the map), link, phone, price, rating, booking reference, tags, notes. A photo gallery per place: new places get up to four pictures from the Wikipedia article or photos taken at the spot on Wikimedia Commons (credit and licence kept), plus your own uploads; pick the cover. Status idea → planned → booked → visited / skipped. Nominatim search, Overpass *Discover nearby*, Wikipedia descriptions. |
 | **Stays & transport** | Hotels, apartments, camping…; flights, trains, buses, cars, ferries… with carrier, number, seat, booking reference, from/to with coordinates, distance. Prices become planned costs automatically. |
 | **Budget** | Planned vs spent in the trip currency, per category, per day, burn rate, remaining. Firefly III sync by tag (every 30 min for running and upcoming trips, on every save, on demand). Any currency, converted at the day's rate; the rate is cached. |
 | **Recorded** | Dawarich: simplified route polyline, kilometres per day (from Dawarich's own timeline), detected stops, GPX export of the track. Immich: photos and videos by day, geotagged ones on the map, thumbnails proxied so the key stays on the server. |
@@ -129,7 +129,7 @@ curl -fsS https://travel.example.com/api/v1/trips/1/overview -H "Authorization: 
 
 # add a place
 curl -fsS -X POST https://travel.example.com/api/v1/trips/1/places -H "Authorization: Bearer pt_…" \
-  -H "Content-Type: application/json" -d '{"name":"Kotor old town","category":"sight","lat":42.4247,"lng":18.7712,"day_date":"2026-08-30","start_time":"09:30"}'
+  -H "Content-Type: application/json" -d '{"name":"Sagrada Família","category":"sight","lat":41.4036,"lng":2.1744,"day_date":"2026-08-30","start_time":"09:00"}'
 
 # log what you just spent
 curl -fsS -X POST https://travel.example.com/api/v1/trips/1/expenses -H "Authorization: Bearer pt_…" \
@@ -175,7 +175,7 @@ Requires Go 1.22+ and Node 20+. Stack: Go + chi + modernc SQLite (no CGO), and R
 
 ## Credits
 
-The shape of a trip — collections of places, lodging, transportation, notes and checklists — follows [AdventureLog](https://github.com/seanmorley15/AdventureLog), which this replaces for me by putting the plan next to the record. Maps © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors; place search by Nominatim, points of interest by Overpass, weather by [Open-Meteo](https://open-meteo.com), exchange rates by Frankfurter and open.er-api.com. The cover photos in the screenshots are from Wikimedia Commons: [Bay of Kotor Panorama](https://commons.wikimedia.org/wiki/File:Bay_of_Kotor_Panorama.jpg) by Fromaage (CC BY-SA 4.0), [Gloriette Schönbrunn Wien](https://commons.wikimedia.org/wiki/File:Gloriette_Sch%C3%B6nbrunn_Wien.jpg) by Der Wolf im Wald (CC BY-SA 3.0 de), [Lisbon Alfama](https://commons.wikimedia.org/wiki/File:Lisbon_Alfama_(53093264901).jpg) via Flickr (CC BY-SA 2.0). Sibling projects built the same way are [Pocket Habits](https://github.com/abjelosevic88/pocket-homelab-habit-tracker), [Pocket Inventory](https://github.com/abjelosevic88/pocket-homelab-inventory), [Pocket Bookshelf](https://github.com/abjelosevic88/pocket-homelab-bookshelf), [Pocket Split](https://github.com/abjelosevic88/pocket-homelab-cost-split), [Pocket Clips](https://github.com/abjelosevic88/pocket-homelab-clips), [Pocket Subtitles](https://github.com/abjelosevic88/pocket-homelab-subtitles) and [Pocket Invoicing](https://github.com/abjelosevic88/pocket-homelab-invoicing).
+The shape of a trip — collections of places, lodging, transportation, notes and checklists — follows [AdventureLog](https://github.com/seanmorley15/AdventureLog), which this replaces for me by putting the plan next to the record. Maps © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors; place search by Nominatim, points of interest by Overpass, weather by [Open-Meteo](https://open-meteo.com), exchange rates by Frankfurter and open.er-api.com. The cover photos in the screenshots are from Wikimedia Commons: [Barcelona 270º](https://commons.wikimedia.org/wiki/File:Barcelona_270%C2%BA.jpg) by Theklan (CC BY-SA 4.0), [Gloriette Schönbrunn Wien](https://commons.wikimedia.org/wiki/File:Gloriette_Sch%C3%B6nbrunn_Wien.jpg) by Der Wolf im Wald (CC BY-SA 3.0 de), [Skyscrapers of Shinjuku](https://commons.wikimedia.org/wiki/File:Skyscrapers_of_Shinjuku_2009_January.jpg) by Morio (CC BY-SA 3.0). Sibling projects built the same way are [Pocket Habits](https://github.com/abjelosevic88/pocket-homelab-habit-tracker), [Pocket Inventory](https://github.com/abjelosevic88/pocket-homelab-inventory), [Pocket Bookshelf](https://github.com/abjelosevic88/pocket-homelab-bookshelf), [Pocket Split](https://github.com/abjelosevic88/pocket-homelab-cost-split), [Pocket Clips](https://github.com/abjelosevic88/pocket-homelab-clips), [Pocket Subtitles](https://github.com/abjelosevic88/pocket-homelab-subtitles) and [Pocket Invoicing](https://github.com/abjelosevic88/pocket-homelab-invoicing).
 
 ## License
 

@@ -125,8 +125,8 @@ export function TripModal({ trip, onClose, onSaved }: { trip?: Trip; onClose: ()
       <form onSubmit={save} className="grid" style={{ gap: 14 }}>
         <div className="tabs sub"><button type="button" className={tab === 'main' ? 'active' : ''} onClick={() => setTab('main')}>Basics</button><button type="button" className={tab === 'more' ? 'active' : ''} onClick={() => setTab('more')}>Budget, integrations & notes</button></div>
         {tab === 'main' && <>
-          <Field label="Name"><input value={f.name || ''} onChange={e => set('name', e.target.value)} required autoFocus={!trip} placeholder="Luštica 2026" maxLength={80} /></Field>
-          <Field label="Destination" help="Search to pin the trip on the map — that's where the weather and 'Discover nearby' look."><GeoSearch onPick={pickDest} placeholder="Montenegro, Lisbon, Yosemite…" initial="" /><input className="mt-sm" value={f.destination || ''} onChange={e => set('destination', e.target.value)} placeholder="Shown on the trip card" /></Field>
+          <Field label="Name"><input value={f.name || ''} onChange={e => set('name', e.target.value)} required autoFocus={!trip} placeholder="Barcelona 2026" maxLength={80} /></Field>
+          <Field label="Destination" help="Search to pin the trip on the map — that's where the weather and 'Discover nearby' look."><GeoSearch onPick={pickDest} placeholder="Barcelona, Tokyo, Yosemite…" initial="" /><input className="mt-sm" value={f.destination || ''} onChange={e => set('destination', e.target.value)} placeholder="Shown on the trip card" /></Field>
           <div className="two-col tight">
             <Field label="Start"><input type="date" value={f.start_date || ''} onChange={e => set('start_date', e.target.value)} /></Field>
             <Field label="End"><input type="date" value={f.end_date || ''} min={f.start_date || undefined} onChange={e => set('end_date', e.target.value)} /></Field>

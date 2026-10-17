@@ -473,6 +473,7 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "places")
 		return
 	}
+	s.attachPhotos(ctx, t.ID, places)
 	lodging, _ := s.store.ListLodging(ctx, t.ID)
 	transport, _ := s.store.ListTransport(ctx, t.ID)
 	expenses, _ := s.store.ListExpenses(ctx, t.ID)

@@ -63,6 +63,7 @@ function General() {
             <Field group label="Distances"><Segmented value={f.distance_unit} onChange={v => setF({ ...f, distance_unit: v as 'km' | 'mi' })} options={[{ value: 'km', label: 'km' }, { value: 'mi', label: 'miles' }]} size="sm" /></Field>
             <Field label="Map tiles" help="All free and keyless. Satellite is Esri imagery with a labels layer on top."><Select value={f.map_tiles} onChange={v => setF({ ...f, map_tiles: v })} options={Object.entries(TILES).map(([v, t]) => ({ value: v, label: t.label }))} disabled={!isAdmin} /></Field>
           </div>
+          <label className="row"><input type="checkbox" checked={f.auto_photos} onChange={e => setF({ ...f, auto_photos: e.target.checked })} style={{ width: 'auto' }} disabled={!isAdmin} /> Find photos for new places automatically (Wikipedia and Wikimedia Commons, with credits)</label>
           <label className="row"><input type="checkbox" checked={f.fx_auto} onChange={e => setF({ ...f, fx_auto: e.target.checked })} style={{ width: 'auto' }} disabled={!isAdmin || f.fx_provider === 'none'} /> Look up exchange rates automatically (Frankfurter / open.er-api.com){f.fx_provider === 'none' && <span className="muted small"> — disabled on the server</span>}</label>
           {isAdmin ? <div><button className="btn primary" onClick={() => save()} disabled={busy}>Save</button></div> : <p className="muted small">Only an admin can change these.</p>}
         </div>

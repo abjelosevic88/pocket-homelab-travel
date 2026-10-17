@@ -9,7 +9,7 @@ const DefaultTitle = "Pocket Travel"
 
 // GetSettings loads all settings with defaults applied.
 func (s *Store) GetSettings(ctx context.Context) (Settings, error) {
-	st := Settings{Title: DefaultTitle, HomeCurrency: "EUR", DateFormat: "auto", TimeFormat: "auto", DistanceUnit: "km", FXAuto: true, MapTiles: "osm"}
+	st := Settings{Title: DefaultTitle, HomeCurrency: "EUR", DateFormat: "auto", TimeFormat: "auto", DistanceUnit: "km", FXAuto: true, MapTiles: "osm", AutoPhotos: true}
 	rows, err := s.DB.QueryContext(ctx, `SELECT key, value FROM settings`)
 	if err != nil {
 		return st, err
@@ -63,6 +63,8 @@ func (s *Store) GetSettings(ctx context.Context) (Settings, error) {
 			st.OpenAIModel = v
 		case "openai_base_url":
 			st.OpenAIBaseURL = v
+		case "auto_photos":
+			st.AutoPhotos = v != "0"
 		case "map_tiles":
 			if v != "" {
 				st.MapTiles = v
@@ -95,6 +97,7 @@ func (s *Store) SaveSettings(ctx context.Context, st Settings) error {
 		"openai_model":      st.OpenAIModel,
 		"openai_base_url":   st.OpenAIBaseURL,
 		"map_tiles":         st.MapTiles,
+		"auto_photos":       b[st.AutoPhotos],
 		"setup_complete":    b[st.SetupComplete],
 	}
 	tx, err := s.DB.BeginTx(ctx, nil)

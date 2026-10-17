@@ -43,7 +43,7 @@ func mask(s string) string {
 func (s *Server) publicSettings(st store.Settings) map[string]any {
 	return map[string]any{
 		"title": st.Title, "home_currency": st.HomeCurrency, "date_format": st.DateFormat, "time_format": st.TimeFormat,
-		"distance_unit": st.DistanceUnit, "fx_auto": st.FXAuto, "fx_provider": s.cfg.FXProvider, "map_tiles": st.MapTiles,
+		"distance_unit": st.DistanceUnit, "fx_auto": st.FXAuto, "fx_provider": s.cfg.FXProvider, "map_tiles": st.MapTiles, "auto_photos": st.AutoPhotos,
 		"firefly_url": st.FireflyURL, "firefly_token": mask(st.FireflyToken), "firefly_configured": st.FireflyURL != "" && st.FireflyToken != "",
 		"dawarich_url": st.DawarichURL, "dawarich_api_key": mask(st.DawarichAPIKey), "dawarich_configured": st.DawarichURL != "" && st.DawarichAPIKey != "",
 		"immich_url": st.ImmichURL, "immich_public_url": st.ImmichPublicURL, "immich_api_key": mask(st.ImmichAPIKey), "immich_configured": st.ImmichURL != "" && st.ImmichAPIKey != "",
@@ -103,6 +103,9 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if keys["map_tiles"] {
 		cur.MapTiles = in.MapTiles
+	}
+	if keys["auto_photos"] {
+		cur.AutoPhotos = in.AutoPhotos
 	}
 	// Secrets: a masked value (contains ••) means "keep".
 	secret := func(k string, dst *string, v string) {

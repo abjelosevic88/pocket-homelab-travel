@@ -119,7 +119,7 @@ func (s *Store) Backup(ctx context.Context, dst string) error {
 // Counts returns row counts per table for metrics / the About page.
 func (s *Store) Counts(ctx context.Context) map[string]int {
 	out := map[string]int{}
-	for _, t := range []string{"trips", "places", "lodging", "transport", "expenses", "checklists", "checklist_items", "journal", "documents", "users", "api_tokens"} {
+	for _, t := range []string{"trips", "places", "place_photos", "lodging", "transport", "expenses", "checklists", "checklist_items", "journal", "documents", "users", "api_tokens"} {
 		var n int
 		if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(1) FROM `+t).Scan(&n); err == nil {
 			out[t] = n

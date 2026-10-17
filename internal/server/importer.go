@@ -257,9 +257,12 @@ func (s *Server) importCollection(ctx context.Context, c *adventurelog.Client, u
 				}
 			}
 		}
-		p.ImagePath = fetchImage(l.Images)
+		img := fetchImage(l.Images)
 		if err := s.store.CreatePlace(ctx, &p); err == nil {
 			counts["places"]++
+			if img != "" {
+				_ = s.store.AddPlacePhoto(ctx, &store.PlacePhoto{PlaceID: p.ID, Path: img, Source: "import"})
+			}
 		}
 	}
 	for _, l := range col.Lodging {

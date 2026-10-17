@@ -13,11 +13,13 @@ export interface Trip {
   created_at: string; updated_at: string; days: number; role?: string; members?: TripMember[]; counts?: TripCounts
 }
 export type PlaceStatus = 'idea' | 'planned' | 'booked' | 'visited' | 'skipped'
+export interface PlacePhoto { id: number; place_id: number; source: 'upload' | 'import' | 'wikipedia' | 'commons'; credit: string; license: string; source_url: string; sort_order: number; created_at: string }
 export interface Place {
   id: number; trip_id: number; name: string; category: string; description: string; address: string
   lat: number | null; lng: number | null; link: string; phone: string; rating: number | null; price: number; currency: string
   day_date: string; start_time: string; duration_min: number; status: PlaceStatus; visited_at: string; booking_ref: string
   tags: string; notes: string; has_image: boolean; sort_order: number; external_id: string; created_at: string; updated_at: string
+  photos: PlacePhoto[]
 }
 export interface Lodging {
   id: number; trip_id: number; name: string; type: string; address: string; lat: number | null; lng: number | null
@@ -61,7 +63,7 @@ export interface TimelineDay { date: string; summary: { total_distance: number; 
 export interface Photo { id: string; type: 'IMAGE' | 'VIDEO'; file_name: string; taken_at: string; lat: number | null; lng: number | null; city: string; country: string; thumbhash: string; favorite: boolean; duration?: string }
 export interface GeoResult { name: string; display: string; lat: number; lng: number; type: string; category: string; country: string; city: string; website?: string; phone?: string; hours?: string; source: string; osm_id?: string; suggest?: string }
 export interface Settings {
-  title: string; home_currency: string; date_format: string; time_format: string; distance_unit: 'km' | 'mi'; fx_auto: boolean; fx_provider: string; map_tiles: string
+  title: string; home_currency: string; date_format: string; time_format: string; distance_unit: 'km' | 'mi'; fx_auto: boolean; fx_provider: string; map_tiles: string; auto_photos: boolean
   firefly_url: string; firefly_token: string; firefly_configured: boolean
   dawarich_url: string; dawarich_api_key: string; dawarich_configured: boolean
   immich_url: string; immich_public_url: string; immich_api_key: string; immich_configured: boolean

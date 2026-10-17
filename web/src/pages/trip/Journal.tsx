@@ -51,7 +51,7 @@ export function JournalModal({ trip, item, defaults = {}, onClose, onSaved }: { 
       <form onSubmit={save} className="grid" style={{ gap: 14 }}>
         <div className="two-col tight">
           <Field label="Day">{days.length ? <Select value={f.date || ''} onChange={v => setF({ ...f, date: v })} options={dayOpts} /> : <input type="date" value={f.date || ''} onChange={e => setF({ ...f, date: e.target.value })} />}</Field>
-          <Field label="Title (optional)"><input value={f.title || ''} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Kotor and the cat museum" /></Field>
+          <Field label="Title (optional)"><input value={f.title || ''} onChange={e => setF({ ...f, title: e.target.value })} placeholder="Gaudí day" /></Field>
         </div>
         <Field group label="Mood"><div className="mood-pick">{MOODS.map(m => <button type="button" key={m} className={f.mood === m ? 'on' : ''} onClick={() => setF({ ...f, mood: f.mood === m ? '' : m })}>{m}</button>)}</div></Field>
         <Field label="What happened"><textarea className="tall" value={f.body || ''} onChange={e => setF({ ...f, body: e.target.value })} autoFocus placeholder="Walked the walls before the crowds…" /></Field>

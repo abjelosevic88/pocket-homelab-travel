@@ -210,6 +210,13 @@ func (s *Server) Router() http.Handler {
 				r.Delete("/places/{id}", s.handleDeletePlace)
 				r.Post("/places/{id}/image", s.handlePlaceImage)
 				r.Get("/places/{id}/image", s.handlePlaceImageGet)
+				r.Get("/places/{id}/photos", s.handleListPlacePhotos)
+				r.Post("/places/{id}/photos", s.handleUploadPlacePhoto)
+				r.Post("/places/{id}/photos/find", s.handleFindPlacePhotos)
+				r.Post("/places/photos/find-missing", s.handleFindMissingPhotos)
+				r.Get("/places/photos/{photoID}", s.handlePlacePhotoFile)
+				r.Delete("/places/photos/{photoID}", s.handleDeletePlacePhoto)
+				r.Post("/places/photos/{photoID}/cover", s.handleSetPlaceCover)
 
 				r.Get("/lodging", s.handleListLodging)
 				r.Post("/lodging", s.handleCreateLodging)

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, uploadForm, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
-import type { GeoResult, Place, PlaceStatus, Trip } from '../../lib/types'
+import type { GeoResult, Place, PlacePhoto, PlaceStatus, Trip } from '../../lib/types'
 import { PLACE_ICONS, PLACE_STATUS_LABEL } from '../../lib/types'
 import { appleMaps, cap, dateRange, fmtClock, fmtDate, gmaps, stars } from '../../lib/format'
 import { Confirm, Empty, Field, Modal, Segmented, useToast } from '../../components/ui'
@@ -13,13 +13,24 @@ import { useTrip } from './ctx'
 import { SuggestModal, describePlace } from './ai'
 
 export function Places() {
-  const { ov, trip, canEdit, edit } = useTrip()
+  const { ov, trip, canEdit, edit, reload } = useTrip()
   const { meta } = useApp()
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('')
   const [status, setStatus] = useState('')
   const [view, setView] = useState<'cards' | 'table'>('cards')
   const [suggest, setSuggest] = useState(false)
+  const [finding, setFinding] = useState(false)
+  const { toast } = useToast()
+  const findMissing = async () => {
+    setFinding(true)
+    try {
+      const r = await api.post<{ queued: number }>(`${V1}/trips/${trip.id}/places/photos/find-missing`)
+      toast(`Looking up photos for ${r.queued} places — they appear as they are found`)
+      // Poll a few times while the lookups run in the background.
+      for (let i = 0; i < 12; i++) { await new Promise(res => setTimeout(res, 5000)); await reload() }
+    } catch (e) { toast((e as Error).message, 'err') } finally { setFinding(false) }
+  }
   const list = ov.places.filter(p => (!q || `${p.name} ${p.address} ${p.tags} ${p.notes}`.toLowerCase().includes(q.toLowerCase())) && (!cat || p.category === cat) && (!status || p.status === status))
   const cats = Array.from(new Set(ov.places.map(p => p.category)))
   return (
@@ -29,6 +40,7 @@ export function Places() {
         <Select value={cat} onChange={setCat} options={cats.map(c => ({ value: c, label: `${PLACE_ICONS[c] || ''} ${cap(c)}` }))} placeholder="All categories" clearLabel="All categories" />
         <Select value={status} onChange={setStatus} options={Object.entries(PLACE_STATUS_LABEL).map(([v, l]) => ({ value: v, label: l }))} placeholder="Any status" clearLabel="Any status" />
         <Segmented value={view} onChange={setView} options={[{ value: 'cards', label: '▦' }, { value: 'table', label: '☰' }]} size="sm" />
+        {canEdit && ov.places.some(p => !p.photos?.length) && <button className="btn" title="Look up pictures on Wikipedia and Wikimedia Commons for places without any" onClick={findMissing} disabled={finding}>{finding ? 'Looking…' : `📷 Find photos (${ov.places.filter(p => !p.photos?.length).length})`}</button>}
         {canEdit && ov.integrations.ai.configured && <button className="btn" onClick={() => setSuggest(true)}>✨ Suggest</button>}
         {canEdit && <button className="btn primary" onClick={() => edit('place', null, {})}>+ Place</button>}
       </div>
@@ -37,7 +49,7 @@ export function Places() {
         <div className="pool">
           {list.map(p => (
             <div key={p.id} className="place-card" onClick={() => edit('place', p)}>
-              <div className="img" style={p.has_image ? { backgroundImage: `url(${V1}/trips/${trip.id}/places/${p.id}/image?v=${p.updated_at})` } : undefined}>{!p.has_image && (PLACE_ICONS[p.category] || '📍')}</div>
+              <div className="img" style={p.photos?.length ? { backgroundImage: `url(${V1}/trips/${trip.id}/places/photos/${p.photos[0].id})` } : undefined}>{!p.photos?.length && (PLACE_ICONS[p.category] || '📍')}{p.photos?.length > 1 && <span className="img-count">📷 {p.photos.length}</span>}</div>
               <div className="pc-body">
                 <h4><span className={`status-dot ${p.status}`} /> {p.name}</h4>
                 <div className="sub">{cap(p.category)}{p.day_date ? ` · ${fmtDate(p.day_date, false)}${p.start_time ? ' ' + fmtClock(p.start_time) : ''}` : ' · unscheduled'}</div>
@@ -99,10 +111,6 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
     setAiBusy(true)
     try { const d = await describePlace(trip.id, { place_id: item?.id, name: f.name || '', address: f.address, category: f.category }); setF(x => ({ ...x, description: d.description, notes: x.notes ? x.notes + '\n\n' + d.tips : d.tips, duration_min: x.duration_min || d.duration_min })) } catch (e) { toast((e as Error).message, 'err') } finally { setAiBusy(false) }
   }
-  const upload = async (file: File) => {
-    if (!item) return
-    try { await uploadForm(`${base}/${item.id}/image`, file); toast('Image saved'); onSaved() } catch (e) { toast((e as Error).message, 'err') }
-  }
   const days = dateRange(trip.start_date, trip.end_date)
   const marker = f.lat != null && f.lng != null ? [{ id: 'p', lat: f.lat, lng: f.lng!, label: f.name || '', icon: PLACE_ICONS[f.category || 'sight'] }] : []
   return (
@@ -144,7 +152,8 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
           </div>
           <Field label={<span className="row">Description <button type="button" className="btn ghost sm" onClick={wiki} disabled={wikiBusy || !f.name}>{wikiBusy ? 'Looking up…' : 'Fill from Wikipedia'}</button>{settings?.openai_configured && <button type="button" className="btn ghost sm" onClick={describe} disabled={aiBusy || !f.name}>{aiBusy ? 'Writing…' : '✨ Describe + tips'}</button>}</span>}><textarea value={f.description || ''} onChange={e => set('description', e.target.value)} rows={4} /></Field>
           <Field label="Notes" help="Tips, opening hours, what to order."><textarea value={f.notes || ''} onChange={e => set('notes', e.target.value)} rows={3} /></Field>
-          {item && <Field label="Photo"><div className="row">{item.has_image && <img src={`${V1}/trips/${trip.id}/places/${item.id}/image?v=${item.updated_at}`} alt="" style={{ height: 60, borderRadius: 8 }} />}<label className="btn sm">Upload image…<input type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && upload(e.target.files[0])} /></label></div></Field>}
+          {item && <PhotoGallery tripId={trip.id} placeId={item.id} initial={item.photos || []} onChange={onSaved} />}
+          {!item && <p className="muted small">Photos are looked up automatically once the place is saved (Wikipedia and Wikimedia Commons); you can add your own afterwards.</p>}
         </>}
         <div className="form-actions">
           {item && <button type="button" className="btn ghost danger-text" onClick={() => setDel(true)}>Delete</button>}
@@ -156,5 +165,43 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
       </form>
       {del && <Confirm title={`Remove ${item?.name}?`} message="The place and its photo are deleted from this trip." onCancel={() => setDel(false)} onConfirm={remove} />}
     </Modal>
+  )
+}
+
+/** The pictures of a place: look up more, upload, pick the cover, remove. */
+function PhotoGallery({ tripId, placeId, initial, onChange }: { tripId: number; placeId: number; initial: PlacePhoto[]; onChange: () => void }) {
+  const { toast } = useToast()
+  const [photos, setPhotos] = useState<PlacePhoto[]>(initial)
+  const [busy, setBusy] = useState('')
+  const base = `${V1}/trips/${tripId}/places`
+  const url = (p: PlacePhoto) => `${base}/photos/${p.id}`
+  const find = async () => {
+    setBusy('find')
+    try { const r = await api.post<{ added: number; photos: PlacePhoto[] }>(`${base}/${placeId}/photos/find`); setPhotos(r.photos); toast(r.added ? `Added ${r.added} photo${r.added === 1 ? '' : 's'}` : 'Nothing new found on Wikipedia or Commons'); if (r.added) onChange() } catch (e) { toast((e as Error).message, 'err') } finally { setBusy('') }
+  }
+  const upload = async (files: FileList | null) => {
+    if (!files?.length) return
+    setBusy('upload')
+    try { let list = photos; for (const f of Array.from(files)) list = await uploadForm<PlacePhoto[]>(`${base}/${placeId}/photos`, f); setPhotos(list); onChange() } catch (e) { toast((e as Error).message, 'err') } finally { setBusy('') }
+  }
+  const remove = async (p: PlacePhoto) => { try { await api.del(`${base}/photos/${p.id}`); setPhotos(x => x.filter(y => y.id !== p.id)); onChange() } catch (e) { toast((e as Error).message, 'err') } }
+  const cover = async (p: PlacePhoto) => { try { setPhotos(await api.post<PlacePhoto[]>(`${base}/photos/${p.id}/cover`)); onChange() } catch (e) { toast((e as Error).message, 'err') } }
+  return (
+    <Field group label={<span className="row">Photos <span className="muted small">{photos.length ? `· ${photos.length}` : ''}</span><span className="spacer" /><button type="button" className="btn ghost sm" onClick={find} disabled={!!busy}>{busy === 'find' ? 'Looking…' : '📷 Find photos'}</button><label className="btn ghost sm">{busy === 'upload' ? 'Uploading…' : 'Upload…'}<input type="file" accept="image/*" multiple hidden onChange={e => upload(e.target.files)} /></label></span>}>
+      {photos.length === 0 ? <p className="muted small">No photos yet. “Find photos” looks on Wikipedia and Wikimedia Commons; or upload your own.</p> : (
+        <div className="gallery">
+          {photos.map((p, i) => (
+            <figure key={p.id} className={`g-item ${i === 0 ? 'cover' : ''}`}>
+              <a href={url(p)} target="_blank" rel="noreferrer"><img src={url(p)} alt="" loading="lazy" /></a>
+              <figcaption>
+                {i === 0 ? <span className="badge cat">cover</span> : <button type="button" className="icon-btn" title="Use as cover" onClick={() => cover(p)}>★</button>}
+                <span className="credit" title={`${p.credit}${p.license ? ' · ' + p.license : ''}`}>{p.source_url ? <a href={p.source_url} target="_blank" rel="noreferrer">{p.credit || p.source}</a> : p.credit || (p.source === 'upload' ? 'uploaded' : p.source)}{p.license && <span className="muted"> · {p.license}</span>}</span>
+                <button type="button" className="icon-btn" title="Remove" onClick={() => remove(p)}>✕</button>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
+    </Field>
   )
 }

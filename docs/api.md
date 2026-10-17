@@ -20,7 +20,7 @@ All endpoints live under `/api/v1`. Authenticate with the session cookie (the UI
 `/trips/{id}/places`, `/lodging`, `/transport`, `/expenses`, `/journal`, `/documents` — `GET` list, `POST` create, `PUT /{itemId}` update (only sent fields change), `DELETE /{itemId}`.
 
 - `PUT /trips/{id}/places/reorder` `{day:"2026-08-02", ids:[…]}` moves places onto a day in order (`day:""` = unscheduled).
-- `POST /trips/{id}/places/{pid}/image`, `/lodging/{lid}/image` — multipart `file`.
+- Place photos: `GET /trips/{id}/places/{pid}/photos`, `POST …/photos` (multipart `file`), `POST …/photos/find` (Wikipedia/Commons lookup), `POST /trips/{id}/places/photos/find-missing` (background, every place without photos), `GET /trips/{id}/places/photos/{photoID}` (file), `DELETE …/photos/{photoID}`, `POST …/photos/{photoID}/cover`. `POST /trips/{id}/places/{pid}/image` and `/lodging/{lid}/image` still accept a single multipart `file`.
 - `/trips/{id}/checklists` `POST {name, kind, template, items[]}`; `POST /checklists/{cid}/items {text}` (multi-line = several items); `PUT /checklists/items/{iid} {done, text}`.
 - `POST /trips/{id}/documents` — multipart `file`, `kind`, `name`.
 

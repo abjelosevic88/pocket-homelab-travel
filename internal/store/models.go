@@ -129,6 +129,8 @@ type Place struct {
 	ExternalID  string   `json:"external_id"`
 	CreatedAt   string   `json:"created_at"`
 	UpdatedAt   string   `json:"updated_at"`
+
+	Photos []PlacePhoto `json:"photos"`
 }
 
 // Lodging is where you sleep.
@@ -294,5 +296,6 @@ type Settings struct {
 	OpenAIModel     string `json:"openai_model"`
 	OpenAIBaseURL   string `json:"openai_base_url"` // any OpenAI-compatible endpoint
 	MapTiles        string `json:"map_tiles"`       // osm | carto | topo
+	AutoPhotos      bool   `json:"auto_photos"`     // look up Wikipedia/Commons pictures for new places
 	SetupComplete   bool   `json:"setup_complete"`
 }
