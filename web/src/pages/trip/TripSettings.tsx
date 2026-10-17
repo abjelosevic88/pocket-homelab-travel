@@ -1,0 +1,155 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { api, uploadForm, V1 } from '../../lib/api'
+import { useApp } from '../../lib/app-context'
+import type { APIToken, GeoResult, Trip, TripMember, TripStatus } from '../../lib/types'
+import { STATUS_LABEL } from '../../lib/types'
+import { TRIP_COLORS } from '../../lib/format'
+import { Card, Confirm, Field, Modal, Segmented, useAsync, useToast } from '../../components/ui'
+import { Select } from '../../components/Select'
+import { AmountInput } from '../../components/Money'
+import { GeoSearch } from '../../components/GeoSearch'
+import { useTrip } from './ctx'
+
+export function TripSettings() {
+  const { trip, isOwner, canEdit, reload, edit, ov } = useTrip()
+  const { users, user, status } = useApp()
+  const { toast } = useToast()
+  const navigate = useNavigate()
+  const [del, setDel] = useState(false)
+  const [dup, setDup] = useState(false)
+  const [members, setMembers] = useState<TripMember[]>(trip.members || [])
+  useEffect(() => setMembers(trip.members || []), [trip.members])
+  const { data: tokens } = useAsync(() => api.get<APIToken[]>(`${V1}/tokens`), [])
+  const base = `${V1}/trips/${trip.id}`
+  const saveMembers = async (list: TripMember[]) => {
+    setMembers(list)
+    try { await api.put(`${base}/members`, { members: list.filter(m => m.role !== 'owner').map(m => ({ user_id: m.user_id, role: m.role })) }); await reload() } catch (e) { toast((e as Error).message, 'err') }
+  }
+  const remove = async () => { try { await api.del(base); toast('Trip deleted'); navigate('/trips') } catch (e) { toast((e as Error).message, 'err') } }
+  const uploadCover = async (file: File) => { try { await uploadForm(`${base}/cover`, file); await reload(); toast('Cover updated') } catch (e) { toast((e as Error).message, 'err') } }
+  const archive = async () => { try { await api.put(base, { archived: !trip.archived }); await reload() } catch (e) { toast((e as Error).message, 'err') } }
+  const others = users.filter(u => u.id !== trip.owner_id)
+  const calUrl = `${location.origin}/cal/${trip.id}.ics?token=`
+  return (
+    <div className="overview-grid">
+      <Card title="Trip" actions={canEdit && <button className="btn sm" onClick={() => edit('trip', trip)}>Edit details</button>}>
+        <dl className="kv">
+          <dt>Status</dt><dd>{STATUS_LABEL[trip.status]}{trip.archived && ' · archived'}</dd>
+          <dt>Currency</dt><dd>{trip.currency}</dd>
+          <dt>Firefly tag</dt><dd>{trip.firefly_tag || <span className="muted">none</span>}</dd>
+          <dt>Dawarich</dt><dd>{trip.dawarich ? 'route and timeline on' : 'off'}</dd>
+          <dt>Immich</dt><dd>{trip.immich ? 'photos on' : 'off'}</dd>
+          <dt>Timezone</dt><dd>{trip.timezone || <span className="muted">server default</span>}</dd>
+          {trip.external_id && <><dt>Imported from</dt><dd className="mono small">{trip.external_id}</dd></>}
+        </dl>
+        {canEdit && <div className="row mt"><label className="btn sm">Upload cover photo…<input type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && uploadCover(e.target.files[0])} /></label>{trip.has_cover && <button className="btn ghost sm" onClick={async () => { await api.del(`${base}/cover`); reload() }}>Remove cover</button>}</div>}
+      </Card>
+      <Card title="Who can see this trip">
+        <p className="muted small">The owner can do everything. Editors plan, tick and write; viewers only look. Companions need an account (Settings → Users).</p>
+        <table className="table compact">
+          <tbody>
+            <tr><td><b>{trip.members?.find(m => m.role === 'owner')?.name || 'Owner'}</b></td><td className="muted">owner</td><td /></tr>
+            {members.filter(m => m.role !== 'owner').map(m => <tr key={m.user_id}><td>{m.name || m.email}</td><td>{isOwner ? <Segmented value={m.role} onChange={r => saveMembers(members.map(x => x.user_id === m.user_id ? { ...x, role: r } : x))} options={[{ value: 'editor', label: 'Editor' }, { value: 'viewer', label: 'Viewer' }]} size="sm" /> : <span className="muted">{m.role}</span>}</td><td className="right">{isOwner && <button className="btn ghost sm danger-text" onClick={() => saveMembers(members.filter(x => x.user_id !== m.user_id))}>Remove</button>}</td></tr>)}
+          </tbody>
+        </table>
+        {isOwner && others.filter(u => !members.some(m => m.user_id === u.id)).length > 0 && <div className="row mt-sm"><Select value="" onChange={v => { const u = users.find(x => x.id === Number(v)); if (u) saveMembers([...members, { user_id: u.id, name: u.name, email: u.email, role: 'editor' }]) }} options={others.filter(u => !members.some(m => m.user_id === u.id)).map(u => ({ value: String(u.id), label: u.name || u.email, hint: u.email }))} placeholder="+ Add a companion…" /></div>}
+      </Card>
+      <Card title="Export & calendar">
+        <div className="row wrap mb-sm">
+          <a className="btn sm" href={`${base}/export/calendar.ics`}>Calendar (.ics)</a>
+          <a className="btn sm" href={`${base}/export/trip.gpx`}>GPX (places)</a>
+          {ov.integrations.dawarich.configured && trip.dawarich && <a className="btn sm" href={`${base}/export/trip.gpx?route=1`}>GPX with recorded route</a>}
+          <a className="btn sm" href={`${base}/export/trip.json`}>JSON backup</a>
+        </div>
+        <p className="muted small">Subscribe your phone's calendar to the trip so stays, legs and scheduled places appear with their booking references. The feed needs an API token (Settings → API tokens):</p>
+        <pre className="small">{calUrl}{tokens && tokens.length ? 'pt_… (your token)' : 'pt_…'}</pre>
+        {status?.auth_mode === 'none' && <p className="muted small">Login is off on this server; any token still works for the feed.</p>}
+      </Card>
+      <Card title="Danger zone">
+        <div className="row wrap">
+          <button className="btn sm" onClick={() => setDup(true)}>Duplicate trip…</button>
+          {isOwner && <button className="btn sm" onClick={archive}>{trip.archived ? 'Unarchive' : 'Archive'}</button>}
+          {isOwner && <button className="btn sm danger" onClick={() => setDel(true)}>Delete trip</button>}
+        </div>
+        <p className="muted small mt-sm">Duplicating copies places, stays, transport, planned costs and checklists (unticked) into a new planning trip; dates shift to the new start. Deleting removes everything including documents.</p>
+      </Card>
+      {del && <Confirm title={`Delete ${trip.name}?`} message="Every place, stay, cost, checklist, journal entry and document in it is deleted. This cannot be undone." onCancel={() => setDel(false)} onConfirm={remove} />}
+      {dup && <DuplicateModal trip={trip} onClose={() => setDup(false)} onDone={t => { setDup(false); navigate(`/trips/${t.id}`) }} />}
+      {user?.role !== 'admin' && !isOwner && <p className="muted small">Only the owner can share, archive or delete the trip.</p>}
+    </div>
+  )
+}
+
+function DuplicateModal({ trip, onClose, onDone }: { trip: Trip; onClose: () => void; onDone: (t: Trip) => void }) {
+  const { toast } = useToast()
+  const [f, setF] = useState({ name: `${trip.name} (copy)`, start_date: '' })
+  const [busy, setBusy] = useState(false)
+  const go = async (e: React.FormEvent) => {
+    e.preventDefault(); setBusy(true)
+    try { onDone(await api.post<Trip>(`${V1}/trips/${trip.id}/duplicate`, f)) } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
+  }
+  return (
+    <Modal title="Duplicate trip" onClose={onClose}>
+      <form onSubmit={go} className="grid" style={{ gap: 14 }}>
+        <Field label="New name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} required autoFocus /></Field>
+        <Field label="New start date" help="Everything with a date shifts by the same number of days. Leave empty to keep the dates."><input type="date" value={f.start_date} onChange={e => setF({ ...f, start_date: e.target.value })} /></Field>
+        <div className="form-actions"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>Duplicate</button></div>
+      </form>
+    </Modal>
+  )
+}
+
+/** Create or edit a trip. */
+export function TripModal({ trip, onClose, onSaved }: { trip?: Trip; onClose: () => void; onSaved: (t: Trip) => void }) {
+  const { settings } = useApp()
+  const { toast } = useToast()
+  const [f, setF] = useState<Partial<Trip>>(trip ? { ...trip } : { name: '', destination: '', description: '', start_date: '', end_date: '', status: 'planning', currency: settings?.home_currency || 'EUR', budget: 0, color: TRIP_COLORS[0], link: '', notes: '', firefly_tag: '', dawarich: true, immich: true, lat: null, lng: null, timezone: '' })
+  const [busy, setBusy] = useState(false)
+  const [tab, setTab] = useState<'main' | 'more'>('main')
+  const { data: tags } = useAsync(() => settings?.firefly_configured ? api.get<{ id: string; name: string }[]>(`${V1}/firefly/tags`).catch(() => []) : Promise.resolve([] as { id: string; name: string }[]), [settings?.firefly_configured])
+  const set = <K extends keyof Trip>(k: K, v: Trip[K]) => setF(x => ({ ...x, [k]: v }))
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault(); setBusy(true)
+    try {
+      const body = { ...f, budget: f.budget || 0 }
+      const t = trip ? await api.put<Trip>(`${V1}/trips/${trip.id}`, body) : await api.post<Trip>(`${V1}/trips`, body)
+      toast(trip ? 'Trip saved' : 'Trip created'); onSaved(t)
+    } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
+  }
+  const pickDest = (r: GeoResult) => setF(x => ({ ...x, destination: x.destination || (r.country && r.name !== r.country ? `${r.name}, ${r.country}` : r.name), lat: r.lat, lng: r.lng }))
+  const tagOpts = (tags || []).map(t => ({ value: t.name, label: t.name }))
+  if (f.firefly_tag && !tagOpts.some(t => t.value === f.firefly_tag)) tagOpts.unshift({ value: f.firefly_tag, label: f.firefly_tag })
+  return (
+    <Modal title={trip ? 'Edit trip' : 'New trip'} onClose={onClose} size="lg">
+      <form onSubmit={save} className="grid" style={{ gap: 14 }}>
+        <div className="tabs sub"><button type="button" className={tab === 'main' ? 'active' : ''} onClick={() => setTab('main')}>Basics</button><button type="button" className={tab === 'more' ? 'active' : ''} onClick={() => setTab('more')}>Budget, integrations & notes</button></div>
+        {tab === 'main' && <>
+          <Field label="Name"><input value={f.name || ''} onChange={e => set('name', e.target.value)} required autoFocus={!trip} placeholder="Luštica 2026" maxLength={80} /></Field>
+          <Field label="Destination" help="Search to pin the trip on the map — that's where the weather and 'Discover nearby' look."><GeoSearch onPick={pickDest} placeholder="Montenegro, Lisbon, Yosemite…" initial="" /><input className="mt-sm" value={f.destination || ''} onChange={e => set('destination', e.target.value)} placeholder="Shown on the trip card" /></Field>
+          <div className="two-col tight">
+            <Field label="Start"><input type="date" value={f.start_date || ''} onChange={e => set('start_date', e.target.value)} /></Field>
+            <Field label="End"><input type="date" value={f.end_date || ''} min={f.start_date || undefined} onChange={e => set('end_date', e.target.value)} /></Field>
+          </div>
+          <Field group label="Status"><Segmented value={f.status || 'planning'} onChange={v => set('status', v as TripStatus)} options={Object.entries(STATUS_LABEL).map(([v, l]) => ({ value: v, label: l }))} size="sm" /></Field>
+          <Field group label="Colour"><div className="row">{TRIP_COLORS.map(c => <span key={c} className={`color-dot ${f.color === c ? 'active' : ''}`} style={{ background: c }} onClick={() => set('color', c)} />)}</div></Field>
+          <Field label="Description"><textarea value={f.description || ''} onChange={e => set('description', e.target.value)} rows={2} placeholder="What this trip is about." /></Field>
+        </>}
+        {tab === 'more' && <>
+          <div className="two-col tight">
+            <Field label="Budget" help="Everything is converted into this currency."><AmountInput amount={f.budget ?? null} currency={f.currency || 'EUR'} onAmount={m => set('budget', m || 0)} onCurrency={c => set('currency', c)} /></Field>
+            <Field label="Timezone" help="For Dawarich day boundaries. Leave empty for the server's."><input value={f.timezone || ''} onChange={e => set('timezone', e.target.value)} placeholder="Europe/Podgorica" /></Field>
+          </div>
+          <Field label="Firefly III tag" help={settings?.firefly_configured ? 'Withdrawals carrying this tag are pulled in as spent money, every 30 minutes while the trip runs.' : 'Connect Firefly under Settings → Integrations first; you can still type the tag now.'}>
+            {tagOpts.length > 0 ? <Select value={f.firefly_tag || ''} onChange={v => set('firefly_tag', v)} options={tagOpts} placeholder="No tag" clearLabel="No tag" onCreate={v => v} createLabel="Use tag" /> : <input value={f.firefly_tag || ''} onChange={e => set('firefly_tag', e.target.value)} placeholder="lustica 2026" />}
+          </Field>
+          <label className="row"><input type="checkbox" checked={f.dawarich !== false} onChange={e => set('dawarich', e.target.checked)} style={{ width: 'auto' }} /> Show the recorded route and timeline from Dawarich</label>
+          <label className="row"><input type="checkbox" checked={f.immich !== false} onChange={e => set('immich', e.target.checked)} style={{ width: 'auto' }} /> Show photos from Immich</label>
+          <Field label="Link"><input type="url" value={f.link || ''} onChange={e => set('link', e.target.value)} placeholder="https://" /></Field>
+          <Field label="Notes"><textarea value={f.notes || ''} onChange={e => set('notes', e.target.value)} rows={4} placeholder="Anything that doesn't fit elsewhere: emergency numbers, the Wi-Fi password, who's allergic to what." /></Field>
+        </>}
+        <div className="form-actions"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{trip ? 'Save' : 'Create trip'}</button></div>
+      </form>
+    </Modal>
+  )
+}

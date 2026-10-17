@@ -1,0 +1,12 @@
+[Unit]
+Description=Pocket Travel
+After=network-online.target
+
+[Service]
+User=pocket-travel
+Environment=DATA_DIR=/var/lib/pocket-travel PORT=8080 SECURE_COOKIES=true
+ExecStart=/usr/local/bin/pocket-travel
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

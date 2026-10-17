@@ -1,0 +1,25 @@
+# Pocket Travel — self-hosted trip planner (Go + SQLite). One container, one volume.
+services:
+  pocket-travel:
+    image: ghcr.io/abjelosevic88/pocket-homelab-travel:latest
+    container_name: pocket-travel
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+      # First admin (only used while the database has no users):
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Integrations can also be set in the UI under Settings → Integrations.
+      FIREFLY_URL: ${FIREFLY_URL:-}
+      FIREFLY_TOKEN: ${FIREFLY_TOKEN:-}
+      DAWARICH_URL: ${DAWARICH_URL:-}
+      DAWARICH_API_KEY: ${DAWARICH_API_KEY:-}
+      IMMICH_URL: ${IMMICH_URL:-}
+      IMMICH_API_KEY: ${IMMICH_API_KEY:-}
+    volumes:
+      - ./data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

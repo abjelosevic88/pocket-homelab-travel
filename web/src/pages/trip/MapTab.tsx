@@ -1,0 +1,83 @@
+import { useMemo, useState } from 'react'
+import { api, V1 } from '../../lib/api'
+import { useApp } from '../../lib/app-context'
+import type { GeoResult } from '../../lib/types'
+import { LODGING_ICONS, PLACE_ICONS } from '../../lib/types'
+import { cap, fmtDate, fmtKm } from '../../lib/format'
+import { Card, useToast } from '../../components/ui'
+import { Select } from '../../components/Select'
+import { MapView, type Line, type Marker } from '../../components/Map'
+import { useTrip } from './ctx'
+
+export function MapTab() {
+  const { ov, trip, route, timeline, photos, canEdit, edit, extErrors } = useTrip()
+  const { meta, settings } = useApp()
+  const { toast } = useToast()
+  const [layers, setLayers] = useState({ places: true, lodging: true, route: true, visits: false, photos: false, numbers: true })
+  const [discover, setDiscover] = useState<{ cat: string; radius: number; results: GeoResult[]; busy: boolean; open: boolean }>({ cat: 'sight', radius: 3000, results: [], busy: false, open: false })
+  const [center, setCenter] = useState<[number, number] | null>(null)
+  const unit = settings?.distance_unit || 'km'
+  const markers = useMemo(() => {
+    const out: Marker[] = []
+    if (layers.places) {
+      const scheduled = ov.places.filter(p => p.lat != null && p.day_date).sort((a, b) => a.day_date.localeCompare(b.day_date) || a.sort_order - b.sort_order)
+      scheduled.forEach((p, i) => out.push({ id: `p${p.id}`, lat: p.lat!, lng: p.lng!, label: p.name, icon: PLACE_ICONS[p.category], kind: p.status, number: layers.numbers ? i + 1 : undefined, popup: `<b>${esc(p.name)}</b><br>${cap(p.category)} · ${fmtDate(p.day_date, false)}${p.address ? '<br>' + esc(p.address) : ''}`, onClick: () => edit('place', p) }))
+      ov.places.filter(p => p.lat != null && !p.day_date).forEach(p => out.push({ id: `p${p.id}`, lat: p.lat!, lng: p.lng!, label: p.name, icon: PLACE_ICONS[p.category], kind: p.status === 'visited' ? 'visited' : 'idea', popup: `<b>${esc(p.name)}</b><br>${cap(p.category)} · idea`, onClick: () => edit('place', p) }))
+    }
+    if (layers.lodging) ov.lodging.filter(l => l.lat != null).forEach(l => out.push({ id: `l${l.id}`, lat: l.lat!, lng: l.lng!, label: l.name, icon: LODGING_ICONS[l.type] || '🛏', kind: 'lodging', popup: `<b>${esc(l.name)}</b><br>${fmtDate(l.check_in, false)} – ${fmtDate(l.check_out, false)}`, onClick: () => edit('lodging', l) }))
+    if (layers.visits) for (const d of timeline) for (const e of d.entries) if (e.type === 'visit' && e.latitude != null && e.longitude != null) out.push({ id: `v${e.visit_id}`, lat: e.latitude, lng: e.longitude, label: e.name || 'stop', icon: '📌', kind: 'visit', popup: `<b>${esc(e.name || 'Stop')}</b><br>${fmtDate(d.date, false)} · ${Math.round(e.duration / 60)} min` })
+    if (layers.photos) photos.filter(p => p.lat != null).forEach(p => out.push({ id: `ph${p.id}`, lat: p.lat!, lng: p.lng!, label: p.file_name, icon: '📷', kind: 'photo', popup: `<img src="${V1}/trips/${trip.id}/photos/${p.id}/thumb" style="width:160px;border-radius:6px"><br>${fmtDate(p.taken_at.slice(0, 10), false)}` }))
+    discover.results.forEach((r, i) => out.push({ id: `d${i}`, lat: r.lat, lng: r.lng, label: r.name, icon: '✚', kind: 'idea', popup: `<b>${esc(r.name)}</b><br>${esc(r.type || '')}${r.hours ? '<br>' + esc(r.hours) : ''}`, onClick: () => canEdit && edit('place', null, { name: r.name, category: discover.cat === 'historic' ? 'sight' : discover.cat === 'lodging' ? 'other' : discover.cat, lat: r.lat, lng: r.lng, link: r.website || '', phone: r.phone || '', address: r.display.replace(/^[\d.]+ km( · )?/, '') }) }))
+    return out
+  }, [ov, layers, timeline, photos, discover.results, discover.cat, trip.id, canEdit, edit])
+  const lines = useMemo(() => {
+    const out: Line[] = []
+    if (layers.route && route && route.points.length > 1) out.push({ points: route.points.map(p => [p[0], p[1]] as [number, number]), color: '#0ea5e9', weight: 3 })
+    if (layers.places && layers.numbers) {
+      const scheduled = ov.places.filter(p => p.lat != null && p.day_date).sort((a, b) => a.day_date.localeCompare(b.day_date) || a.sort_order - b.sort_order)
+      if (scheduled.length > 1) out.push({ points: scheduled.map(p => [p.lat!, p.lng!] as [number, number]), color: '#64748b', dashed: true, weight: 2 })
+    }
+    for (const t of ov.transport) if (t.from_lat != null && t.to_lat != null) out.push({ points: [[t.from_lat, t.from_lng!], [t.to_lat, t.to_lng!]], color: '#7c3aed', dashed: true, weight: 2, noFit: true })
+    return out
+  }, [ov, layers, route])
+  const runDiscover = async (lat?: number, lng?: number) => {
+    const c = lat != null ? [lat, lng!] : center || (trip.lat != null ? [trip.lat, trip.lng!] : ov.lodging.find(l => l.lat != null) ? [ov.lodging.find(l => l.lat != null)!.lat!, ov.lodging.find(l => l.lat != null)!.lng!] : null)
+    if (!c) { toast('Set the trip destination or click the map to choose where to look', 'err'); return }
+    setDiscover(d => ({ ...d, busy: true }))
+    try { const r = await api.get<GeoResult[]>(`${V1}/geo/discover?lat=${c[0]}&lng=${c[1]}&radius=${discover.radius}&category=${discover.cat}`); setDiscover(d => ({ ...d, results: r, busy: false })); if (r.length === 0) toast('Nothing found there — try a bigger radius') } catch (e) { toast((e as Error).message, 'err'); setDiscover(d => ({ ...d, busy: false })) }
+  }
+  const tog = (k: keyof typeof layers) => setLayers(l => ({ ...l, [k]: !l[k] }))
+  const fitKey = `${markers.length}:${lines.length}:${discover.results.length}`
+  return (
+    <>
+      <div className="toolbar">
+        <div className="chips">
+          <button className={`chip ${layers.places ? 'active' : ''}`} onClick={() => tog('places')}>📍 Places</button>
+          <button className={`chip ${layers.numbers ? 'active' : ''}`} onClick={() => tog('numbers')}>Order</button>
+          <button className={`chip ${layers.lodging ? 'active' : ''}`} onClick={() => tog('lodging')}>🛏 Stays</button>
+          {route && route.raw_count > 0 && <button className={`chip ${layers.route ? 'active' : ''}`} onClick={() => tog('route')}>🛰 Route {fmtKm(route.distance_km, unit)}</button>}
+          {timeline.length > 0 && <button className={`chip ${layers.visits ? 'active' : ''}`} onClick={() => tog('visits')}>📌 Stops</button>}
+          {photos.some(p => p.lat != null) && <button className={`chip ${layers.photos ? 'active' : ''}`} onClick={() => tog('photos')}>📷 Photos</button>}
+        </div>
+        <span className="spacer" />
+        <button className={`btn sm ${discover.open ? 'primary' : ''}`} onClick={() => setDiscover(d => ({ ...d, open: !d.open }))}>✚ Discover nearby</button>
+      </div>
+      {discover.open && (
+        <Card className="mb">
+          <div className="row wrap">
+            <Select value={discover.cat} onChange={v => setDiscover(d => ({ ...d, cat: v }))} options={(meta?.discover_categories || []).map(c => ({ value: c, label: `${PLACE_ICONS[c] || '📍'} ${cap(c)}` }))} />
+            <Select value={String(discover.radius)} onChange={v => setDiscover(d => ({ ...d, radius: Number(v) }))} options={[1000, 2000, 3000, 5000, 10000, 20000].map(r => ({ value: String(r), label: `within ${r / 1000} km` }))} />
+            <button className="btn primary sm" onClick={() => runDiscover()} disabled={discover.busy}>{discover.busy ? 'Searching…' : 'Search'}</button>
+            {discover.results.length > 0 && <button className="btn ghost sm" onClick={() => setDiscover(d => ({ ...d, results: [] }))}>Clear {discover.results.length}</button>}
+            <span className="muted small">OpenStreetMap points of interest around {center ? 'the clicked spot' : 'the trip destination'}. Click the map to search elsewhere, click a ✚ pin to add it.</span>
+          </div>
+        </Card>
+      )}
+      {extErrors.dawarich && <div className="callout danger mb">Dawarich: {extErrors.dawarich}</div>}
+      <MapView className="tall" markers={markers} lines={lines} center={trip.lat != null ? [trip.lat, trip.lng!] : undefined} zoom={10} fitKey={fitKey} onClick={(lat, lng) => { setCenter([lat, lng]); if (discover.open) runDiscover(lat, lng) }} />
+      <div className="legend"><span style={{ '--d': '#0284c7' } as React.CSSProperties}>planned</span><span style={{ '--d': '#d97706' } as React.CSSProperties}>booked</span><span style={{ '--d': '#16a34a' } as React.CSSProperties}>visited</span><span style={{ '--d': '#94a3b8' } as React.CSSProperties}>idea</span><span style={{ '--d': '#7c3aed' } as React.CSSProperties}>stay</span><span style={{ '--d': '#0ea5e9' } as React.CSSProperties}>recorded route</span>{layers.visits && <span style={{ '--d': '#0ea5e9' } as React.CSSProperties}>stops</span>}{layers.photos && <span style={{ '--d': '#db2777' } as React.CSSProperties}>photos</span>}</div>
+    </>
+  )
+}
+
+function esc(s: string): string { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] || c)) }

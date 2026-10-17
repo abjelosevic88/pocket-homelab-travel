@@ -1,0 +1,313 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"strings"
+	"time"
+)
+
+const tripCols = `t.id, t.owner_id, t.name, t.destination, t.description, t.start_date, t.end_date, t.status, t.currency, t.budget, t.color, t.cover_path, t.link, t.notes, t.lat, t.lng, t.timezone, t.firefly_tag, t.dawarich, t.immich, t.archived, t.external_id, t.created_at, t.updated_at`
+
+func scanTrip(row interface{ Scan(...any) error }) (*Trip, error) {
+	var t Trip
+	var dw, im, ar int
+	if err := row.Scan(&t.ID, &t.OwnerID, &t.Name, &t.Destination, &t.Description, &t.StartDate, &t.EndDate, &t.Status, &t.Currency, &t.Budget, &t.Color, &t.CoverPath, &t.Link, &t.Notes, &t.Lat, &t.Lng, &t.Timezone, &t.FireflyTag, &dw, &im, &ar, &t.ExternalID, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		return nil, notFound(err)
+	}
+	t.Dawarich, t.Immich, t.Archived = dw == 1, im == 1, ar == 1
+	t.HasCover = t.CoverPath != ""
+	t.Days = DaysBetween(t.StartDate, t.EndDate)
+	return &t, nil
+}
+
+// DaysBetween counts inclusive days between two YYYY-MM-DD dates (0 when unset).
+func DaysBetween(a, b string) int {
+	s, err1 := ParseDate(a)
+	e, err2 := ParseDate(b)
+	if err1 != nil || err2 != nil || e.Before(s) {
+		return 0
+	}
+	return int(e.Sub(s).Hours()/24) + 1
+}
+
+// TripFilter narrows ListTrips.
+type TripFilter struct {
+	UserID   int64 // visible to this user (0 = everyone)
+	Archived *bool
+	Status   string
+	Query    string
+}
+
+// ListTrips returns trips the user can see, newest start date first.
+func (s *Store) ListTrips(ctx context.Context, f TripFilter) ([]Trip, error) {
+	q := `SELECT ` + tripCols + `, COALESCE(m.role, CASE WHEN t.owner_id = ? THEN 'owner' ELSE '' END) FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE 1=1`
+	args := []any{f.UserID, f.UserID}
+	if f.UserID > 0 {
+		q += ` AND (t.owner_id = ? OR m.user_id IS NOT NULL)`
+		args = append(args, f.UserID)
+	}
+	if f.Archived != nil {
+		q += ` AND t.archived = ?`
+		args = append(args, boolInt(*f.Archived))
+	}
+	if f.Status != "" {
+		q += ` AND t.status = ?`
+		args = append(args, f.Status)
+	}
+	if f.Query != "" {
+		q += ` AND (t.name LIKE ? OR t.destination LIKE ?)`
+		like := "%" + f.Query + "%"
+		args = append(args, like, like)
+	}
+	q += ` ORDER BY CASE WHEN t.start_date = '' THEN 1 ELSE 0 END, t.start_date DESC, t.id DESC`
+	rows, err := s.DB.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Trip{}
+	for rows.Next() {
+		var t Trip
+		var dw, im, ar int
+		if err := rows.Scan(&t.ID, &t.OwnerID, &t.Name, &t.Destination, &t.Description, &t.StartDate, &t.EndDate, &t.Status, &t.Currency, &t.Budget, &t.Color, &t.CoverPath, &t.Link, &t.Notes, &t.Lat, &t.Lng, &t.Timezone, &t.FireflyTag, &dw, &im, &ar, &t.ExternalID, &t.CreatedAt, &t.UpdatedAt, &t.Role); err != nil {
+			return nil, err
+		}
+		t.Dawarich, t.Immich, t.Archived = dw == 1, im == 1, ar == 1
+		t.HasCover = t.CoverPath != ""
+		t.Days = DaysBetween(t.StartDate, t.EndDate)
+		if t.OwnerID == f.UserID {
+			t.Role = "owner"
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// GetTrip loads one trip with members; role is filled for userID.
+func (s *Store) GetTrip(ctx context.Context, id, userID int64) (*Trip, error) {
+	t, err := scanTrip(s.DB.QueryRowContext(ctx, `SELECT `+tripCols+` FROM trips t WHERE t.id = ?`, id))
+	if err != nil {
+		return nil, err
+	}
+	t.Members, err = s.TripMembers(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if t.OwnerID == userID {
+		t.Role = "owner"
+	} else {
+		for _, m := range t.Members {
+			if m.UserID == userID {
+				t.Role = m.Role
+			}
+		}
+	}
+	return t, nil
+}
+
+// TripMembers lists members with names.
+func (s *Store) TripMembers(ctx context.Context, tripID int64) ([]TripMember, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT u.id, u.name, u.email, CASE WHEN t.owner_id = u.id THEN 'owner' ELSE m.role END
+		FROM trips t JOIN users u ON (u.id = t.owner_id OR u.id IN (SELECT user_id FROM trip_members WHERE trip_id = t.id))
+		LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = u.id WHERE t.id = ? ORDER BY CASE WHEN t.owner_id = u.id THEN 0 ELSE 1 END, u.name`, tripID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []TripMember{}
+	for rows.Next() {
+		var m TripMember
+		if err := rows.Scan(&m.UserID, &m.Name, &m.Email, &m.Role); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// SetTripMember adds or updates a member; role "" removes.
+func (s *Store) SetTripMember(ctx context.Context, tripID, userID int64, role string) error {
+	if role == "" {
+		_, err := s.DB.ExecContext(ctx, `DELETE FROM trip_members WHERE trip_id = ? AND user_id = ?`, tripID, userID)
+		return err
+	}
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO trip_members (trip_id, user_id, role) VALUES (?, ?, ?) ON CONFLICT(trip_id, user_id) DO UPDATE SET role = excluded.role`, tripID, userID, role)
+	return err
+}
+
+// CanView reports whether the user may see the trip (admins see all).
+func (s *Store) TripRole(ctx context.Context, tripID int64, u *User) string {
+	var owner int64
+	if err := s.DB.QueryRowContext(ctx, `SELECT owner_id FROM trips WHERE id = ?`, tripID).Scan(&owner); err != nil {
+		return ""
+	}
+	if owner == u.ID {
+		return "owner"
+	}
+	var role string
+	if err := s.DB.QueryRowContext(ctx, `SELECT role FROM trip_members WHERE trip_id = ? AND user_id = ?`, tripID, u.ID).Scan(&role); err == nil {
+		return role
+	}
+	if u.Role == "admin" {
+		return "admin"
+	}
+	return ""
+}
+
+// CreateTrip inserts a trip.
+func (s *Store) CreateTrip(ctx context.Context, t *Trip) error {
+	if t.Status == "" {
+		t.Status = StatusPlanning
+	}
+	res, err := s.DB.ExecContext(ctx, `INSERT INTO trips (owner_id, name, destination, description, start_date, end_date, status, currency, budget, color, cover_path, link, notes, lat, lng, timezone, firefly_tag, dawarich, immich, archived, external_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.OwnerID, t.Name, t.Destination, t.Description, t.StartDate, t.EndDate, t.Status, t.Currency, t.Budget, t.Color, t.CoverPath, t.Link, t.Notes, t.Lat, t.Lng, t.Timezone, t.FireflyTag, boolInt(t.Dawarich), boolInt(t.Immich), boolInt(t.Archived), t.ExternalID)
+	if err != nil {
+		return err
+	}
+	t.ID, _ = res.LastInsertId()
+	t.Days = DaysBetween(t.StartDate, t.EndDate)
+	return nil
+}
+
+// UpdateTrip saves all editable columns.
+func (s *Store) UpdateTrip(ctx context.Context, t *Trip) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE trips SET name = ?, destination = ?, description = ?, start_date = ?, end_date = ?, status = ?, currency = ?, budget = ?, color = ?, cover_path = ?, link = ?, notes = ?, lat = ?, lng = ?, timezone = ?, firefly_tag = ?, dawarich = ?, immich = ?, archived = ?, updated_at = ? WHERE id = ?`,
+		t.Name, t.Destination, t.Description, t.StartDate, t.EndDate, t.Status, t.Currency, t.Budget, t.Color, t.CoverPath, t.Link, t.Notes, t.Lat, t.Lng, t.Timezone, t.FireflyTag, boolInt(t.Dawarich), boolInt(t.Immich), boolInt(t.Archived), Now(), t.ID)
+	if err != nil {
+		return err
+	}
+	t.Days = DaysBetween(t.StartDate, t.EndDate)
+	t.HasCover = t.CoverPath != ""
+	return nil
+}
+
+// DeleteTrip removes a trip and everything in it.
+func (s *Store) DeleteTrip(ctx context.Context, id int64) error {
+	res, err := s.DB.ExecContext(ctx, `DELETE FROM trips WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// TouchTrip bumps updated_at.
+func (s *Store) TouchTrip(ctx context.Context, id int64) {
+	_, _ = s.DB.ExecContext(ctx, `UPDATE trips SET updated_at = ? WHERE id = ?`, Now(), id)
+}
+
+// Counts summarises a trip.
+func (s *Store) TripCounts(ctx context.Context, id int64) (*TripCounts, error) {
+	var c TripCounts
+	row := s.DB.QueryRowContext(ctx, `SELECT
+		(SELECT COUNT(1) FROM places WHERE trip_id = ?),
+		(SELECT COUNT(1) FROM places WHERE trip_id = ? AND status = 'visited'),
+		(SELECT COUNT(1) FROM lodging WHERE trip_id = ?),
+		(SELECT COUNT(1) FROM transport WHERE trip_id = ?),
+		(SELECT COUNT(1) FROM documents WHERE trip_id = ?),
+		(SELECT COUNT(1) FROM journal WHERE trip_id = ?),
+		(SELECT COUNT(1) FROM checklist_items i JOIN checklists c ON c.id = i.checklist_id WHERE c.trip_id = ?),
+		(SELECT COUNT(1) FROM checklist_items i JOIN checklists c ON c.id = i.checklist_id WHERE c.trip_id = ? AND i.done = 1),
+		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND kind = 'planned'),
+		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND kind = 'actual')`,
+		id, id, id, id, id, id, id, id, id, id)
+	if err := row.Scan(&c.Places, &c.Visited, &c.Lodging, &c.Transport, &c.Documents, &c.Journal, &c.Checklist, &c.Checked, &c.Planned, &c.Actual); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// LogActivity appends to the trip's change log.
+func (s *Store) LogActivity(ctx context.Context, tripID int64, userID int64, action, subject string) {
+	var uid any
+	if userID > 0 {
+		uid = userID
+	}
+	_, _ = s.DB.ExecContext(ctx, `INSERT INTO activity (trip_id, user_id, action, subject) VALUES (?, ?, ?, ?)`, tripID, uid, action, strings.TrimSpace(subject))
+}
+
+// ListActivity returns the latest entries.
+func (s *Store) ListActivity(ctx context.Context, tripID int64, limit int) ([]Activity, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT a.id, a.trip_id, a.user_id, COALESCE(u.name, ''), a.action, a.subject, a.created_at FROM activity a LEFT JOIN users u ON u.id = a.user_id WHERE a.trip_id = ? ORDER BY a.id DESC LIMIT ?`, tripID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Activity{}
+	for rows.Next() {
+		var a Activity
+		if err := rows.Scan(&a.ID, &a.TripID, &a.UserID, &a.UserName, &a.Action, &a.Subject, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// Stats for the home page: totals across the user's trips.
+type HomeStats struct {
+	Trips      int      `json:"trips"`
+	Upcoming   int      `json:"upcoming"`
+	Days       int      `json:"days"`
+	Places     int      `json:"places"`
+	Visited    int      `json:"visited"`
+	Countries  []string `json:"destinations"`
+	SpentHome  int64    `json:"spent_home"`
+	NextTripID int64    `json:"next_trip_id"`
+}
+
+// HomeStats aggregates the user's trips.
+func (s *Store) HomeStats(ctx context.Context, userID int64) (*HomeStats, error) {
+	trips, err := s.ListTrips(ctx, TripFilter{UserID: userID})
+	if err != nil {
+		return nil, err
+	}
+	st := &HomeStats{Countries: []string{}}
+	today := Today()
+	seen := map[string]bool{}
+	var next *Trip
+	for i := range trips {
+		t := &trips[i]
+		if t.Archived || t.Status == StatusCancelled {
+			continue
+		}
+		st.Trips++
+		if t.EndDate != "" && t.EndDate < today {
+			st.Days += t.Days
+		} else if t.StartDate != "" && t.StartDate <= today && t.EndDate >= today {
+			st.Days += DaysBetween(t.StartDate, today)
+		}
+		if t.StartDate > today {
+			st.Upcoming++
+			if next == nil || t.StartDate < next.StartDate {
+				next = t
+			}
+		}
+		if d := strings.TrimSpace(t.Destination); d != "" && !seen[d] {
+			seen[d] = true
+			st.Countries = append(st.Countries, d)
+		}
+	}
+	if next != nil {
+		st.NextTripID = next.ID
+	}
+	_ = s.DB.QueryRowContext(ctx, `SELECT COUNT(1), COALESCE(SUM(p.status = 'visited'), 0) FROM places p JOIN trips t ON t.id = p.trip_id WHERE t.archived = 0 AND (t.owner_id = ? OR t.id IN (SELECT trip_id FROM trip_members WHERE user_id = ?))`, userID, userID).Scan(&st.Places, &st.Visited)
+	return st, nil
+}
+
+// nullF is a helper for optional floats in queries.
+func nullF(f *float64) sql.NullFloat64 {
+	if f == nil {
+		return sql.NullFloat64{}
+	}
+	return sql.NullFloat64{Float64: *f, Valid: true}
+}
+
+var _ = time.Now
