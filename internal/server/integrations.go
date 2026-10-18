@@ -428,14 +428,14 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "stats")
 		return
 	}
-	out := map[string]any{"trips": st.Trips, "upcoming": st.Upcoming, "days_traveled": st.Days, "places": st.Places, "next_trip": "", "next_in_days": 0, "next_trip_text": "no trip planned"}
+	out := map[string]any{"trips": st.Trips, "upcoming": st.Upcoming, "days_traveled": st.Days, "places": st.Places, "next_trip": "", "next_in_days": 0, "next_trip_text": "none planned"}
 	if st.NextTripID > 0 {
 		if t, err := s.store.GetTrip(r.Context(), st.NextTripID, u.ID); err == nil {
 			d, _ := store.ParseDate(t.StartDate)
 			days := int(time.Until(d).Hours()/24) + 1
 			out["next_trip"] = t.Name
 			out["next_in_days"] = days
-			out["next_trip_text"] = fmt.Sprintf("%s in %d days", t.Name, days)
+			out["next_trip_text"] = fmt.Sprintf("%s · %dd", shortName(t.Name, 16), days)
 		}
 	}
 	trips, _ := s.store.ListTrips(r.Context(), store.TripFilter{UserID: u.ID})
@@ -444,7 +444,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		if !t.Archived && t.StartDate != "" && t.StartDate <= today && t.EndDate >= today {
 			out["current_trip"] = t.Name
 			out["current_day"] = store.DaysBetween(t.StartDate, today)
-			out["next_trip_text"] = fmt.Sprintf("%s · day %d of %d", t.Name, store.DaysBetween(t.StartDate, today), t.Days)
+			out["next_trip_text"] = fmt.Sprintf("%s · day %d/%d", shortName(t.Name, 14), store.DaysBetween(t.StartDate, today), t.Days)
 			break
 		}
 	}
@@ -1112,4 +1112,13 @@ func (s *Server) coordsFromInput(ctx context.Context, q string) (float64, float6
 	// Last resort: the page body of a Google Maps place often carries the coordinates.
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 512<<10))
 	return try(string(b))
+}
+
+// shortName trims a trip name for one-line widgets.
+func shortName(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return strings.TrimSpace(string(r[:n-1])) + "…"
 }

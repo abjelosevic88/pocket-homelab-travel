@@ -425,3 +425,32 @@ textarea.tall { min-height: 160px; }
 .g-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
 .g-item figcaption { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 11px; }
 .g-item .credit { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+/* ---- phone safety: never let a wide element zoom the whole page out ---- */
+html, body { overflow-x: hidden; }
+.main, .content { max-width: 100vw; min-width: 0; }
+.home-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .home-grid { grid-template-columns: 1fr; } .hero h1 { font-size: 22px; } .hero .hero-body { padding: 14px 16px; } .countdown { font-size: 32px; } }
+/* ---- phone layout fixes (grid columns must not grow to min-content) ---- */
+.card, .card-body, .day-items, .item, .item .txt, .row > *, .toolbar > * { min-width: 0; }
+.item .txt { overflow: hidden; }
+.card .card-head { flex-wrap: wrap; }
+.card .card-head .row { flex-wrap: wrap; justify-content: flex-end; }
+.doc-row > * { min-width: 0; }
+.overview-grid { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+.trip-grid { grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr)); }
+@media (max-width: 900px) {
+  .itin-grid { grid-template-columns: minmax(0, 1fr); }
+  .two-col, .three-col, .home-grid { grid-template-columns: minmax(0, 1fr); }
+  .two-col.tight { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .day { grid-template-columns: minmax(0, 1fr); }
+  .day-head { flex-wrap: wrap; row-gap: 2px; }
+  .day-head .wx { margin-left: auto; }
+  .page-header .actions { width: 100%; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero .meta-line { font-size: 12.5px; }
+  .toolbar .search { flex-basis: 100%; }
+  .modal-backdrop { padding: 12px 8px; }
+  .modal-body { padding: 14px; }
+  .table { display: block; overflow-x: auto; white-space: nowrap; }
+  .kv { grid-template-columns: minmax(0, max-content) minmax(0, 1fr); }
+}

@@ -3,7 +3,7 @@ import { api, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
 import type { Place } from '../../lib/types'
 import { LODGING_ICONS, PLACE_ICONS, TRANSPORT_ICONS, WX_ICON } from '../../lib/types'
-import { dateRange, fmtClock, fmtDate, fmtDateTime, fmtDuration, fmtISOTime, fmtKm, todayISO, weekday } from '../../lib/format'
+import { dateRange, fmtClock, fmtDate, fmtDateTime, fmtDuration, fmtKm, todayISO, weekday } from '../../lib/format'
 import { Card, Empty, useToast } from '../../components/ui'
 import { useTrip } from './ctx'
 import { lodgingSub, placeSub, transportSub } from './Overview'
@@ -35,9 +35,10 @@ export function Itinerary() {
     if (showRecorded) {
       const tl = timeline.find(x => x.date === d)
       for (const e of tl?.entries || []) {
-        const at = fmtISOTime(e.started_at)
-        if (e.type === 'journey') rows.push({ key: `j${e.track_id}`, when: e.started_at.slice(11, 16), kind: 'journey', icon: e.dominant_mode === 'walking' ? '🚶' : e.dominant_mode === 'cycling' ? '🚲' : e.dominant_mode === 'driving' ? '🚗' : '🛰', title: `${e.dominant_mode ? e.dominant_mode[0].toUpperCase() + e.dominant_mode.slice(1) : 'Moved'} ${fmtKm(e.distance, unit)}`, sub: `${at}–${fmtISOTime(e.ended_at)} · ${fmtDuration(Math.round(e.duration / 60))}${e.elevation_gain ? ` · ↑${Math.round(e.elevation_gain)} m` : ''}`, cls: 'journey' })
-        else rows.push({ key: `v${e.visit_id}`, when: e.started_at.slice(11, 16), kind: 'visit', icon: '📌', title: e.name && e.name !== 'Unknown Location' ? e.name : 'Stopped somewhere', sub: `${at}–${fmtISOTime(e.ended_at)} · ${fmtDuration(Math.round(e.duration / 60))}${e.status === 'suggested' ? ' · suggested' : ''}`, cls: 'visit' })
+        // Dawarich stamps carry the trip's own offset; show that wall time rather than the browser's.
+        const at = fmtClock(e.started_at.slice(11, 16)), end = fmtClock(e.ended_at.slice(11, 16))
+        if (e.type === 'journey') rows.push({ key: `j${e.track_id}`, when: e.started_at.slice(11, 16), kind: 'journey', icon: e.dominant_mode === 'walking' ? '🚶' : e.dominant_mode === 'cycling' ? '🚲' : e.dominant_mode === 'driving' ? '🚗' : '🛰', title: `${e.dominant_mode ? e.dominant_mode[0].toUpperCase() + e.dominant_mode.slice(1) : 'Moved'} ${fmtKm(e.distance, unit)}`, sub: `${at}–${end} · ${fmtDuration(Math.round(e.duration / 60))}${e.elevation_gain ? ` · ↑${Math.round(e.elevation_gain)} m` : ''}`, cls: 'journey' })
+        else rows.push({ key: `v${e.visit_id}`, when: e.started_at.slice(11, 16), kind: 'visit', icon: '📌', title: e.name && e.name !== 'Unknown Location' ? e.name : 'Stopped somewhere', sub: `${at}–${end} · ${fmtDuration(Math.round(e.duration / 60))}${e.status === 'suggested' ? ' · suggested' : ''}`, cls: 'visit' })
       }
     }
     return rows.sort((a, b) => a.when.localeCompare(b.when))

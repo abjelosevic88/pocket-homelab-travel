@@ -99,7 +99,7 @@ export default function Home() {
         </Card>
       )}
 
-      <div className="two-col" style={{ gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 2fr)' }}>
+      <div className="home-grid">
         <div>
           {upcoming.length > 0 && <><h2 className="mb-sm">Upcoming</h2><div className="trip-grid mb">{upcoming.map(t => <TripCard key={t.id} t={t} />)}</div></>}
           {recent.length > 0 && <><h2 className="mb-sm">Past trips</h2><div className="trip-grid mb">{recent.map(t => <TripCard key={t.id} t={t} />)}</div></>}
