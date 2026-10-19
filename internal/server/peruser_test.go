@@ -41,6 +41,11 @@ func newIsoHarness(t *testing.T) *isoHarness {
 				Token string `json:"token"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&in)
+			if in.Token == "pcx_member_trips" { // a linked app acting for the member
+				_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "kind": "delegated", "scope": "trips:read", "audience": "travel",
+					"user": map[string]any{"id": 7, "email": "member@example.com", "name": "M", "role": "member"}, "app": map[string]any{"id": 3, "slug": "garage", "name": "Pocket Garage"}})
+				return
+			}
 			if in.Token == "pcd_member_phone" {
 				_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "kind": "device", "user": map[string]any{"id": 7, "email": "member@example.com", "name": "M", "role": "member"}})
 				return

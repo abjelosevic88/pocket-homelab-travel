@@ -67,6 +67,8 @@ With an OpenAI key (or any compatible endpoint) five more buttons appear: **sugg
 | **Exports & imports** | iCalendar feed to subscribe to (stays, legs, scheduled places with references), GPX, JSON backup. Import from AdventureLog (collections with locations, lodging, transportation, notes, checklists and images) or a JSON backup. |
 | **Users & ops** | Built-in login (admin/member), SSO-proxy header, or no login on a trusted LAN. API tokens. SQLite backup from the UI/CLI/API, Prometheus `/metrics`, `GET /dashboard` for Homepage. With **Pocket Core** on the box: registers itself, publishes `travel.trip_created`, `travel.trip_updated` and `travel.expense_linked`, accepts paired-phone tokens, finds Pocket Money's Firefly API without a `FIREFLY_URL`, and offers “Sign in with Pocket Core” with zero configuration (any OpenID Connect provider works via `OIDC_*`). |
 
+**Offers app links** (Pocket Core 0.5+): another Pocket app the person allowed in Core can read their trips (`trips:read`: `GET /api/v1/trips`, `GET /api/v1/trips/{id}`) with a five-minute `pcx_` token; every other route answers 403. Pocket Garage uses it to show each trip's fuel, costs and kilometres.
+
 ## Run it
 
 ```bash
