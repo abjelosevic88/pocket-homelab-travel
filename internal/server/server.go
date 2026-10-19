@@ -23,6 +23,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/config"
+	"github.com/abjelosevic88/pocket-homelab-travel/internal/core"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/dawarich"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/firefly"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/fx"
@@ -49,12 +50,25 @@ type Server struct {
 	// one in-flight sync per trip
 	syncMu  sync.Mutex
 	syncing map[int64]bool
+
+	core     *core.Client
+	coreMu   sync.Mutex
+	coreOK   bool
+	coreErr  string
+	resolved map[string]resolvedURL
+}
+
+type resolvedURL struct {
+	url string
+	at  time.Time
 }
 
 // New creates a server.
 func New(cfg *config.Config, st *store.Store, log *slog.Logger, webFS fs.FS) *Server {
 	return &Server{cfg: cfg, store: st, log: log, webFS: webFS, started: time.Now(),
-		geo: geo.New(cfg.UserAgent, 25*time.Second), fx: fx.New(cfg.FXProvider, cfg.UserAgent, 8*time.Second), syncing: map[int64]bool{}}
+		geo: geo.New(cfg.UserAgent, 25*time.Second), fx: fx.New(cfg.FXProvider, cfg.UserAgent, 8*time.Second), syncing: map[int64]bool{},
+		core:     core.New(cfg.CoreURL, core.Options{TokenFile: cfg.DataDir + "/core.token", UserAgent: cfg.UserAgent}),
+		resolved: map[string]resolvedURL{}}
 }
 
 // Bootstrap seeds the first admin (if configured), integration defaults and demo data.
@@ -120,7 +134,102 @@ func (s *Server) Bootstrap(ctx context.Context) error {
 	}
 	_ = s.store.PurgeSessions(ctx)
 	go s.janitor(ctx)
+	if s.core.Configured() {
+		go s.coreLoop(ctx)
+	}
 	return nil
+}
+
+// ---- Pocket Core ----
+
+// coreLoop registers with Core on start (retrying until it answers) and
+// re-registers every 30 minutes so version and last-seen stay fresh.
+func (s *Server) coreLoop(ctx context.Context) {
+	wait := 5 * time.Second
+	for {
+		err := s.registerWithCore(ctx)
+		s.coreMu.Lock()
+		s.coreOK, s.coreErr = err == nil, ""
+		if err != nil {
+			s.coreErr = err.Error()
+		}
+		s.coreMu.Unlock()
+		if err != nil {
+			s.log.Warn("pocket core: registration failed, retrying", "err", err, "in", wait.String())
+		} else {
+			wait = 30 * time.Minute
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		if err != nil && wait < 5*time.Minute {
+			wait *= 2
+		}
+	}
+}
+
+func (s *Server) registerWithCore(ctx context.Context) error {
+	reg, err := s.core.Register(ctx, s.cfg.CoreRegistrationKey, core.Manifest{
+		Slug: "travel", Name: "Pocket Travel",
+		Description: "A trip planner that keeps the whole trip on one page: the plan, what it really cost, where you actually went and what you photographed.",
+		Icon:        "/favicon.svg", Version: Version,
+		URL: s.cfg.CoreAppURL, PublicURL: s.cfg.BaseURL, HealthPath: "/healthz", EnvPrefix: "TRAVEL",
+		Publishes: []string{"travel.trip_created", "travel.trip_updated", "travel.expense_linked"},
+	})
+	if err != nil {
+		return err
+	}
+	if reg.Token != "" {
+		s.log.Info("pocket core: registered, app token stored", "core", s.cfg.CoreURL)
+	} else {
+		s.log.Debug("pocket core: re-registered", "core", s.cfg.CoreURL)
+	}
+	return nil
+}
+
+// publish sends an event to Core without blocking the request.
+func (s *Server) publish(topic, subject string, payload map[string]any) {
+	if !s.core.Configured() {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := s.core.Publish(ctx, topic, subject, payload); err != nil {
+			s.log.Warn("pocket core: publish failed", "topic", topic, "err", err)
+		}
+	}()
+}
+
+// resolveSibling asks Core where a sibling app lives (cached a minute) so the
+// *_URL settings may stay empty on a box with Core.
+func (s *Server) resolveSibling(ctx context.Context, slug string) string {
+	if !s.core.Configured() {
+		return ""
+	}
+	s.coreMu.Lock()
+	if r, ok := s.resolved[slug]; ok && time.Since(r.at) < time.Minute {
+		s.coreMu.Unlock()
+		return r.url
+	}
+	s.coreMu.Unlock()
+	url := ""
+	if res, err := s.core.Resolve(ctx, slug); err == nil {
+		url = res.URL
+	}
+	s.coreMu.Lock()
+	s.resolved[slug] = resolvedURL{url: url, at: time.Now()}
+	s.coreMu.Unlock()
+	return url
+}
+
+// coreStatus summarises the Pocket Core link for the About page.
+func (s *Server) coreStatus() map[string]any {
+	s.coreMu.Lock()
+	defer s.coreMu.Unlock()
+	return map[string]any{"configured": s.core.Configured(), "url": s.cfg.CoreURL, "registered": s.coreOK, "error": s.coreErr}
 }
 
 // janitor syncs Firefly for active trips every 30 minutes and trims caches.
@@ -141,6 +250,12 @@ func (s *Server) janitor(ctx context.Context) {
 
 func (s *Server) clients(ctx context.Context) (store.Settings, *firefly.Client, *dawarich.Client, *immich.Client) {
 	st, _ := s.store.GetSettings(ctx)
+	if st.FireflyURL == "" && st.FireflyToken != "" {
+		// Pocket Money serves its Firefly-compatible API under /firefly.
+		if u := s.resolveSibling(ctx, "money"); u != "" {
+			st.FireflyURL = u + "/firefly"
+		}
+	}
 	return st, firefly.New(st.FireflyURL, st.FireflyToken, 20*time.Second), dawarich.New(st.DawarichURL, st.DawarichAPIKey, 60*time.Second), immich.New(st.ImmichURL, st.ImmichAPIKey, 30*time.Second)
 }
 

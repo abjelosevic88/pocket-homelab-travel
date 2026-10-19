@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -204,6 +205,10 @@ func (s *Server) handleCreateTrip(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.CreateChecklist(r.Context(), &store.Checklist{TripID: t.ID, Name: cl.name, Kind: cl.kind})
 	}
 	t, _ = s.store.GetTrip(r.Context(), t.ID, u.ID)
+	s.publish("travel.trip_created", fmt.Sprintf("trip:%d", t.ID), map[string]any{
+		"trip_id": t.ID, "name": t.Name, "destination": t.Destination, "start_date": t.StartDate, "end_date": t.EndDate,
+		"status": t.Status, "currency": t.Currency, "budget": t.Budget, "firefly_tag": t.FireflyTag, "owner_id": t.OwnerID,
+	})
 	writeJSON(w, http.StatusCreated, t)
 }
 
@@ -241,6 +246,10 @@ func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "updated", "trip details")
 	t.Counts, _ = s.store.TripCounts(r.Context(), t.ID)
+	s.publish("travel.trip_updated", fmt.Sprintf("trip:%d", t.ID), map[string]any{
+		"trip_id": t.ID, "name": t.Name, "destination": t.Destination, "start_date": t.StartDate, "end_date": t.EndDate,
+		"status": t.Status, "currency": t.Currency, "budget": t.Budget, "firefly_tag": t.FireflyTag, "archived": t.Archived,
+	})
 	writeJSON(w, http.StatusOK, t)
 }
 

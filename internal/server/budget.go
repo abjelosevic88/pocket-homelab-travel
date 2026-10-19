@@ -501,9 +501,17 @@ func (s *Server) syncFirefly(ctx context.Context, tripID int64) (int, error) {
 		}
 		notes := strings.TrimSpace(strings.Join(nonEmpty(tx.Category, tx.Destination, tx.Notes), " · "))
 		e := &store.Expense{TripID: t.ID, Name: tx.Description, Category: cat, Amount: minor, Currency: cur, AmountHome: currency.Convert(minor, cur, t.Currency, rate), FXRate: rate, Date: tx.Date, Kind: "actual", Source: "firefly", ExternalID: tx.ID, Notes: notes}
-		if _, err := s.store.UpsertExternalExpense(ctx, e); err != nil {
+		created, err := s.store.UpsertExternalExpense(ctx, e)
+		if err != nil {
 			s.log.Warn("firefly upsert", "err", err)
 			continue
+		}
+		if created {
+			s.publish("travel.expense_linked", fmt.Sprintf("expense:%d", e.ID), map[string]any{
+				"expense_id": e.ID, "trip_id": t.ID, "trip": t.Name, "name": e.Name, "category": e.Category,
+				"amount": e.Amount, "currency": e.Currency, "amount_home": e.AmountHome, "home_currency": t.Currency,
+				"date": e.Date, "source": e.Source, "external_id": e.ExternalID, "firefly_tag": t.FireflyTag,
+			})
 		}
 		keep = append(keep, tx.ID)
 		n++

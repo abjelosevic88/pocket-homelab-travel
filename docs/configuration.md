@@ -28,6 +28,8 @@ Everything is an environment variable with a sensible default. Integration setti
 | `OPENAI_MODEL` | `gpt-4o-mini` | Any chat model of the provider |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible endpoint (Ollama, LM Studio, OpenRouter…) |
 | `USER_AGENT` | `PocketTravel/1.0 (+repo)` | Sent to Nominatim, Overpass, Open-Meteo, Wikipedia |
+| `CORE_URL` / `CORE_REGISTRATION_KEY` | | [Pocket Core](https://git.bjelke.org/abjelosevic88/pocket-homelab-core): register on start (the key is needed once; the minted app token lives in `$DATA_DIR/core.token`), publish `travel.trip_created` / `travel.trip_updated` / `travel.expense_linked`, accept the tokens Core hands to paired phones, and resolve Pocket Money's Firefly-compatible API through Core when `FIREFLY_URL` is empty but a token is set |
+| `CORE_APP_URL` | `BASE_URL` | How Core reaches this app for health checks (e.g. `http://host.docker.internal:8174`) |
 | `DEMO_DATA` | `false` | Seed three example trips on first start |
 | `TZ` | | Container timezone (day boundaries for Dawarich and "today") |
 

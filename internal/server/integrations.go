@@ -242,6 +242,7 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 	})
 	writeJSON(w, http.StatusOK, map[string]any{
 		"version": Version, "go": runtime.Version(), "os": runtime.GOOS, "arch": runtime.GOARCH,
+		"core":      s.coreStatus(),
 		"auth_mode": s.cfg.AuthMode, "data_dir": s.cfg.DataDir, "db_path": s.cfg.DBPath, "db_bytes": size, "files_bytes": files,
 		"uptime": time.Since(s.started).Round(time.Second).String(), "timezone": time.Now().Location().String(),
 		"counts": s.store.Counts(r.Context()),
