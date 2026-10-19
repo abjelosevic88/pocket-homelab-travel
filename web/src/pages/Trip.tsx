@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, V1 } from '../lib/api'
-import { useApp } from '../lib/app-context'
 import type { DayWeather, Expense, JournalEntry, Lodging, Overview, Photo, Place, Route, TimelineDay, Transport, Trip } from '../lib/types'
 import { STATUS_LABEL } from '../lib/types'
 import { daysBetween, fmtRange, plural, todayISO } from '../lib/format'
@@ -28,7 +27,6 @@ const TABS = [
 export default function TripPage() {
   const { id, tab = 'overview' } = useParams()
   const navigate = useNavigate()
-  const { user } = useApp()
   const { toast } = useToast()
   const [ov, setOv] = useState<Overview | null>(null)
   const [err, setErr] = useState('')
@@ -67,9 +65,9 @@ export default function TripPage() {
   const edit = useCallback((kind: EditKind, item?: unknown, defaults?: Record<string, unknown>) => setEditing({ kind, item, defaults }), [])
 
   const state = useMemo(() => ov ? ({
-    ov, trip: ov.trip, canEdit: ov.trip.role !== 'viewer', isOwner: ov.trip.role === 'owner' || ov.trip.role === 'admin' || user?.role === 'admin',
+    ov, trip: ov.trip, canEdit: ov.trip.role !== 'viewer', isOwner: ov.trip.role === 'owner',
     reload, patch, weather, route, timeline, photos, extErrors, refreshExternal, edit, go,
-  }) : null, [ov, user, reload, patch, weather, route, timeline, photos, extErrors, refreshExternal, edit, go])
+  }) : null, [ov, reload, patch, weather, route, timeline, photos, extErrors, refreshExternal, edit, go])
 
   if (err) return <div className="callout danger">{err} — <Link to="/trips">back to trips</Link></div>
   if (!state || !ov) return <Loading />

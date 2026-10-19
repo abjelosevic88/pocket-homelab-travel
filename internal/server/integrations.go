@@ -40,7 +40,7 @@ func mask(s string) string {
 	return s[:4] + "••••" + s[len(s)-4:]
 }
 
-func (s *Server) publicSettings(st store.Settings) map[string]any {
+func (s *Server) publicSettings(st store.Settings, u *store.User) map[string]any {
 	return map[string]any{
 		"title": st.Title, "home_currency": st.HomeCurrency, "date_format": st.DateFormat, "time_format": st.TimeFormat,
 		"distance_unit": st.DistanceUnit, "fx_auto": st.FXAuto, "fx_provider": s.cfg.FXProvider, "map_tiles": st.MapTiles, "auto_photos": st.AutoPhotos,
@@ -48,24 +48,27 @@ func (s *Server) publicSettings(st store.Settings) map[string]any {
 		"dawarich_url": st.DawarichURL, "dawarich_api_key": mask(st.DawarichAPIKey), "dawarich_configured": st.DawarichURL != "" && st.DawarichAPIKey != "",
 		"immich_url": st.ImmichURL, "immich_public_url": st.ImmichPublicURL, "immich_api_key": mask(st.ImmichAPIKey), "immich_configured": st.ImmichURL != "" && st.ImmichAPIKey != "",
 		"openai_api_key": mask(st.OpenAIKey), "openai_model": st.OpenAIModel, "openai_base_url": st.OpenAIBaseURL, "openai_configured": st.OpenAIKey != "",
-		"max_upload_bytes": s.cfg.MaxUploadBytes, "setup_complete": st.SetupComplete,
+		"max_upload_bytes": s.cfg.MaxUploadBytes, "setup_complete": st.SetupComplete, "can_edit_global": u != nil && u.Role == "admin",
 	}
 }
 
+// handleGetSettings returns the box-wide settings plus the caller's own
+// preferences and (masked) integration credentials.
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
-	st, err := s.store.GetSettings(r.Context())
+	u := userFrom(r.Context())
+	st, err := s.store.GetSettings(r.Context(), u.ID)
 	if err != nil {
 		s.fail(w, err, "settings")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.publicSettings(st))
+	writeJSON(w, http.StatusOK, s.publicSettings(st, u))
 }
 
+// handlePutSettings saves the caller's own preferences and integration
+// credentials; the box-wide ones (title, online exchange rates) need an admin.
 func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdmin(w, r) {
-		return
-	}
-	cur, err := s.store.GetSettings(r.Context())
+	u := userFrom(r.Context())
+	cur, err := s.store.GetSettings(r.Context(), u.ID)
 	if err != nil {
 		s.fail(w, err, "settings")
 		return
@@ -74,6 +77,11 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	keys, err := decodeKeys(r, &in)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	global := (keys["title"] && strings.TrimSpace(in.Title) != cur.Title) || (keys["fx_auto"] && in.FXAuto != cur.FXAuto)
+	if global && u.Role != "admin" {
+		writeErr(w, http.StatusForbidden, "only an admin can change the app title or exchange-rate lookups")
 		return
 	}
 	if keys["title"] {
@@ -135,18 +143,23 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if keys["immich_public_url"] {
 		cur.ImmichPublicURL = strings.TrimRight(strings.TrimSpace(in.ImmichPublicURL), "/")
 	}
-	if err := s.store.SaveSettings(r.Context(), cur); err != nil {
+	if err := s.store.SaveUserSettings(r.Context(), u.ID, cur); err != nil {
 		s.fail(w, err, "save settings")
 		return
 	}
-	_ = s.store.CacheDelete(r.Context(), "trip:")
-	writeJSON(w, http.StatusOK, s.publicSettings(cur))
+	if global {
+		if err := s.store.SaveGlobalSettings(r.Context(), cur); err != nil {
+			s.fail(w, err, "save settings")
+			return
+		}
+	}
+	// Only this person's route/photo caches depend on their credentials.
+	_ = s.store.CacheDeleteLike(r.Context(), "trip:%:u"+strconv.FormatInt(u.ID, 10)+":%")
+	writeJSON(w, http.StatusOK, s.publicSettings(cur, u))
 }
 
+// handleIntegrationTest checks a connection; a masked key means the caller's own stored one.
 func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
-	if !s.requireAdmin(w, r) {
-		return
-	}
 	var in struct {
 		Which string `json:"which"`
 		URL   string `json:"url"`
@@ -156,7 +169,7 @@ func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	st, _ := s.store.GetSettings(r.Context())
+	st, _ := s.store.GetSettings(r.Context(), userFrom(r.Context()).ID)
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 	var msg string
@@ -228,6 +241,9 @@ func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
 	var size, files int64
 	if fi, err := os.Stat(s.cfg.DBPath); err == nil {
 		size = fi.Size()
@@ -249,7 +265,11 @@ func (s *Server) handleSystemInfo(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleBackup downloads the whole database: box administration, admins only.
 func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
+	if !s.requireAdmin(w, r) {
+		return
+	}
 	dir := filepath.Join(s.cfg.DataDir, "backups")
 	name := fmt.Sprintf("pocket-travel-%s.db", time.Now().Format("20060102-150405"))
 	dst := filepath.Join(dir, name)
@@ -325,13 +345,13 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		if trips[i].Archived {
 			continue
 		}
-		if v, _, ok := s.store.CacheGet(ctx, cacheKey(trips[i].ID, "dawarich-route")); ok {
+		if v, _, ok := s.store.CacheGet(ctx, userCacheKey(trips[i].ID, u.ID, "dawarich-route")); ok {
 			var rr RouteResponse
 			if json.Unmarshal([]byte(v), &rr) == nil {
 				recordedKm += rr.DistanceKm
 			}
 		}
-		if v, _, ok := s.store.CacheGet(ctx, cacheKey(trips[i].ID, "immich-photos")); ok {
+		if v, _, ok := s.store.CacheGet(ctx, userCacheKey(trips[i].ID, u.ID, "immich-photos")); ok {
 			var ph []json.RawMessage
 			if json.Unmarshal([]byte(v), &ph) == nil {
 				photosN += len(ph)
@@ -634,8 +654,9 @@ func cacheTTL(t *store.Trip) time.Duration {
 	return time.Hour
 }
 
+// cached answers from the per-person cache (the data came from the caller's own account).
 func (s *Server) cached(r *http.Request, t *store.Trip, key string, fetch func() (any, error)) ([]byte, error) {
-	k := cacheKey(t.ID, key)
+	k := userCacheKey(t.ID, actorID(r.Context()), key)
 	if !queryBool(r, "refresh") {
 		if v, at, ok := s.store.CacheGet(r.Context(), k); ok {
 			if ts, err := time.Parse(time.RFC3339Nano, at); err == nil && time.Since(ts) < cacheTTL(t) {
@@ -799,7 +820,7 @@ func (s *Server) fetchRoute(ctx context.Context, dw *dawarich.Client, t *store.T
 
 func (s *Server) handleDawarichRoute(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	_, _, dw, _ := s.clients(r.Context())
+	_, _, dw, _ := s.clients(r.Context(), actorID(r.Context()))
 	if !dw.Configured() || !t.Dawarich {
 		writeJSON(w, http.StatusOK, RouteResponse{Points: [][3]float64{}, Days: map[string]float64{}, ByDay: []RouteDay{}})
 		return
@@ -815,7 +836,7 @@ func (s *Server) handleDawarichRoute(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDawarichTimeline(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	_, _, dw, _ := s.clients(r.Context())
+	_, _, dw, _ := s.clients(r.Context(), actorID(r.Context()))
 	if !dw.Configured() || !t.Dawarich {
 		writeJSON(w, http.StatusOK, []any{})
 		return
@@ -846,7 +867,7 @@ func (s *Server) handleDawarichTimeline(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleTripPhotos(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	_, _, _, im := s.clients(r.Context())
+	_, _, _, im := s.clients(r.Context(), actorID(r.Context()))
 	if !im.Configured() || !t.Immich {
 		writeJSON(w, http.StatusOK, []any{})
 		return
@@ -874,7 +895,7 @@ func (s *Server) handleTripPhotos(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePhotoThumb(w http.ResponseWriter, r *http.Request) {
-	_, _, _, im := s.clients(r.Context())
+	_, _, _, im := s.clients(r.Context(), actorID(r.Context()))
 	if !im.Configured() {
 		writeErr(w, http.StatusNotFound, "immich not configured")
 		return
@@ -948,7 +969,7 @@ func (s *Server) handleExportGPX(w http.ResponseWriter, r *http.Request) {
 	lodging, _ := s.store.ListLodging(ctx, t.ID)
 	var route []export.RoutePoint
 	if queryBool(r, "route") {
-		_, _, dw, _ := s.clients(ctx)
+		_, _, dw, _ := s.clients(ctx, actorID(ctx))
 		if dw.Configured() && t.Dawarich {
 			if b, err := s.cached(r, t, "dawarich-route", func() (any, error) { return s.fetchRoute(ctx, dw, t) }); err == nil {
 				var rr RouteResponse

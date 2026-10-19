@@ -147,7 +147,7 @@ func (s *Server) handleALImport(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	st, _ := s.store.GetSettings(r.Context())
+	st, _ := s.store.GetSettings(r.Context(), u.ID)
 	var results []map[string]any
 	for _, id := range in.Collections {
 		res, err := s.importCollection(r.Context(), c, u, id, in.Images, st.HomeCurrency)
@@ -166,7 +166,8 @@ func (s *Server) importCollection(ctx context.Context, c *adventurelog.Client, u
 		return nil, err
 	}
 	// Re-import updates the existing trip's name/dates but never duplicates items with the same external id.
-	trips, _ := s.store.ListTrips(ctx, store.TripFilter{UserID: u.ID})
+	// Only the importer's own trips: a re-import never writes into a trip someone shared with them.
+	trips, _ := s.store.ListTrips(ctx, store.TripFilter{UserID: u.ID, Owned: true})
 	var t *store.Trip
 	for i := range trips {
 		if trips[i].ExternalID == "adventurelog:"+col.ID {

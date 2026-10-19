@@ -31,6 +31,8 @@ var ErrConflict = errors.New("already exists")
 type Store struct {
 	DB  *sql.DB
 	log *slog.Logger
+	// DefaultCurrency is the home currency of someone who has not picked one.
+	DefaultCurrency string
 }
 
 // Open opens (and creates if needed) the SQLite database and runs migrations.
@@ -119,7 +121,7 @@ func (s *Store) Backup(ctx context.Context, dst string) error {
 // Counts returns row counts per table for metrics / the About page.
 func (s *Store) Counts(ctx context.Context) map[string]int {
 	out := map[string]int{}
-	for _, t := range []string{"trips", "places", "place_photos", "lodging", "transport", "expenses", "checklists", "checklist_items", "journal", "documents", "users", "api_tokens"} {
+	for _, t := range []string{"trips", "places", "place_photos", "lodging", "transport", "expenses", "checklists", "checklist_items", "journal", "documents", "users", "api_tokens", "user_settings"} {
 		var n int
 		if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(1) FROM `+t).Scan(&n); err == nil {
 			out[t] = n

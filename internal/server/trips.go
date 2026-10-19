@@ -18,7 +18,7 @@ const tripKey tripKeyT = 2
 
 type tripCtx struct {
 	trip *store.Trip
-	role string // owner | editor | viewer | admin
+	role string // owner | editor | viewer
 }
 
 func tripFrom(ctx context.Context) *tripCtx {
@@ -60,15 +60,13 @@ func (s *Server) canEdit(w http.ResponseWriter, r *http.Request) bool {
 
 func (s *Server) isOwner(r *http.Request) bool {
 	tc := tripFrom(r.Context())
-	return tc != nil && (tc.role == "owner" || tc.role == "admin")
+	return tc != nil && tc.role == "owner"
 }
 
 func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
+	// Your own trips and the ones shared with you; admins see no more than anyone else.
 	f := store.TripFilter{UserID: u.ID, Query: strings.TrimSpace(r.URL.Query().Get("q"))}
-	if u.Role == "admin" && queryBool(r, "all") {
-		f.UserID = 0
-	}
 	if v := r.URL.Query().Get("archived"); v != "" {
 		b := queryBool(r, "archived")
 		f.Archived = &b
@@ -189,7 +187,7 @@ func (s *Server) handleCreateTrip(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	st, _ := s.store.GetSettings(r.Context())
+	st, _ := s.store.GetSettings(r.Context(), u.ID)
 	t := &store.Trip{OwnerID: u.ID, Currency: st.HomeCurrency, Status: store.StatusPlanning, Dawarich: true, Immich: true}
 	if msg := applyTripInput(t, in, nil); msg != "" {
 		writeErr(w, http.StatusBadRequest, msg)
@@ -205,9 +203,9 @@ func (s *Server) handleCreateTrip(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.CreateChecklist(r.Context(), &store.Checklist{TripID: t.ID, Name: cl.name, Kind: cl.kind})
 	}
 	t, _ = s.store.GetTrip(r.Context(), t.ID, u.ID)
-	s.publish("travel.trip_created", fmt.Sprintf("trip:%d", t.ID), map[string]any{
+	s.publish("travel.trip_created", fmt.Sprintf("trip:%d", t.ID), t.OwnerID, map[string]any{
 		"trip_id": t.ID, "name": t.Name, "destination": t.Destination, "start_date": t.StartDate, "end_date": t.EndDate,
-		"status": t.Status, "currency": t.Currency, "budget": t.Budget, "firefly_tag": t.FireflyTag, "owner_id": t.OwnerID,
+		"status": t.Status, "currency": t.Currency, "budget": t.Budget, "firefly_tag": t.FireflyTag,
 	})
 	writeJSON(w, http.StatusCreated, t)
 }
@@ -230,6 +228,12 @@ func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	oldTag, oldStart, oldEnd := t.FireflyTag, t.StartDate, t.EndDate
+	// The Firefly tag pulls spending from the owner's Firefly account, so only
+	// the owner may point it somewhere else.
+	if keys["firefly_tag"] && strings.TrimSpace(in.FireflyTag) != t.FireflyTag && !s.isOwner(r) {
+		writeErr(w, http.StatusForbidden, "only the owner can change the Firefly tag")
+		return
+	}
 	if msg := applyTripInput(t, in, keys); msg != "" {
 		writeErr(w, http.StatusBadRequest, msg)
 		return
@@ -246,7 +250,7 @@ func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
 	}
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "updated", "trip details")
 	t.Counts, _ = s.store.TripCounts(r.Context(), t.ID)
-	s.publish("travel.trip_updated", fmt.Sprintf("trip:%d", t.ID), map[string]any{
+	s.publish("travel.trip_updated", fmt.Sprintf("trip:%d", t.ID), t.OwnerID, map[string]any{
 		"trip_id": t.ID, "name": t.Name, "destination": t.Destination, "start_date": t.StartDate, "end_date": t.EndDate,
 		"status": t.Status, "currency": t.Currency, "budget": t.Budget, "firefly_tag": t.FireflyTag, "archived": t.Archived,
 	})
@@ -490,7 +494,10 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 	journal, _ := s.store.ListJournal(ctx, t.ID)
 	docs, _ := s.store.ListDocuments(ctx, t.ID)
 	t.Counts, _ = s.store.TripCounts(ctx, t.ID)
-	st, ff, dw, im := s.clients(ctx)
+	// Firefly spending is synced with the trip owner's account; route, photos
+	// and AI use the viewer's own accounts.
+	_, ff, _, _ := s.clients(ctx, t.OwnerID)
+	st, _, dw, im := s.clients(ctx, actorID(ctx))
 	budget := s.budgetSummary(t, expenses)
 	// Freshness of the Firefly sync.
 	_, syncedAt, _ := s.store.CacheGet(ctx, cacheKey(t.ID, "firefly-synced"))
@@ -523,6 +530,12 @@ func (s *Server) handleTripRefresh(w http.ResponseWriter, r *http.Request) {
 
 func cacheKey(tripID int64, what string) string {
 	return "trip:" + strconv.FormatInt(tripID, 10) + ":" + what
+}
+
+// userCacheKey keys what came from one person's own accounts (their Dawarich
+// track, their Immich photos) so another member of the trip never gets it.
+func userCacheKey(tripID, userID int64, what string) string {
+	return cacheKey(tripID, "u"+strconv.FormatInt(userID, 10)+":"+what)
 }
 
 func firstNonEmpty(v ...string) string {

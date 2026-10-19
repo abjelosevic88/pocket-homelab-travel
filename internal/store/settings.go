@@ -7,19 +7,55 @@ import (
 // DefaultTitle is the app title until someone changes it.
 const DefaultTitle = "Pocket Travel"
 
-// GetSettings loads all settings with defaults applied.
-func (s *Store) GetSettings(ctx context.Context) (Settings, error) {
-	st := Settings{Title: DefaultTitle, HomeCurrency: "EUR", DateFormat: "auto", TimeFormat: "auto", DistanceUnit: "km", FXAuto: true, MapTiles: "osm", AutoPhotos: true}
+// globalKeys are the box-wide settings: the app title, whether setup is done
+// and whether exchange rates are looked up online. Admins change them.
+// Everything else (preferences and integration credentials) is per person
+// and lives in user_settings.
+var globalKeys = map[string]bool{"title": true, "setup_complete": true, "fx_auto": true}
+
+// GetSettings loads the box-wide settings plus userID's personal ones, with
+// defaults applied. userID 0 returns the box-wide settings and defaults only
+// (no one's credentials).
+func (s *Store) GetSettings(ctx context.Context, userID int64) (Settings, error) {
+	home := s.DefaultCurrency
+	if home == "" {
+		home = "EUR"
+	}
+	st := Settings{Title: DefaultTitle, HomeCurrency: home, DateFormat: "auto", TimeFormat: "auto", DistanceUnit: "km", FXAuto: true, MapTiles: "osm", AutoPhotos: true}
+	kv := map[string]string{}
 	rows, err := s.DB.QueryContext(ctx, `SELECT key, value FROM settings`)
 	if err != nil {
 		return st, err
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var k, v string
 		if err := rows.Scan(&k, &v); err != nil {
+			rows.Close()
 			return st, err
 		}
+		if globalKeys[k] {
+			kv[k] = v
+		}
+	}
+	rows.Close()
+	if userID > 0 {
+		rows, err := s.DB.QueryContext(ctx, `SELECT key, value FROM user_settings WHERE user_id = ?`, userID)
+		if err != nil {
+			return st, err
+		}
+		for rows.Next() {
+			var k, v string
+			if err := rows.Scan(&k, &v); err != nil {
+				rows.Close()
+				return st, err
+			}
+			if !globalKeys[k] {
+				kv[k] = v
+			}
+		}
+		rows.Close()
+	}
+	for k, v := range kv {
 		switch k {
 		case "title":
 			if v != "" {
@@ -73,19 +109,16 @@ func (s *Store) GetSettings(ctx context.Context) (Settings, error) {
 			st.SetupComplete = v == "1"
 		}
 	}
-	return st, rows.Err()
+	return st, nil
 }
 
-// SaveSettings persists all settings.
-func (s *Store) SaveSettings(ctx context.Context, st Settings) error {
+func personalKV(st Settings) map[string]string {
 	b := map[bool]string{true: "1", false: "0"}
-	kv := map[string]string{
-		"title":             st.Title,
+	return map[string]string{
 		"home_currency":     st.HomeCurrency,
 		"date_format":       st.DateFormat,
 		"time_format":       st.TimeFormat,
 		"distance_unit":     st.DistanceUnit,
-		"fx_auto":           b[st.FXAuto],
 		"firefly_url":       st.FireflyURL,
 		"firefly_token":     st.FireflyToken,
 		"dawarich_url":      st.DawarichURL,
@@ -98,8 +131,33 @@ func (s *Store) SaveSettings(ctx context.Context, st Settings) error {
 		"openai_base_url":   st.OpenAIBaseURL,
 		"map_tiles":         st.MapTiles,
 		"auto_photos":       b[st.AutoPhotos],
-		"setup_complete":    b[st.SetupComplete],
 	}
+}
+
+// SaveUserSettings persists userID's personal settings (preferences and
+// integration credentials). Box-wide fields in st are ignored.
+func (s *Store) SaveUserSettings(ctx context.Context, userID int64, st Settings) error {
+	if userID <= 0 {
+		return ErrNotFound
+	}
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	for k, v := range personalKV(st) {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`, userID, k, v); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// SaveGlobalSettings persists the box-wide settings (title, setup flag,
+// online exchange rates). Personal fields in st are ignored.
+func (s *Store) SaveGlobalSettings(ctx context.Context, st Settings) error {
+	b := map[bool]string{true: "1", false: "0"}
+	kv := map[string]string{"title": st.Title, "setup_complete": b[st.SetupComplete], "fx_auto": b[st.FXAuto]}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -111,6 +169,31 @@ func (s *Store) SaveSettings(ctx context.Context, st Settings) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// ClaimLegacySettings moves personal keys still stored box-wide (from before
+// settings were per person) to userID, without overwriting what they set.
+func (s *Store) ClaimLegacySettings(ctx context.Context, userID int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO user_settings (user_id, key, value) SELECT ?, key, value FROM settings WHERE key NOT IN ('title', 'setup_complete', 'fx_auto')`, userID); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM settings WHERE key NOT IN ('title', 'setup_complete', 'fx_auto')`); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+// HasUserSetting reports whether userID stored a value for key.
+func (s *Store) HasUserSetting(ctx context.Context, userID int64, key string) bool {
+	var n int
+	_ = s.DB.QueryRowContext(ctx, `SELECT COUNT(1) FROM user_settings WHERE user_id = ? AND key = ?`, userID, key).Scan(&n)
+	return n > 0
 }
 
 // ---- generic cache ----
@@ -133,6 +216,12 @@ func (s *Store) CachePut(ctx context.Context, key, value string) error {
 // CacheDelete removes every key with the prefix.
 func (s *Store) CacheDelete(ctx context.Context, prefix string) error {
 	_, err := s.DB.ExecContext(ctx, `DELETE FROM cache WHERE key LIKE ? || '%'`, prefix)
+	return err
+}
+
+// CacheDeleteLike removes every key matching a LIKE pattern.
+func (s *Store) CacheDeleteLike(ctx context.Context, pattern string) error {
+	_, err := s.DB.ExecContext(ctx, `DELETE FROM cache WHERE key LIKE ?`, pattern)
 	return err
 }
 

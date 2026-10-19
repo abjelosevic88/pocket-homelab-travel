@@ -33,7 +33,8 @@ func DaysBetween(a, b string) int {
 
 // TripFilter narrows ListTrips.
 type TripFilter struct {
-	UserID   int64 // visible to this user (0 = everyone)
+	UserID   int64 // visible to this user (0 = every trip; background jobs only, never a request)
+	Owned    bool  // only trips UserID owns (not ones shared with them)
 	Archived *bool
 	Status   string
 	Query    string
@@ -44,7 +45,11 @@ func (s *Store) ListTrips(ctx context.Context, f TripFilter) ([]Trip, error) {
 	q := `SELECT ` + tripCols + `, COALESCE(m.role, CASE WHEN t.owner_id = ? THEN 'owner' ELSE '' END) FROM trips t LEFT JOIN trip_members m ON m.trip_id = t.id AND m.user_id = ? WHERE 1=1`
 	args := []any{f.UserID, f.UserID}
 	if f.UserID > 0 {
-		q += ` AND (t.owner_id = ? OR m.user_id IS NOT NULL)`
+		if f.Owned {
+			q += ` AND t.owner_id = ?`
+		} else {
+			q += ` AND (t.owner_id = ? OR m.user_id IS NOT NULL)`
+		}
 		args = append(args, f.UserID)
 	}
 	if f.Archived != nil {
@@ -148,8 +153,14 @@ func (s *Store) SetTripMember(ctx context.Context, tripID, userID int64, role st
 	return err
 }
 
-// CanView reports whether the user may see the trip (admins see all).
+// TripRole returns the user's role on a trip: owner, or the role the owner
+// gave them as a member (editor | viewer). "" means no access, and callers
+// answer 404 so trip ids cannot be probed. Admins get no special access:
+// sharing through trip_members is the only way into someone else's trip.
 func (s *Store) TripRole(ctx context.Context, tripID int64, u *User) string {
+	if u == nil || u.ID <= 0 {
+		return ""
+	}
 	var owner int64
 	if err := s.DB.QueryRowContext(ctx, `SELECT owner_id FROM trips WHERE id = ?`, tripID).Scan(&owner); err != nil {
 		return ""
@@ -161,10 +172,17 @@ func (s *Store) TripRole(ctx context.Context, tripID int64, u *User) string {
 	if err := s.DB.QueryRowContext(ctx, `SELECT role FROM trip_members WHERE trip_id = ? AND user_id = ?`, tripID, u.ID).Scan(&role); err == nil {
 		return role
 	}
-	if u.Role == "admin" {
-		return "admin"
-	}
 	return ""
+}
+
+// FirstAdminID returns the owner of the box: the first admin account (the
+// one that configured the integrations before settings were per person).
+func (s *Store) FirstAdminID(ctx context.Context) int64 {
+	var id int64
+	if err := s.DB.QueryRowContext(ctx, `SELECT COALESCE((SELECT MIN(id) FROM users WHERE role = 'admin'), (SELECT MIN(id) FROM users), 0)`).Scan(&id); err != nil {
+		return 0
+	}
+	return id
 }
 
 // CreateTrip inserts a trip.

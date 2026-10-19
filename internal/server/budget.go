@@ -28,7 +28,7 @@ func (s *Server) rate(ctx context.Context, from, to, date string) (float64, stri
 	if r, src, ok := s.store.GetFXRate(ctx, from, to, date); ok {
 		return r, src
 	}
-	st, _ := s.store.GetSettings(ctx)
+	st, _ := s.store.GetSettings(ctx, 0) // fx_auto is box-wide
 	if !st.FXAuto {
 		return 1, "disabled"
 	}
@@ -454,9 +454,11 @@ func (s *Server) syncFirefly(ctx context.Context, tripID int64) (int, error) {
 	if t.FireflyTag == "" {
 		return 0, errors.New("the trip has no Firefly tag")
 	}
-	_, ff, _, _ := s.clients(ctx)
+	// The trip's spending comes from its owner's Firefly account, whoever
+	// presses sync (an editor of a shared trip) or the scheduler.
+	_, ff, _, _ := s.clients(ctx, t.OwnerID)
 	if !ff.Configured() {
-		return 0, errors.New("firefly is not configured")
+		return 0, errors.New("firefly is not configured for the trip owner")
 	}
 	tag, err := ff.TagByName(ctx, t.FireflyTag)
 	if err != nil {
@@ -507,7 +509,7 @@ func (s *Server) syncFirefly(ctx context.Context, tripID int64) (int, error) {
 			continue
 		}
 		if created {
-			s.publish("travel.expense_linked", fmt.Sprintf("expense:%d", e.ID), map[string]any{
+			s.publish("travel.expense_linked", fmt.Sprintf("expense:%d", e.ID), t.OwnerID, map[string]any{
 				"expense_id": e.ID, "trip_id": t.ID, "trip": t.Name, "name": e.Name, "category": e.Category,
 				"amount": e.Amount, "currency": e.Currency, "amount_home": e.AmountHome, "home_currency": t.Currency,
 				"date": e.Date, "source": e.Source, "external_id": e.ExternalID, "firefly_tag": t.FireflyTag,
@@ -548,8 +550,9 @@ func (s *Server) handleFireflySync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"synced": n, "budget": s.budgetSummary(t, e), "expenses": e})
 }
 
+// handleFireflyTags lists the caller's own Firefly tags.
 func (s *Server) handleFireflyTags(w http.ResponseWriter, r *http.Request) {
-	_, ff, _, _ := s.clients(r.Context())
+	_, ff, _, _ := s.clients(r.Context(), actorID(r.Context()))
 	if !ff.Configured() {
 		writeJSON(w, http.StatusOK, []any{})
 		return
@@ -564,6 +567,8 @@ func (s *Server) handleFireflyTags(w http.ResponseWriter, r *http.Request) {
 }
 
 // autoSync refreshes Firefly for trips that are running or recently finished.
+// Each trip syncs with its own owner's credentials (see syncFirefly), so the
+// job only ever touches that owner's spending.
 func (s *Server) autoSync(ctx context.Context) {
 	trips, err := s.store.ListTrips(ctx, store.TripFilter{})
 	if err != nil {

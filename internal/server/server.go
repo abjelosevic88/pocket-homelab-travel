@@ -68,6 +68,9 @@ type resolvedURL struct {
 
 // New creates a server.
 func New(cfg *config.Config, st *store.Store, log *slog.Logger, webFS fs.FS) *Server {
+	if cfg.DefaultCurrency != "" {
+		st.DefaultCurrency = cfg.DefaultCurrency
+	}
 	return &Server{cfg: cfg, store: st, log: log, webFS: webFS, started: time.Now(),
 		geo: geo.New(cfg.UserAgent, 25*time.Second), fx: fx.New(cfg.FXProvider, cfg.UserAgent, 8*time.Second), syncing: map[int64]bool{},
 		oidc:     &oidcProvider{issuerURL: cfg.OIDCIssuer},
@@ -93,15 +96,41 @@ func (s *Server) Bootstrap(ctx context.Context) error {
 		if err := s.store.CreateUser(ctx, u); err != nil {
 			return err
 		}
-		st, _ := s.store.GetSettings(ctx)
+		st, _ := s.store.GetSettings(ctx, 0)
 		st.SetupComplete = true
-		if err := s.store.SaveSettings(ctx, st); err != nil {
+		if err := s.store.SaveGlobalSettings(ctx, st); err != nil {
 			return err
 		}
 		s.log.Info("admin user created from environment", "email", u.Email)
 	}
-	// Environment integration defaults fill empty settings (the UI values win afterwards).
-	st, err := s.store.GetSettings(ctx)
+	// The integration credentials in the environment belong to the owner (the
+	// first admin); they fill the owner's empty settings, never a member's.
+	if owner := s.store.FirstAdminID(ctx); owner > 0 {
+		if err := s.seedOwnerSettings(ctx, owner); err != nil {
+			return err
+		}
+	}
+	if s.cfg.DemoData {
+		if err := s.seedDemo(ctx); err != nil {
+			return err
+		}
+	}
+	_ = s.store.PurgeSessions(ctx)
+	go s.janitor(ctx)
+	if s.core.Configured() {
+		go s.coreLoop(ctx)
+	}
+	return nil
+}
+
+// seedOwnerSettings gives the owner any personal settings still stored
+// box-wide and fills their empty integration settings from the environment
+// (the UI values win afterwards). Members never get these.
+func (s *Server) seedOwnerSettings(ctx context.Context, owner int64) error {
+	if err := s.store.ClaimLegacySettings(ctx, owner); err != nil {
+		return err
+	}
+	st, err := s.store.GetSettings(ctx, owner)
 	if err != nil {
 		return err
 	}
@@ -122,24 +151,8 @@ func (s *Server) Bootstrap(ctx context.Context) error {
 	set(&st.OpenAIKey, s.cfg.OpenAIKey)
 	set(&st.OpenAIModel, s.cfg.OpenAIModel)
 	set(&st.OpenAIBaseURL, s.cfg.OpenAIBaseURL)
-	if st.HomeCurrency == "EUR" && s.cfg.DefaultCurrency != "EUR" {
-		st.HomeCurrency = s.cfg.DefaultCurrency
-		changed = true
-	}
 	if changed {
-		if err := s.store.SaveSettings(ctx, st); err != nil {
-			return err
-		}
-	}
-	if s.cfg.DemoData {
-		if err := s.seedDemo(ctx); err != nil {
-			return err
-		}
-	}
-	_ = s.store.PurgeSessions(ctx)
-	go s.janitor(ctx)
-	if s.core.Configured() {
-		go s.coreLoop(ctx)
+		return s.store.SaveUserSettings(ctx, owner, st)
 	}
 	return nil
 }
@@ -198,10 +211,16 @@ func (s *Server) registerWithCore(ctx context.Context) error {
 	return nil
 }
 
-// publish sends an event to Core without blocking the request.
-func (s *Server) publish(topic, subject string, payload map[string]any) {
+// publish sends an event to Core without blocking the request. ownerID is
+// the person the data belongs to; their email rides along as owner_email so
+// consumers can keep it with that person.
+func (s *Server) publish(topic, subject string, ownerID int64, payload map[string]any) {
 	if !s.core.Configured() {
 		return
+	}
+	payload["owner_id"] = ownerID
+	if u, err := s.store.GetUser(context.Background(), ownerID); err == nil {
+		payload["owner_email"] = u.Email
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -255,10 +274,13 @@ func (s *Server) janitor(ctx context.Context) {
 	}
 }
 
-// ---- integration clients, built from the current settings ----
+// ---- integration clients, built from one person's settings ----
 
-func (s *Server) clients(ctx context.Context) (store.Settings, *firefly.Client, *dawarich.Client, *immich.Client) {
-	st, _ := s.store.GetSettings(ctx)
+// clients builds the integration clients from userID's own credentials.
+// Nobody uses anyone else's Firefly, Dawarich, Immich or OpenAI account; a
+// person without credentials gets unconfigured clients.
+func (s *Server) clients(ctx context.Context, userID int64) (store.Settings, *firefly.Client, *dawarich.Client, *immich.Client) {
+	st, _ := s.store.GetSettings(ctx, userID)
 	if st.FireflyURL == "" && st.FireflyToken != "" {
 		// Pocket Money serves its Firefly-compatible API under /firefly.
 		if u := s.resolveSibling(ctx, "money"); u != "" {

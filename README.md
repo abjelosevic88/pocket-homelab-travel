@@ -87,7 +87,7 @@ Want to look around first? Add `-e DEMO_DATA=true -e AUTH_MODE=none` to get thre
 
 Binaries for Linux, macOS and Windows are attached to every [release](https://github.com/abjelosevic88/pocket-homelab-travel/releases), and a systemd unit is in [deploy/systemd](deploy/systemd).
 
-Then connect your other apps under **Settings → Integrations**: a Firefly III personal access token, a Dawarich API key, an Immich API key, optionally an OpenAI key. Each has a *Test connection* button.
+Then connect your other apps under **Settings → Integrations**: a Firefly III personal access token, a Dawarich API key, an Immich API key, optionally an OpenAI key. Each has a *Test connection* button. Everything is per person: each account has its own trips and its own integrations, and sees someone else's trip only when the owner adds them to it (on a shared trip the route and photos come from the viewer's own Dawarich and Immich, the spending from the owner's Firefly).
 
 ## Configuration
 

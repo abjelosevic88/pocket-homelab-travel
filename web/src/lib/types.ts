@@ -68,7 +68,7 @@ export interface Settings {
   dawarich_url: string; dawarich_api_key: string; dawarich_configured: boolean
   immich_url: string; immich_public_url: string; immich_api_key: string; immich_configured: boolean
   openai_api_key: string; openai_model: string; openai_base_url: string; openai_configured: boolean
-  max_upload_bytes: number; setup_complete: boolean
+  max_upload_bytes: number; setup_complete: boolean; can_edit_global?: boolean
 }
 export interface Meta { place_categories: string[]; expense_categories: string[]; discover_categories: string[]; packing_templates: string[]; lodging_types: string[]; transport_types: string[] }
 export interface HomeData {

@@ -14,8 +14,9 @@ import (
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/store"
 )
 
+// aiClient uses the caller's own OpenAI key; nobody spends anyone else's.
 func (s *Server) aiClient(ctx context.Context) *ai.Client {
-	st, _ := s.store.GetSettings(ctx)
+	st, _ := s.store.GetSettings(ctx, actorID(ctx))
 	return ai.New(st.OpenAIBaseURL, st.OpenAIKey, st.OpenAIModel, 90*time.Second)
 }
 
@@ -562,7 +563,7 @@ func (s *Server) handleAIRecap(w http.ResponseWriter, r *http.Request) {
 		}
 		sb.WriteString("\n")
 	}
-	if v, _, ok := s.store.CacheGet(ctx, cacheKey(t.ID, "dawarich-route")); ok {
+	if v, _, ok := s.store.CacheGet(ctx, userCacheKey(t.ID, actorID(ctx), "dawarich-route")); ok {
 		var rr RouteResponse
 		if jsonUnmarshal([]byte(v), &rr) == nil && rr.DistanceKm > 0 {
 			fmt.Fprintf(&sb, "Distance travelled (GPS): %.0f km over %d tracked days\n", rr.DistanceKm, len(rr.Days))

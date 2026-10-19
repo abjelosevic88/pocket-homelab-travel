@@ -109,6 +109,12 @@ func (s *Server) firstOrSystemUser(ctx context.Context, email, name string) (*st
 	if err := s.store.CreateUser(ctx, u); err != nil {
 		return nil, err
 	}
+	if role == "admin" {
+		// The very first account is the owner: the environment's integration credentials are theirs.
+		if err := s.seedOwnerSettings(ctx, u.ID); err != nil {
+			s.log.Warn("seed owner settings", "err", err)
+		}
+	}
 	s.log.Info("auto-provisioned user", "email", email, "mode", s.cfg.AuthMode, "role", role)
 	return u, nil
 }
@@ -126,7 +132,7 @@ func (s *Server) handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "count users")
 		return
 	}
-	st, _ := s.store.GetSettings(r.Context())
+	st, _ := s.store.GetSettings(r.Context(), 0)
 	u, _ := s.resolveUser(r)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"needs_setup":   n == 0 && s.cfg.AuthMode == "local",
@@ -171,9 +177,12 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "create user")
 		return
 	}
-	st, _ := s.store.GetSettings(ctx)
+	st, _ := s.store.GetSettings(ctx, 0)
 	st.SetupComplete = true
-	_ = s.store.SaveSettings(ctx, st)
+	_ = s.store.SaveGlobalSettings(ctx, st)
+	if err := s.seedOwnerSettings(ctx, u.ID); err != nil {
+		s.log.Warn("seed owner settings", "err", err)
+	}
 	id, err := s.store.CreateSession(ctx, u.ID, s.cfg.SessionTTL)
 	if err != nil {
 		s.fail(w, err, "create session")

@@ -54,18 +54,19 @@ function General() {
       <Card title="Preferences">
         <div className="grid" style={{ gap: 14 }}>
           <Field label="App title"><input value={f.title} onChange={e => setF({ ...f, title: e.target.value })} maxLength={40} disabled={!isAdmin} /></Field>
-          <Field label="Home currency" help="The default for new trips and budgets."><CurrencySelect value={f.home_currency} onChange={c => setF({ ...f, home_currency: c })} disabled={!isAdmin} /></Field>
+          <Field label="Home currency" help="The default for new trips and budgets."><CurrencySelect value={f.home_currency} onChange={c => setF({ ...f, home_currency: c })} /></Field>
           <div className="two-col tight">
-            <Field label="Date format"><Select value={f.date_format} onChange={v => setF({ ...f, date_format: v as DateFormat })} options={DATE_FORMATS.map(d => ({ value: d.id, label: d.label }))} disabled={!isAdmin} /></Field>
-            <Field label="Time format"><Select value={f.time_format} onChange={v => setF({ ...f, time_format: v as TimeFormat })} options={TIME_FORMATS.map(d => ({ value: d.id, label: d.label }))} disabled={!isAdmin} /></Field>
+            <Field label="Date format"><Select value={f.date_format} onChange={v => setF({ ...f, date_format: v as DateFormat })} options={DATE_FORMATS.map(d => ({ value: d.id, label: d.label }))} /></Field>
+            <Field label="Time format"><Select value={f.time_format} onChange={v => setF({ ...f, time_format: v as TimeFormat })} options={TIME_FORMATS.map(d => ({ value: d.id, label: d.label }))} /></Field>
           </div>
           <div className="two-col tight">
             <Field group label="Distances"><Segmented value={f.distance_unit} onChange={v => setF({ ...f, distance_unit: v as 'km' | 'mi' })} options={[{ value: 'km', label: 'km' }, { value: 'mi', label: 'miles' }]} size="sm" /></Field>
-            <Field label="Map tiles" help="All free and keyless. Satellite is Esri imagery with a labels layer on top."><Select value={f.map_tiles} onChange={v => setF({ ...f, map_tiles: v })} options={Object.entries(TILES).map(([v, t]) => ({ value: v, label: t.label }))} disabled={!isAdmin} /></Field>
+            <Field label="Map tiles" help="All free and keyless. Satellite is Esri imagery with a labels layer on top."><Select value={f.map_tiles} onChange={v => setF({ ...f, map_tiles: v })} options={Object.entries(TILES).map(([v, t]) => ({ value: v, label: t.label }))} /></Field>
           </div>
-          <label className="row"><input type="checkbox" checked={f.auto_photos} onChange={e => setF({ ...f, auto_photos: e.target.checked })} style={{ width: 'auto' }} disabled={!isAdmin} /> Find photos for new places automatically (Wikipedia and Wikimedia Commons, with credits)</label>
+          <label className="row"><input type="checkbox" checked={f.auto_photos} onChange={e => setF({ ...f, auto_photos: e.target.checked })} style={{ width: 'auto' }} /> Find photos for new places automatically (Wikipedia and Wikimedia Commons, with credits)</label>
           <label className="row"><input type="checkbox" checked={f.fx_auto} onChange={e => setF({ ...f, fx_auto: e.target.checked })} style={{ width: 'auto' }} disabled={!isAdmin || f.fx_provider === 'none'} /> Look up exchange rates automatically (Frankfurter / open.er-api.com){f.fx_provider === 'none' && <span className="muted small"> — disabled on the server</span>}</label>
-          {isAdmin ? <div><button className="btn primary" onClick={() => save()} disabled={busy}>Save</button></div> : <p className="muted small">Only an admin can change these.</p>}
+          <div><button className="btn primary" onClick={() => save()} disabled={busy}>Save</button></div>
+          <p className="muted small">These preferences are yours alone.{!isAdmin && ' The app title and exchange-rate lookups are box-wide; only an admin can change them.'}</p>
         </div>
       </Card>
       <Card title="How it fits together">
@@ -82,7 +83,7 @@ function General() {
 }
 
 function Integrations() {
-  const { f, setF, save, busy, isAdmin } = useSettingsForm()
+  const { f, setF, save, busy } = useSettingsForm()
   const { toast } = useToast()
   const [test, setTest] = useState<Record<string, string>>({})
   if (!f) return <Loading />
@@ -94,30 +95,31 @@ function Integrations() {
     <Card title={title} actions={<span className={`badge ${f[`${which}_configured` as 'firefly_configured'] ? 'cat' : ''}`}>{f[`${which}_configured` as 'firefly_configured'] ? 'connected' : 'not set'}</span>}>
       <p className="muted small">{what}</p>
       <div className="grid" style={{ gap: 12 }}>
-        <Field label="URL" help={help}><input value={f[urlKey]} onChange={e => setF({ ...f, [urlKey]: e.target.value })} placeholder="http://host.docker.internal:8080" disabled={!isAdmin} /></Field>
-        <Field label={which === 'firefly' ? 'Personal access token' : 'API key'} help="Stored on the server; shown masked. Leave as is to keep the current one."><input value={f[keyKey]} onChange={e => setF({ ...f, [keyKey]: e.target.value })} disabled={!isAdmin} autoComplete="off" /></Field>
-        {which === 'immich' && <Field label="Public URL (optional)" help="What the browser opens for “Open in Immich” when the API URL above is internal (e.g. host.docker.internal)."><input value={f.immich_public_url} onChange={e => setF({ ...f, immich_public_url: e.target.value })} placeholder="https://photos.example.com" disabled={!isAdmin} /></Field>}
+        <Field label="URL" help={help}><input value={f[urlKey]} onChange={e => setF({ ...f, [urlKey]: e.target.value })} placeholder="http://host.docker.internal:8080" /></Field>
+        <Field label={which === 'firefly' ? 'Personal access token' : 'API key'} help="Stored on the server; shown masked. Leave as is to keep the current one."><input value={f[keyKey]} onChange={e => setF({ ...f, [keyKey]: e.target.value })} autoComplete="off" /></Field>
+        {which === 'immich' && <Field label="Public URL (optional)" help="What the browser opens for “Open in Immich” when the API URL above is internal (e.g. host.docker.internal)."><input value={f.immich_public_url} onChange={e => setF({ ...f, immich_public_url: e.target.value })} placeholder="https://photos.example.com" /></Field>}
         <div className="row"><button className="btn sm" onClick={() => run(which, f[urlKey], f[keyKey])} disabled={!f[urlKey]}>Test connection</button><span className={`small ${test[which]?.startsWith('✓') ? 'ok' : test[which]?.startsWith('✕') ? 'bad' : 'muted'}`}>{test[which]}</span></div>
       </div>
     </Card>
   )
   return (
     <div className="grid" style={{ gap: 16 }}>
+      <p className="muted small">These are your own accounts. Each person connects their own Firefly, Dawarich, Immich and OpenAI; nobody else on this box uses yours. On a trip shared with you, the route and photos come from your accounts and the spending from the trip owner's Firefly.</p>
       {block('firefly', '💶 Firefly III', 'firefly_url', 'firefly_token', 'What the trip really cost. Tag the withdrawals in Firefly (e.g. "lisbon 2027") and set the same tag on the trip; they appear as spent, in their own currency, converted at the day\'s rate. Synced every 30 minutes while a trip is running or upcoming, and on demand.', 'Create the token under Firefly → Options → Profile → OAuth → Personal access tokens.')}
       {block('dawarich', '🛰 Dawarich', 'dawarich_url', 'dawarich_api_key', 'Where you actually went. The recorded route is drawn on the map, each day shows the distance and the detected stops, and the GPX export can include the track.', 'Dawarich → Account → API key. Behind HTTPS use the public name; plain http works too.')}
       <Card title="✨ OpenAI (or any compatible API)" actions={<span className={`badge ${f.openai_configured ? 'cat' : ''}`}>{f.openai_configured ? 'connected' : 'not set'}</span>}>
         <p className="muted small">Optional. Adds five buttons: <b>Suggest places</b> (popular, well-rated places for the destination, located with OpenStreetMap), <b>Plan my days</b> (assigns ideas to days and times), <b>Describe</b> a place with practical tips, a <b>packing list</b> tailored to the trip and weather, and a <b>recap</b> written from your journal, visited places and spending. Trip details are sent to the provider when you use them; nothing runs automatically.</p>
         <div className="grid" style={{ gap: 12 }}>
-          <Field label="API key" help="platform.openai.com → API keys. Stored on the server; shown masked."><input value={f.openai_api_key} onChange={e => setF({ ...f, openai_api_key: e.target.value })} disabled={!isAdmin} autoComplete="off" placeholder="sk-…" /></Field>
+          <Field label="API key" help="platform.openai.com → API keys. Stored on the server; shown masked."><input value={f.openai_api_key} onChange={e => setF({ ...f, openai_api_key: e.target.value })} autoComplete="off" placeholder="sk-…" /></Field>
           <div className="two-col tight">
-            <Field label="Model" help="Default gpt-4o-mini (cheap, good enough). gpt-4o or gpt-4.1 give better suggestions."><input value={f.openai_model} onChange={e => setF({ ...f, openai_model: e.target.value })} disabled={!isAdmin} placeholder="gpt-4o-mini" /></Field>
-            <Field label="Base URL (optional)" help="For OpenAI-compatible servers: Ollama, LM Studio, OpenRouter…"><input value={f.openai_base_url} onChange={e => setF({ ...f, openai_base_url: e.target.value })} disabled={!isAdmin} placeholder="https://api.openai.com/v1" /></Field>
+            <Field label="Model" help="Default gpt-4o-mini (cheap, good enough). gpt-4o or gpt-4.1 give better suggestions."><input value={f.openai_model} onChange={e => setF({ ...f, openai_model: e.target.value })} placeholder="gpt-4o-mini" /></Field>
+            <Field label="Base URL (optional)" help="For OpenAI-compatible servers: Ollama, LM Studio, OpenRouter…"><input value={f.openai_base_url} onChange={e => setF({ ...f, openai_base_url: e.target.value })} placeholder="https://api.openai.com/v1" /></Field>
           </div>
           <div className="row"><button className="btn sm" onClick={() => run('openai', f.openai_base_url, f.openai_api_key)} disabled={!f.openai_api_key}>Test connection</button><span className={`small ${test.openai?.startsWith('✓') ? 'ok' : test.openai?.startsWith('✕') ? 'bad' : 'muted'}`}>{test.openai}</span></div>
         </div>
       </Card>
       {block('immich', '📷 Immich', 'immich_url', 'immich_api_key', 'Every photo and video taken between the trip dates, grouped by day; the geotagged ones land on the map. Thumbnails are proxied so the browser never sees the key.', 'Immich → Account settings → API keys.')}
-      {isAdmin && <div><button className="btn primary" onClick={() => save()} disabled={busy}>Save integrations</button></div>}
+      <div><button className="btn primary" onClick={() => save()} disabled={busy}>Save integrations</button></div>
     </div>
   )
 }
@@ -183,7 +185,7 @@ function Users() {
   const run = async (fn: () => Promise<unknown>, msg: string) => { try { await fn(); await reloadMeta(); toast(msg) } catch (e) { toast((e as Error).message, 'err') } }
   return (
     <Card title="Users" actions={isAdmin && <button className="btn primary sm" onClick={() => setEdit({ role: 'member' })}>+ Add user</button>}>
-      <p className="muted">Everyone signs in with their own account. A trip is visible to its owner and the companions added under the trip's settings; admins see everything and manage users and integrations.</p>
+      <p className="muted">Everyone signs in with their own account. A trip is visible only to its owner and the companions added under the trip's settings. Admins manage users and the box-wide settings but see no one else's trips.</p>
       <table className="table compact">
         <thead><tr><th /><th>Name</th><th>Email</th><th>Role</th><th /></tr></thead>
         <tbody>
@@ -278,12 +280,13 @@ function Tokens() {
 }
 
 function Data() {
+  const { user } = useApp()
   return (
     <div className="two-col">
-      <Card title="Backup">
+      {user?.role === 'admin' && <Card title="Backup">
         <p className="muted">A consistent copy of the SQLite database (<code>VACUUM INTO</code>) with every trip. Uploaded documents and images live next to it under <code>files/</code>. Restore by stopping the app and replacing <code>pocket-travel.db</code> in the data directory.</p>
         <a className="btn primary" href={`${V1}/backup`}>Download database</a>
-      </Card>
+      </Card>}
       <Card title="Per-trip exports">
         <p className="muted">Each trip has its own exports under its Settings tab: a calendar (.ics) you can subscribe to, GPX for maps and watches, and a JSON backup that imports again under Settings → Import.</p>
       </Card>
@@ -292,7 +295,9 @@ function Data() {
 }
 
 function About() {
-  const { data } = useAsync(() => api.get<Record<string, unknown>>(`${V1}/settings/system`), [])
+  const { user } = useApp()
+  const isAdmin = user?.role === 'admin'
+  const { data } = useAsync(() => isAdmin ? api.get<Record<string, unknown>>(`${V1}/settings/system`) : Promise.resolve(null), [isAdmin])
   const counts = (data?.counts || {}) as Record<string, number>
   return (
     <Card title="About">

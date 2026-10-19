@@ -1,6 +1,6 @@
 # Configuration
 
-Everything is an environment variable with a sensible default. Integration settings saved in the UI (Settings → Integrations) take precedence over the environment once set.
+Everything is an environment variable with a sensible default. Data is per person: each account sees only its own trips plus the ones shared with it (trip members), and connects its own Firefly, Dawarich, Immich and OpenAI under Settings → Integrations. The integration variables below belong to the owner (the first admin): they fill the owner's empty settings and are never given to other accounts. Values saved in the UI take precedence over the environment once set.
 
 | Variable | Default | Meaning |
 |---|---|---|

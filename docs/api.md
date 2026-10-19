@@ -6,7 +6,7 @@ All endpoints live under `/api/v1`. Authenticate with the session cookie (the UI
 
 | Method | Path | |
 |---|---|---|
-| GET | `/trips?archived=0&q=` | Trips the caller can see (`all=1` for admins) with counts |
+| GET | `/trips?archived=0&q=` | The caller's own trips and the ones shared with them, with counts. Everyone else's trips answer 404, admins included |
 | POST | `/trips` | Create: `name`, `destination`, `start_date`, `end_date`, `currency`, `budget`, `firefly_tag`, … |
 | GET/PUT/DELETE | `/trips/{id}` | |
 | GET | `/trips/{id}/overview` | Everything: trip, places, lodging, transport, expenses, checklists, journal, documents, budget, integrations |
@@ -38,7 +38,7 @@ All endpoints live under `/api/v1`. Authenticate with the session cookie (the UI
 | GET | `/trips/{id}/weather` | Daily weather for the trip dates |
 | GET | `/fx?from=USD&to=EUR&date=` | Exchange rate |
 | GET | `/currencies` | ISO 4217 list |
-| POST | `/integrations/test` | `{which, url, key}` (admin) |
+| POST | `/integrations/test` | `{which, url, key}`; a masked key means the caller's own stored one |
 
 Add `?refresh=1` to the Dawarich / Immich / weather endpoints to bypass the cache.
 
@@ -65,4 +65,4 @@ Add `?refresh=1` to the Dawarich / Immich / weather endpoints to bypass the cach
 
 ## Misc
 
-`GET /home` (home page data), `GET /dashboard` (flat numbers for a Homepage widget: `trips`, `upcoming`, `days_traveled`, `places`, `next_trip_text`), `GET /meta` (category lists), `/users`, `/settings`, `/settings/system`, `/tokens`, `GET /backup` (SQLite download), `/healthz`, `/readyz`, `/metrics`.
+`GET /home` (home page data), `GET /dashboard` (flat numbers for a Homepage widget: `trips`, `upcoming`, `days_traveled`, `places`, `next_trip_text`), `GET /meta` (category lists), `/users`, `/settings` (the caller's own preferences and integrations; title and `fx_auto` are box-wide, admin only), `/settings/system` (admin), `/tokens`, `GET /backup` (SQLite download, admin), `/healthz`, `/readyz`, `/metrics`.

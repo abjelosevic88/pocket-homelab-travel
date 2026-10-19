@@ -74,9 +74,10 @@ func (s *Server) fetchPlacePhotos(ctx context.Context, t *store.Trip, p *store.P
 	return n
 }
 
-// autoPhotos kicks a background lookup for a new place without photos.
-func (s *Server) autoPhotos(t *store.Trip, p *store.Place) {
-	st, _ := s.store.GetSettings(context.Background())
+// autoPhotos kicks a background lookup for a new place without photos, when
+// the person who added it has picture lookups on.
+func (s *Server) autoPhotos(userID int64, t *store.Trip, p *store.Place) {
+	st, _ := s.store.GetSettings(context.Background(), userID)
 	if !st.AutoPhotos || p.Name == "" {
 		return
 	}

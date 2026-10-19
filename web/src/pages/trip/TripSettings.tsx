@@ -76,7 +76,7 @@ export function TripSettings() {
       </Card>
       {del && <Confirm title={`Delete ${trip.name}?`} message="Every place, stay, cost, checklist, journal entry and document in it is deleted. This cannot be undone." onCancel={() => setDel(false)} onConfirm={remove} />}
       {dup && <DuplicateModal trip={trip} onClose={() => setDup(false)} onDone={t => { setDup(false); navigate(`/trips/${t.id}`) }} />}
-      {user?.role !== 'admin' && !isOwner && <p className="muted small">Only the owner can share, archive or delete the trip.</p>}
+      {!isOwner && <p className="muted small">Only the owner can share, archive or delete the trip.</p>}
     </div>
   )
 }
@@ -140,9 +140,9 @@ export function TripModal({ trip, onClose, onSaved }: { trip?: Trip; onClose: ()
             <Field label="Budget" help="Everything is converted into this currency."><AmountInput amount={f.budget ?? null} currency={f.currency || 'EUR'} onAmount={m => set('budget', m || 0)} onCurrency={c => set('currency', c)} /></Field>
             <Field label="Timezone" help="For Dawarich day boundaries. Leave empty for the server's."><input value={f.timezone || ''} onChange={e => set('timezone', e.target.value)} placeholder="Europe/Podgorica" /></Field>
           </div>
-          <Field label="Firefly III tag" help={settings?.firefly_configured ? 'Withdrawals carrying this tag are pulled in as spent money, every 30 minutes while the trip runs.' : 'Connect Firefly under Settings → Integrations first; you can still type the tag now.'}>
+          {trip && trip.role !== 'owner' ? <Field label="Firefly III tag" help="Spending is pulled from the trip owner's Firefly; only the owner can change the tag."><input value={f.firefly_tag || ''} disabled /></Field> : <Field label="Firefly III tag" help={settings?.firefly_configured ? 'Withdrawals carrying this tag are pulled in as spent money, every 30 minutes while the trip runs.' : 'Connect Firefly under Settings → Integrations first; you can still type the tag now.'}>
             {tagOpts.length > 0 ? <Select value={f.firefly_tag || ''} onChange={v => set('firefly_tag', v)} options={tagOpts} placeholder="No tag" clearLabel="No tag" onCreate={v => v} createLabel="Use tag" /> : <input value={f.firefly_tag || ''} onChange={e => set('firefly_tag', e.target.value)} placeholder="lustica 2026" />}
-          </Field>
+          </Field>}
           <label className="row"><input type="checkbox" checked={f.dawarich !== false} onChange={e => set('dawarich', e.target.checked)} style={{ width: 'auto' }} /> Show the recorded route and timeline from Dawarich</label>
           <label className="row"><input type="checkbox" checked={f.immich !== false} onChange={e => set('immich', e.target.checked)} style={{ width: 'auto' }} /> Show photos from Immich</label>
           <Field label="Link"><input type="url" value={f.link || ''} onChange={e => set('link', e.target.value)} placeholder="https://" /></Field>

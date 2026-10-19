@@ -156,7 +156,7 @@ func (s *Server) handleCreatePlace(w http.ResponseWriter, r *http.Request) {
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "added place", p.Name)
 	s.store.TouchTrip(r.Context(), t.ID)
 	p.Photos = []store.PlacePhoto{}
-	s.autoPhotos(t, p)
+	s.autoPhotos(actorID(r.Context()), t, p)
 	writeJSON(w, http.StatusCreated, p)
 }
 
