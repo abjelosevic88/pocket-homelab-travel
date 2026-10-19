@@ -65,7 +65,7 @@ With an OpenAI key (or any compatible endpoint) five more buttons appear: **sugg
 | **Checklists, journal, documents** | Templates or a generated list, multi-line paste, assignees, progress. Journal entries with a mood from everyone on the trip. Documents stored next to the database, linked to a stay, leg or place. |
 | **AI (optional)** | Suggest places, plan the days, describe a place, packing list, recap. OpenAI or any compatible endpoint (Ollama, LM Studio, OpenRouter). Nothing runs unless you press the button. |
 | **Exports & imports** | iCalendar feed to subscribe to (stays, legs, scheduled places with references), GPX, JSON backup. Import from AdventureLog (collections with locations, lodging, transportation, notes, checklists and images) or a JSON backup. |
-| **Users & ops** | Built-in login (admin/member), SSO-proxy header, or no login on a trusted LAN. API tokens. SQLite backup from the UI/CLI/API, Prometheus `/metrics`, `GET /dashboard` for Homepage. With **Pocket Core** on the box: registers itself, publishes `travel.trip_created`, `travel.trip_updated` and `travel.expense_linked`, accepts paired-phone tokens, finds Pocket Money's Firefly API without a `FIREFLY_URL`. |
+| **Users & ops** | Built-in login (admin/member), SSO-proxy header, or no login on a trusted LAN. API tokens. SQLite backup from the UI/CLI/API, Prometheus `/metrics`, `GET /dashboard` for Homepage. With **Pocket Core** on the box: registers itself, publishes `travel.trip_created`, `travel.trip_updated` and `travel.expense_linked`, accepts paired-phone tokens, finds Pocket Money's Firefly API without a `FIREFLY_URL`, and offers “Sign in with Pocket Core” with zero configuration (any OpenID Connect provider works via `OIDC_*`). |
 
 ## Run it
 

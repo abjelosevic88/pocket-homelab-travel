@@ -5,7 +5,7 @@ Everything is an environment variable with a sensible default. Integration setti
 | Variable | Default | Meaning |
 |---|---|---|
 | `HOST` / `PORT` | `0.0.0.0` / `8080` | Listen address |
-| `BASE_URL` | | Public URL, used in calendar exports |
+| `BASE_URL` | | Public URL, used in calendar exports; also the base of the OIDC callback and the redirect URI the app asks Pocket Core for |
 | `DATA_DIR` | `./data` | SQLite file, uploaded files, backups |
 | `DB_PATH` | `$DATA_DIR/pocket-travel.db` | |
 | `FILES_DIR` | `$DATA_DIR/files` | Documents, covers, place images |
@@ -30,6 +30,9 @@ Everything is an environment variable with a sensible default. Integration setti
 | `USER_AGENT` | `PocketTravel/1.0 (+repo)` | Sent to Nominatim, Overpass, Open-Meteo, Wikipedia |
 | `CORE_URL` / `CORE_REGISTRATION_KEY` | | [Pocket Core](https://git.bjelke.org/abjelosevic88/pocket-homelab-core): register on start (the key is needed once; the minted app token lives in `$DATA_DIR/core.token`), publish `travel.trip_created` / `travel.trip_updated` / `travel.expense_linked`, accept the tokens Core hands to paired phones, and resolve Pocket Money's Firefly-compatible API through Core when `FIREFLY_URL` is empty but a token is set |
 | `CORE_APP_URL` | `BASE_URL` | How Core reaches this app for health checks (e.g. `http://host.docker.internal:8174`) |
+| `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | | Sign in with an OpenID Connect provider (PocketID, Authelia, Authentik, Keycloak…). Needs `BASE_URL`; the callback is `BASE_URL/api/v1/auth/oidc/callback`. On a box with Pocket Core none of these are needed — the app receives its client when it registers |
+| `OIDC_NAME` | `single sign-on` | Button label: “Sign in with …” (a Core-issued client is labelled “Pocket Core”) |
+| `OIDC_AUTO_CREATE` | `true` | Give an unknown (verified) email a member account instead of refusing it. Always on for a Core-issued client |
 | `DEMO_DATA` | `false` | Seed three example trips on first start |
 | `TZ` | | Container timezone (day boundaries for Dawarich and "today") |
 
