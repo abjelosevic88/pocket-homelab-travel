@@ -36,6 +36,7 @@ type svcHarness struct {
 	creds       []string // "user type" Core handed a credential for
 	statusCalls int
 	registered  core.Manifest
+	modes       [][]core.ConnMode // every PUT /api/v1/links/modes
 }
 
 func newSvcHarness(t *testing.T, withCore bool) *svcHarness {
@@ -98,6 +99,13 @@ func newSvcHarness(t *testing.T, withCore bool) *svcHarness {
 			return "no_account", ""
 		}
 		switch r.URL.Path {
+		case "/api/v1/links/modes":
+			var in struct {
+				Modes []core.ConnMode `json:"modes"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&in)
+			h.modes = append(h.modes, in.Modes)
+			_, _ = w.Write([]byte(`{"recorded":1}`))
 		case "/api/v1/apps/register":
 			_ = json.NewDecoder(r.Body).Decode(&h.registered)
 			_, _ = w.Write([]byte(`{"app":{}}`))
@@ -286,13 +294,14 @@ func TestServiceConnectionModes(t *testing.T) {
 		t.Fatalf("direct: dawarich %v immich %v core %v", dw, im, creds)
 	}
 
-	// Pocket Core: Core's address and key, asked for at every use.
+	// Pocket Core: Core's address and key, reused for a minute (the SDK's
+	// cache): the settings screens and every use after them ask Core once.
+	h.reset()
 	h.do(h.ownerTok, "PUT", "/api/v1/settings", map[string]any{"dawarich_mode": "core", "immich_mode": "core"})
 	st = h.settings(h.ownerTok)
 	if st["dawarich_via"] != "core" || st["dawarich_source"] != "box" || st["immich_via"] != "core" || st["immich_source"] != "box" {
 		t.Fatalf("owner core %v", st)
 	}
-	h.reset()
 	if code, body := h.do(h.ownerTok, "GET", base+"/dawarich/timeline", nil); code != 200 || !strings.Contains(body, "2026-05-02") {
 		t.Fatalf("core timeline %d %s", code, body)
 	}
@@ -308,8 +317,8 @@ func TestServiceConnectionModes(t *testing.T) {
 	if !allEqual(dw, "box-dawarich-key") || !allEqual(im, "box-immich-key") {
 		t.Fatalf("core: dawarich %v immich %v", dw, im)
 	}
-	if strings.Join(creds, ",") != "owner@example.com dawarich,owner@example.com immich,owner@example.com immich,owner@example.com immich" {
-		t.Fatalf("want a credential per use, Core saw %v", creds)
+	if strings.Join(creds, ",") != "owner@example.com dawarich,owner@example.com immich" {
+		t.Fatalf("want one credential per service (cached), Core saw %v", creds)
 	}
 	ov := h.overview(h.ownerTok, base)
 	if ov["dawarich"]["configured"] != true || ov["immich"]["configured"] != true || ov["immich"]["url"] != "https://immich.example" {
@@ -320,6 +329,9 @@ func TestServiceConnectionModes(t *testing.T) {
 	}
 	if _, body := h.do(h.ownerTok, "POST", "/api/v1/integrations/test", map[string]any{"which": "dawarich"}); !strings.Contains(body, `"ok":true`) || !strings.Contains(body, "through Pocket Core (the box's key)") {
 		t.Fatalf("test dawarich %s", body)
+	}
+	if _, _, creds, _ = h.seen(); strings.Join(creds[2:], ",") != "owner@example.com immich,owner@example.com dawarich" {
+		t.Fatalf("Test connection must ask Core afresh, Core saw %v", creds)
 	}
 
 	// Off: no calls at all.
@@ -369,11 +381,11 @@ func TestServiceConnectionModes(t *testing.T) {
 	h.mu.Lock()
 	h.memberOwn = true
 	h.mu.Unlock()
+	h.reset()
 	st = h.settings(h.memberTok)
 	if st["immich_via"] != "core" || st["immich_source"] != "personal" || st["dawarich_source"] != "personal" {
 		t.Fatalf("member personal %v", st)
 	}
-	h.reset()
 	if code, body := h.do(h.memberTok, "GET", base+"/photos/ab12/thumb", nil); code != 200 || body != "jpeg:member-immich-key" {
 		t.Fatalf("member thumb %d %s", code, body)
 	}
@@ -381,7 +393,7 @@ func TestServiceConnectionModes(t *testing.T) {
 		t.Fatalf("member timeline %d %s", code, body)
 	}
 	dw, im, creds, _ = h.seen()
-	if !allEqual(im, "member-immich-key") || !allEqual(dw, "member-dawarich-key") || !allEqual(creds[:1], "member@example.com immich") {
+	if !allEqual(im, "member-immich-key") || !allEqual(dw, "member-dawarich-key") || strings.Join(creds, ",") != "member@example.com dawarich,member@example.com immich" {
 		t.Fatalf("member: dawarich %v immich %v core %v", dw, im, creds)
 	}
 }

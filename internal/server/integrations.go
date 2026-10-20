@@ -170,6 +170,12 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	// Only this person's route/photo caches depend on their credentials.
 	_ = s.store.CacheDeleteLike(r.Context(), "trip:%:u"+strconv.FormatInt(u.ID, 10)+":%")
+	for _, k := range []string{"money_mode", "dawarich_mode", "immich_mode", "firefly_token", "dawarich_api_key", "immich_api_key"} {
+		if keys[k] {
+			s.modesChanged() // a mode changed or a connection was removed: tell Core's map
+			break
+		}
+	}
 	writeJSON(w, http.StatusOK, s.publicSettings(r.Context(), cur, u))
 }
 
@@ -231,7 +237,7 @@ func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 			c = dawarich.New(firstNonEmpty(strings.TrimSpace(in.URL), st.DawarichURL), key, 15*time.Second)
 		} else {
 			var conn *serviceConn
-			if c, conn, err = s.dawarichFor(ctx, userFrom(r.Context()).ID); err == nil {
+			if c, conn, err = s.dawarichFor(freshCreds(ctx), userFrom(r.Context()).ID); err == nil { // a test is always live
 				how = viaText(conn)
 			}
 		}
@@ -282,7 +288,7 @@ func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 			c = immich.New(firstNonEmpty(strings.TrimSpace(in.URL), st.ImmichURL), key, 15*time.Second)
 		} else {
 			var conn *serviceConn
-			if c, conn, err = s.immichFor(ctx, userFrom(r.Context()).ID); err == nil {
+			if c, conn, err = s.immichFor(freshCreds(ctx), userFrom(r.Context()).ID); err == nil { // a test is always live
 				how = viaText(conn)
 			}
 		}

@@ -19,7 +19,8 @@ import (
 //
 //   - core:   Pocket Core hands out the service's address and the person's
 //     own key there (the box's key only when Travel acts for an admin),
-//     asked for at every use; nothing to paste.
+//     reused for a minute by the SDK (Test connection asks afresh);
+//     nothing to paste.
 //   - direct: the URL + key saved in Settings, the way it always worked.
 //   - off:    Travel does not call the service.
 //
@@ -98,7 +99,7 @@ func (s *Server) serviceFor(ctx context.Context, u *store.User, sv serviceSaved)
 	if u == nil {
 		return nil, errors.New("nobody to act for")
 	}
-	cred, err := s.core.ServiceFor(ctx, u.Email, sv.typ)
+	cred, err := s.serviceCred(ctx, u.Email, sv.typ)
 	if err != nil {
 		var le *core.LinkError
 		if errors.As(err, &le) {
@@ -154,6 +155,22 @@ func (s *Server) serviceStatus(ctx context.Context, u *store.User, sv serviceSav
 		return eff, "", t, ""
 	}
 	return eff, "", reason, ""
+}
+
+// freshKey marks a context whose service credential must come from Core
+// right now (Test connection), not the SDK's one-minute cache.
+type freshKey struct{}
+
+// freshCreds makes serviceFor ask Core afresh.
+func freshCreds(ctx context.Context) context.Context { return context.WithValue(ctx, freshKey{}, true) }
+
+// serviceCred is the person's credential: cached by the SDK for a minute (and
+// through a Core outage) for normal work, straight from Core for a test.
+func (s *Server) serviceCred(ctx context.Context, email, typ string) (*core.ServiceCred, error) {
+	if fresh, _ := ctx.Value(freshKey{}).(bool); fresh {
+		return s.core.ServiceForFresh(ctx, email, typ)
+	}
+	return s.core.ServiceFor(ctx, email, typ)
 }
 
 // personSettings is userID and their settings (nil user when unknown).

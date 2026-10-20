@@ -75,6 +75,8 @@ With an OpenAI key (or any compatible endpoint) five more buttons appear: **sugg
 - **Direct**: a URL + token of any Firefly-compatible API: `https://money.example.com/firefly` with a Pocket Money API token, or a real Firefly III with a personal access token. A saved token keeps this mode until you switch, so an existing Firefly setup keeps working.
 - **Off**: no costs are read (the 30-minute job skips you).
 
+With Pocket Core on the box each connection's switch is **Pocket Core | Off**; Direct is under *Advanced: connect directly with a URL and key* (shown as a third option while it is in use, and the only way without Core). Travel reports each person's mode in effect (money, service:dawarich, service:immich) to Core with `PUT /api/v1/links/modes` after registering, after a mode change or disconnect, and every 30 minutes, so Core's Links page shows Direct connections too.
+
 ## Run it
 
 ```bash
@@ -95,7 +97,7 @@ Want to look around first? Add `-e DEMO_DATA=true -e AUTH_MODE=none` to get thre
 
 Binaries for Linux, macOS and Windows are attached to every [release](https://github.com/abjelosevic88/pocket-homelab-travel/releases), and a systemd unit is in [deploy/systemd](deploy/systemd).
 
-Then connect your other apps under **Settings → Integrations**: Pocket Money (through Pocket Core, or a URL + token), Dawarich and Immich (each **Pocket Core**, **Direct** with a URL + API key, or **Off** — through Pocket Core, Travel asks Core for the service's address and *your own* key there at every use, the box's key only for an admin; Direct stays the default while a key is saved), optionally an OpenAI key. Each has a *Test connection* button. Everything is per person: each account has its own trips and its own integrations, and sees someone else's trip only when the owner adds them to it (on a shared trip the route and photos come from the viewer's own Dawarich and Immich, the spending from the owner's Pocket Money).
+Then connect your other apps under **Settings → Integrations**: Pocket Money (through Pocket Core, or a URL + token), Dawarich and Immich (each **Pocket Core**, **Direct** with a URL + API key, or **Off** — through Pocket Core, Travel asks Core for the service's address and *your own* key there at every use, the box's key only for an admin, reused for a minute and through a short Core outage while *Test connection* always asks afresh; Direct stays the default while a key is saved), optionally an OpenAI key. Each has a *Test connection* button. Everything is per person: each account has its own trips and its own integrations, and sees someone else's trip only when the owner adds them to it (on a shared trip the route and photos come from the viewer's own Dawarich and Immich, the spending from the owner's Pocket Money).
 
 ## Configuration
 
