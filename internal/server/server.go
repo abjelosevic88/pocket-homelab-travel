@@ -73,12 +73,15 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger, webFS fs.FS) *Se
 	return &Server{cfg: cfg, store: st, log: log, webFS: webFS, started: time.Now(),
 		geo: geo.New(cfg.UserAgent, 25*time.Second), fx: fx.New(cfg.FXProvider, cfg.UserAgent, 8*time.Second), syncing: map[int64]bool{},
 		oidc:     &oidcProvider{issuerURL: cfg.OIDCIssuer},
-		core:     core.New(cfg.CoreURL, core.Options{TokenFile: cfg.DataDir + "/core.token", UserAgent: cfg.UserAgent}),
+		core:     core.New(cfg.CoreURL, core.Options{DB: st.DB, TokenFile: cfg.DataDir + "/core.token", UserAgent: cfg.UserAgent}),
 		resolved: map[string]resolvedURL{}, modesKick: make(chan struct{}, 1)}
 }
 
 // Bootstrap seeds the first admin (if configured), integration defaults and demo data.
 func (s *Server) Bootstrap(ctx context.Context) error {
+	if err := s.core.Start(ctx); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(s.cfg.FilesDir, 0o755); err != nil {
 		return fmt.Errorf("files dir: %w", err)
 	}
@@ -236,7 +239,7 @@ func (s *Server) registerWithCore(ctx context.Context) error {
 	return nil
 }
 
-// publish sends an event to Core without blocking the request. ownerID is
+// publish persists an event locally; the SDK retries network delivery. ownerID is
 // the person the data belongs to; their email rides along as owner_email so
 // consumers can keep it with that person.
 func (s *Server) publish(topic, subject string, ownerID int64, payload map[string]any) {
@@ -247,13 +250,11 @@ func (s *Server) publish(topic, subject string, ownerID int64, payload map[strin
 	if u, err := s.store.GetUser(context.Background(), ownerID); err == nil {
 		payload["owner_email"] = u.Email
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := s.core.Publish(ctx, topic, subject, payload); err != nil {
-			s.log.Warn("pocket core: publish failed", "topic", topic, "err", err)
-		}
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.core.Publish(ctx, topic, subject, payload); err != nil {
+		s.log.Warn("pocket core: outbox enqueue failed", "topic", topic, "err", err)
+	}
 }
 
 // resolveSibling asks Core where a sibling app lives (cached a minute) so the
@@ -562,7 +563,7 @@ func validDate(s string) bool {
 // ---------- health / metrics ----------
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "version": Version, "uptime": time.Since(s.started).Round(time.Second).String()})
+	writeJSON(w, http.StatusOK, map[string]any{"core_outbox": s.coreOutboxHealth(r.Context()), "status": "ok", "version": Version, "uptime": time.Since(s.started).Round(time.Second).String()})
 }
 
 func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {

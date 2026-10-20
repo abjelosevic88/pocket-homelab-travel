@@ -66,6 +66,9 @@ func newIsoHarness(t *testing.T) *isoHarness {
 	}
 	t.Cleanup(func() { st.Close() })
 	srv := New(cfg, st, log, nil)
+	if err := srv.core.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 	h := &isoHarness{t: t, ts: ts, st: st, srv: srv, memberDevice: "pcd_member_phone"}
