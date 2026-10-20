@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	core "github.com/abjelosevic88/pocket-homelab-core/sdk"
 	"strings"
 	"time"
 )
@@ -186,11 +187,16 @@ func (s *Store) FirstAdminID(ctx context.Context) int64 {
 }
 
 // CreateTrip inserts a trip.
-func (s *Store) CreateTrip(ctx context.Context, t *Trip) error {
+func (s *Store) CreateTrip(ctx context.Context, t *Trip, after ...core.CommitHook) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	if t.Status == "" {
 		t.Status = StatusPlanning
 	}
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO trips (owner_id, name, destination, description, start_date, end_date, status, currency, budget, color, cover_path, link, notes, lat, lng, timezone, firefly_tag, dawarich, immich, archived, external_id)
+	res, err := tx.ExecContext(ctx, `INSERT INTO trips (owner_id, name, destination, description, start_date, end_date, status, currency, budget, color, cover_path, link, notes, lat, lng, timezone, firefly_tag, dawarich, immich, archived, external_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.OwnerID, t.Name, t.Destination, t.Description, t.StartDate, t.EndDate, t.Status, t.Currency, t.Budget, t.Color, t.CoverPath, t.Link, t.Notes, t.Lat, t.Lng, t.Timezone, t.FireflyTag, boolInt(t.Dawarich), boolInt(t.Immich), boolInt(t.Archived), t.ExternalID)
 	if err != nil {
@@ -198,19 +204,24 @@ func (s *Store) CreateTrip(ctx context.Context, t *Trip) error {
 	}
 	t.ID, _ = res.LastInsertId()
 	t.Days = DaysBetween(t.StartDate, t.EndDate)
-	return nil
+	return core.Commit(tx, after...)
 }
 
 // UpdateTrip saves all editable columns.
-func (s *Store) UpdateTrip(ctx context.Context, t *Trip) error {
-	_, err := s.DB.ExecContext(ctx, `UPDATE trips SET name = ?, destination = ?, description = ?, start_date = ?, end_date = ?, status = ?, currency = ?, budget = ?, color = ?, cover_path = ?, link = ?, notes = ?, lat = ?, lng = ?, timezone = ?, firefly_tag = ?, dawarich = ?, immich = ?, archived = ?, updated_at = ? WHERE id = ?`,
+func (s *Store) UpdateTrip(ctx context.Context, t *Trip, after ...core.CommitHook) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, err = tx.ExecContext(ctx, `UPDATE trips SET name = ?, destination = ?, description = ?, start_date = ?, end_date = ?, status = ?, currency = ?, budget = ?, color = ?, cover_path = ?, link = ?, notes = ?, lat = ?, lng = ?, timezone = ?, firefly_tag = ?, dawarich = ?, immich = ?, archived = ?, updated_at = ? WHERE id = ?`,
 		t.Name, t.Destination, t.Description, t.StartDate, t.EndDate, t.Status, t.Currency, t.Budget, t.Color, t.CoverPath, t.Link, t.Notes, t.Lat, t.Lng, t.Timezone, t.FireflyTag, boolInt(t.Dawarich), boolInt(t.Immich), boolInt(t.Archived), Now(), t.ID)
 	if err != nil {
 		return err
 	}
 	t.Days = DaysBetween(t.StartDate, t.EndDate)
 	t.HasCover = t.CoverPath != ""
-	return nil
+	return core.Commit(tx, after...)
 }
 
 // DeleteTrip removes a trip and everything in it.

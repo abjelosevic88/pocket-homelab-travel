@@ -242,20 +242,6 @@ func (s *Server) registerWithCore(ctx context.Context) error {
 // publish persists an event locally; the SDK retries network delivery. ownerID is
 // the person the data belongs to; their email rides along as owner_email so
 // consumers can keep it with that person.
-func (s *Server) publish(topic, subject string, ownerID int64, payload map[string]any) {
-	if !s.core.Configured() {
-		return
-	}
-	payload["owner_id"] = ownerID
-	if u, err := s.store.GetUser(context.Background(), ownerID); err == nil {
-		payload["owner_email"] = u.Email
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := s.core.Publish(ctx, topic, subject, payload); err != nil {
-		s.log.Warn("pocket core: outbox enqueue failed", "topic", topic, "err", err)
-	}
-}
 
 // resolveSibling asks Core where a sibling app lives (cached a minute) so the
 // *_URL settings may stay empty on a box with Core.

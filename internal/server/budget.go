@@ -600,17 +600,16 @@ func (s *Server) syncMoney(ctx context.Context, tripID int64) (int, error) {
 		}
 		notes := strings.TrimSpace(strings.Join(nonEmpty(tx.Category, tx.Destination, tx.Notes), " · "))
 		e := &store.Expense{TripID: t.ID, Name: tx.Description, Category: cat, Amount: x.minor, Currency: x.cur, AmountHome: currency.Convert(x.minor, x.cur, t.Currency, rate), FXRate: rate, Date: tx.Date, Kind: "actual", Source: x.source, ExternalID: tx.ID, Notes: notes}
-		created, err := s.store.UpsertExternalExpense(ctx, e)
-		if err != nil {
-			s.log.Warn("money upsert", "err", err)
-			continue
-		}
-		if created {
-			s.publish("travel.expense_linked", fmt.Sprintf("expense:%d", e.ID), t.OwnerID, map[string]any{
+		_, err := s.store.UpsertExternalExpense(ctx, e, s.ownerEvent(ctx, t.OwnerID, func() (string, string, map[string]any) {
+			return "travel.expense_linked", fmt.Sprintf("expense:%d", e.ID), map[string]any{
 				"expense_id": e.ID, "trip_id": t.ID, "trip": t.Name, "name": e.Name, "category": e.Category,
 				"amount": e.Amount, "currency": e.Currency, "amount_home": e.AmountHome, "home_currency": t.Currency,
 				"date": e.Date, "source": e.Source, "external_id": e.ExternalID, "tag": t.FireflyTag, "firefly_tag": t.FireflyTag,
-			})
+			}
+		}))
+		if err != nil {
+			s.log.Warn("money upsert", "err", err)
+			continue
 		}
 		keep = append(keep, e.ID)
 		n++

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	core "github.com/abjelosevic88/pocket-homelab-core/sdk"
 	"strings"
 )
 
@@ -39,7 +40,12 @@ func (s *Store) GetExpense(ctx context.Context, tripID, id int64) (*Expense, err
 }
 
 // CreateExpense inserts an expense.
-func (s *Store) CreateExpense(ctx context.Context, e *Expense) error {
+func (s *Store) CreateExpense(ctx context.Context, e *Expense, after ...core.CommitHook) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	if e.Kind == "" {
 		e.Kind = "planned"
 	}
@@ -52,14 +58,14 @@ func (s *Store) CreateExpense(ctx context.Context, e *Expense) error {
 	if e.FXRate == 0 {
 		e.FXRate = 1
 	}
-	res, err := s.DB.ExecContext(ctx, `INSERT INTO expenses (trip_id, name, category, amount, currency, amount_home, fx_rate, date, kind, source, external_id, link_kind, link_id, notes)
+	res, err := tx.ExecContext(ctx, `INSERT INTO expenses (trip_id, name, category, amount, currency, amount_home, fx_rate, date, kind, source, external_id, link_kind, link_id, notes)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.TripID, e.Name, e.Category, e.Amount, e.Currency, e.AmountHome, e.FXRate, e.Date, e.Kind, e.Source, e.ExternalID, e.LinkKind, e.LinkID, e.Notes)
 	if err != nil {
 		return conflict(err)
 	}
 	e.ID, _ = res.LastInsertId()
-	return nil
+	return core.Commit(tx, after...)
 }
 
 // UpdateExpense saves an expense.
@@ -110,7 +116,7 @@ func (s *Store) DeleteSyncedExpensesExcept(ctx context.Context, tripID int64, so
 
 // UpsertExternalExpense inserts or updates a synced row (Pocket Money / Firefly) by source + external id.
 // Returns true when a new row was created.
-func (s *Store) UpsertExternalExpense(ctx context.Context, e *Expense) (bool, error) {
+func (s *Store) UpsertExternalExpense(ctx context.Context, e *Expense, after ...core.CommitHook) (bool, error) {
 	var id int64
 	err := s.DB.QueryRowContext(ctx, `SELECT id FROM expenses WHERE trip_id = ? AND source = ? AND external_id = ?`, e.TripID, e.Source, e.ExternalID).Scan(&id)
 	if err == nil {
@@ -119,7 +125,7 @@ func (s *Store) UpsertExternalExpense(ctx context.Context, e *Expense) (bool, er
 			e.Name, e.Category, e.Amount, e.Currency, e.AmountHome, e.FXRate, e.Date, e.Kind, e.Notes, Now(), id)
 		return false, err
 	}
-	return true, s.CreateExpense(ctx, e)
+	return true, s.CreateExpense(ctx, e, after...)
 }
 
 // DeleteExpense removes an expense.
