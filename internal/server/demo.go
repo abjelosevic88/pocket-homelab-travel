@@ -74,14 +74,14 @@ func (s *Server) seedDemo(ctx context.Context) error {
 		{Name: "Travel insurance", Category: "insurance", Amount: 3190, Currency: "EUR", Kind: "planned", Date: d(-12)},
 		{Name: "Food budget", Category: "food", Amount: 60000, Currency: "EUR", Kind: "planned"},
 		{Name: "Museums & tickets", Category: "activities", Amount: 20000, Currency: "EUR", Kind: "planned"},
-		{Name: "Taxi from the airport", Category: "transport", Amount: 3800, Currency: "EUR", Kind: "actual", Date: d(-3), Source: "firefly", ExternalID: "demo-1"},
-		{Name: "Cal Pep", Category: "food", Amount: 8640, Currency: "EUR", Kind: "actual", Date: d(-3), Source: "firefly", ExternalID: "demo-2"},
-		{Name: "Mercadona", Category: "groceries", Amount: 4215, Currency: "EUR", Kind: "actual", Date: d(-2), Source: "firefly", ExternalID: "demo-3"},
-		{Name: "Sagrada Família tickets", Category: "activities", Amount: 10400, Currency: "EUR", Kind: "actual", Date: d(-2), Source: "firefly", ExternalID: "demo-4"},
-		{Name: "Park Güell", Category: "activities", Amount: 4000, Currency: "EUR", Kind: "actual", Date: d(-2), Source: "firefly", ExternalID: "demo-5"},
-		{Name: "La Boqueria", Category: "food", Amount: 2350, Currency: "EUR", Kind: "actual", Date: d(-1), Source: "firefly", ExternalID: "demo-6"},
-		{Name: "T-casual metro passes", Category: "transport", Amount: 4880, Currency: "EUR", Kind: "actual", Date: d(-1), Source: "firefly", ExternalID: "demo-7"},
-		{Name: "Gelato on the Rambla", Category: "food", Amount: 900, Currency: "EUR", Kind: "actual", Date: d(0), Source: "firefly", ExternalID: "demo-8"},
+		{Name: "Taxi from the airport", Category: "transport", Amount: 3800, Currency: "EUR", Kind: "actual", Date: d(-3), Source: "money", ExternalID: "demo-1"},
+		{Name: "Cal Pep", Category: "food", Amount: 8640, Currency: "EUR", Kind: "actual", Date: d(-3), Source: "money", ExternalID: "demo-2"},
+		{Name: "Mercadona", Category: "groceries", Amount: 4215, Currency: "EUR", Kind: "actual", Date: d(-2), Source: "money", ExternalID: "demo-3"},
+		{Name: "Sagrada Família tickets", Category: "activities", Amount: 10400, Currency: "EUR", Kind: "actual", Date: d(-2), Source: "money", ExternalID: "demo-4"},
+		{Name: "Park Güell", Category: "activities", Amount: 4000, Currency: "EUR", Kind: "actual", Date: d(-2), Source: "money", ExternalID: "demo-5"},
+		{Name: "La Boqueria", Category: "food", Amount: 2350, Currency: "EUR", Kind: "actual", Date: d(-1), Source: "money", ExternalID: "demo-6"},
+		{Name: "T-casual metro passes", Category: "transport", Amount: 4880, Currency: "EUR", Kind: "actual", Date: d(-1), Source: "money", ExternalID: "demo-7"},
+		{Name: "Gelato on the Rambla", Category: "food", Amount: 900, Currency: "EUR", Kind: "actual", Date: d(0), Source: "money", ExternalID: "demo-8"},
 	}
 	for i := range exp {
 		exp[i].TripID = t.ID

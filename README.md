@@ -14,10 +14,10 @@
 
 ---
 
-Every trip I plan ends up spread over five apps: the list of places in one, the bookings in a mail folder, the budget in Firefly III, the route my phone recorded in Dawarich, the photos in Immich. This puts the plan next to the record, on one page per trip, on your own server. Built around four things:
+Every trip I plan ends up spread over five apps: the list of places in one, the bookings in a mail folder, the budget in Pocket Money, the route my phone recorded in Dawarich, the photos in Immich. This puts the plan next to the record, on one page per trip, on your own server. Built around four things:
 
 - **An itinerary you drag.** One row per day with the weather, the places in order, check-ins and transport legs. Ideas sit in a side list until you drop them on a day; tick them off as you go. The day's recorded journeys and stops from Dawarich appear inline, so the plan and what happened sit next to each other.
-- **Money that is real.** Stays and transport add their price as a planned cost. Tag your withdrawals in Firefly III with the trip's tag and they show up as spent — in their own currency, converted at the day's rate — with planned vs spent per category, per day, the burn rate and what is left. No key for the exchange rates (Frankfurter, open.er-api.com).
+- **Money that is real.** Stays and transport add their price as a planned cost. Tag your expenses in Pocket Money with the trip's tag and they show up as spent — in their own currency, converted at the day's rate — with planned vs spent per category, per day, the burn rate and what is left. No key for the exchange rates (Frankfurter, open.er-api.com).
 - **The map that knows both.** Numbered itinerary order, stays, the route Dawarich recorded, the stops it detected and the geotagged Immich photos, each a toggleable layer. *Discover nearby* lists OpenStreetMap points of interest around any spot; place search is Nominatim; descriptions come from Wikipedia. Nothing needs an API key.
 - **Everything else a trip needs.** Checklists from templates (beach, city, hiking, winter, camping, car, kids, to-do before leaving), a journal with a mood per entry from everyone on the trip, documents (tickets, bookings, insurance), companions with roles, a calendar you can subscribe to, GPX and JSON exports, import from AdventureLog, duplicate last year's trip with shifted dates.
 
@@ -35,11 +35,11 @@ With an OpenAI key (or any compatible endpoint) five more buttons appear: **sugg
     <td align="center"><sub>Map: itinerary order, stays, recorded route, detected stops, photo locations — each a layer.</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/budget.png" alt="Budget: planned vs spent per category and per day, Firefly transactions in the list"></td>
+    <td width="50%"><img src="docs/screenshots/budget.png" alt="Budget: planned vs spent per category and per day, synced transactions in the list"></td>
     <td width="50%"><img src="docs/screenshots/places.png" alt="Places as cards with category, day, status and price"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Budget: planned vs spent by category and by day; Firefly rows are marked and convert at the day's rate.</sub></td>
+    <td align="center"><sub>Budget: planned vs spent by category and by day; synced rows are marked and convert at the day's rate.</sub></td>
     <td align="center"><sub>Places: cards or a table, filter by category and status, ✨ Suggest when a key is set.</sub></td>
   </tr>
 </table>
@@ -60,14 +60,20 @@ With an OpenAI key (or any compatible endpoint) five more buttons appear: **sugg
 | **Itinerary** | Day rows with Open-Meteo weather (forecast 16 days ahead, archive for past days), drag and drop between days, start times and durations, visited ticks, check-in / check-out and transport legs inline, Dawarich journeys and stops per day. |
 | **Places** | Category, address, coordinates (search, paste a Google/Apple Maps link, click the map), link, phone, price, rating, booking reference, tags, notes. A photo gallery per place: new places get up to four pictures from the Wikipedia article or photos taken at the spot on Wikimedia Commons (credit and licence kept), plus your own uploads; pick the cover. Status idea → planned → booked → visited / skipped. Nominatim search, Overpass *Discover nearby*, Wikipedia descriptions. |
 | **Stays & transport** | Hotels, apartments, camping…; flights, trains, buses, cars, ferries… with carrier, number, seat, booking reference, from/to with coordinates, distance. Prices become planned costs automatically. |
-| **Budget** | Planned vs spent in the trip currency, per category, per day, burn rate, remaining. Firefly III sync by tag (every 30 min for running and upcoming trips, on every save, on demand). Any currency, converted at the day's rate; the rate is cached. |
+| **Budget** | Planned vs spent in the trip currency, per category, per day, burn rate, remaining. Pocket Money sync by tag (every 30 min for running and upcoming trips, on every save, on demand). Any currency, converted at the day's rate; the rate is cached. |
 | **Recorded** | Dawarich: simplified route polyline, kilometres per day (from Dawarich's own timeline), detected stops, GPX export of the track. Immich: photos and videos by day, geotagged ones on the map, thumbnails proxied so the key stays on the server. |
 | **Checklists, journal, documents** | Templates or a generated list, multi-line paste, assignees, progress. Journal entries with a mood from everyone on the trip. Documents stored next to the database, linked to a stay, leg or place. |
 | **AI (optional)** | Suggest places, plan the days, describe a place, packing list, recap. OpenAI or any compatible endpoint (Ollama, LM Studio, OpenRouter). Nothing runs unless you press the button. |
 | **Exports & imports** | iCalendar feed to subscribe to (stays, legs, scheduled places with references), GPX, JSON backup. Import from AdventureLog (collections with locations, lodging, transportation, notes, checklists and images) or a JSON backup. |
-| **Users & ops** | Built-in login (admin/member), SSO-proxy header, or no login on a trusted LAN. API tokens. SQLite backup from the UI/CLI/API, Prometheus `/metrics`, `GET /dashboard` for Homepage. With **Pocket Core** on the box: registers itself, publishes `travel.trip_created`, `travel.trip_updated` and `travel.expense_linked`, accepts paired-phone tokens, finds Pocket Money's Firefly API without a `FIREFLY_URL`, and offers “Sign in with Pocket Core” with zero configuration (any OpenID Connect provider works via `OIDC_*`). |
+| **Users & ops** | Built-in login (admin/member), SSO-proxy header, or no login on a trusted LAN. API tokens. SQLite backup from the UI/CLI/API, Prometheus `/metrics`, `GET /dashboard` for Homepage. With **Pocket Core** on the box: registers itself, publishes `travel.trip_created`, `travel.trip_updated` and `travel.expense_linked`, accepts paired-phone tokens, reads each person's trip costs from Pocket Money through an app link, and offers “Sign in with Pocket Core” with zero configuration (any OpenID Connect provider works via `OIDC_*`). |
 
 **Offers app links** (Pocket Core 0.5+): another Pocket app the person allowed in Core can read their trips (`trips:read`: `GET /api/v1/trips`, `GET /api/v1/trips/{id}`) with a five-minute `pcx_` token; every other route answers 403. Pocket Garage uses it to show each trip's fuel, costs and kilometres.
+
+**Uses app links** (v0.6.0): trip costs come from Pocket Money with `transactions:read` ("Trip costs from the transactions tagged with the trip"). Settings → Integrations → Pocket Money has three modes per person:
+
+- **Pocket Core** (default when Travel is registered with Core and you saved no token): at every sync Travel asks Core for a five-minute `pcx_` token for you and reads `<money>/firefly/api/v1/…` with it. Nothing to paste; switching the link off in Core (yours under *Apps acting for me*, or the admin's under *Links*) shows *not connected* and stops the sync at once.
+- **Direct**: a URL + token of any Firefly-compatible API: `https://money.example.com/firefly` with a Pocket Money API token, or a real Firefly III with a personal access token. A saved token keeps this mode until you switch, so an existing Firefly setup keeps working.
+- **Off**: no costs are read (the 30-minute job skips you).
 
 ## Run it
 
@@ -89,7 +95,7 @@ Want to look around first? Add `-e DEMO_DATA=true -e AUTH_MODE=none` to get thre
 
 Binaries for Linux, macOS and Windows are attached to every [release](https://github.com/abjelosevic88/pocket-homelab-travel/releases), and a systemd unit is in [deploy/systemd](deploy/systemd).
 
-Then connect your other apps under **Settings → Integrations**: a Firefly III personal access token, a Dawarich API key, an Immich API key, optionally an OpenAI key. Each has a *Test connection* button. Everything is per person: each account has its own trips and its own integrations, and sees someone else's trip only when the owner adds them to it (on a shared trip the route and photos come from the viewer's own Dawarich and Immich, the spending from the owner's Firefly).
+Then connect your other apps under **Settings → Integrations**: Pocket Money (through Pocket Core, or a URL + token), a Dawarich API key, an Immich API key, optionally an OpenAI key. Each has a *Test connection* button. Everything is per person: each account has its own trips and its own integrations, and sees someone else's trip only when the owner adds them to it (on a shared trip the route and photos come from the viewer's own Dawarich and Immich, the spending from the owner's Pocket Money).
 
 ## Configuration
 
@@ -104,7 +110,7 @@ Everything is an environment variable with a sensible default. The important one
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | – | Create the first admin without the setup screen. |
 | `SECURE_COOKIES` | `false` | Set `true` behind HTTPS. |
 | `DEFAULT_CURRENCY` | `EUR` | Home currency until changed in Settings. |
-| `FIREFLY_URL` / `FIREFLY_TOKEN` | – | Firefly III base URL + personal access token. |
+| `FIREFLY_URL` / `FIREFLY_TOKEN` | – | Direct Pocket Money connection for the owner: `<money>/firefly` + a Money API token, or a Firefly III URL + personal access token. Copied into the owner's settings once; cleared in the UI, it stays cleared. |
 | `DAWARICH_URL` / `DAWARICH_API_KEY` | – | Dawarich base URL + API key. |
 | `IMMICH_URL` / `IMMICH_API_KEY` | – | Immich base URL + API key (`IMMICH_PUBLIC_URL` for browser links when the API URL is internal). |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | – / `gpt-4o-mini` / OpenAI | Enables the ✨ features; any OpenAI-compatible endpoint works. |
@@ -115,7 +121,7 @@ Integration settings saved in the UI win over the environment. The full list is 
 ## How it works
 
 - **A trip is the unit.** Places, stays, legs, costs, lists, journal and documents hang off it; its dates, currency and timezone drive everything else. A place with a day is on the itinerary, a place without one is an idea.
-- **Planned costs follow the items.** A stay or leg with a price owns one `source=item` expense that updates and disappears with it. Firefly rows are `source=firefly`, keyed by the transaction id, so a re-sync updates instead of duplicating; you may re-categorise them locally, everything else follows Firefly. Each expense stores its own currency, the rate of the day and the amount in the trip currency.
+- **Planned costs follow the items.** A stay or leg with a price owns one `source=item` expense that updates and disappears with it. Synced rows are `source=money` (Pocket Money transaction id) or `source=firefly` (Firefly III journal id, from a direct connection to a real Firefly), so a re-sync updates instead of duplicating; you may re-categorise them locally, everything else follows Money. Switching from Firefly to Money does not import a cost twice: a Money transaction mirrored from Firefly (`external_id` `firefly:<id>`), or else one with the same date, amount and currency (then same date and description), takes over the row synced from Firefly, keeping its category, and what no transaction claims is removed. Each expense stores its own currency, the rate of the day and the amount in the trip currency.
 - **Dawarich is read as the trip's date range** in the trip's timezone: slim points are simplified with Douglas–Peucker for drawing, the per-day distances come from Dawarich's own timeline (which knows about tracks and gaps the raw points miss), and the result is cached — an hour while the trip runs, a week after.
 - **Immich is searched by `takenAfter`/`takenBefore`** with timeline visibility (Live Photo companions stay hidden); thumbnails are fetched by the server with the key and streamed to the browser.
 - **The outside world is cached** in one table: Open-Meteo per trip and location, Overpass per spot and category, exchange rates per pair and day.
@@ -137,8 +143,8 @@ curl -fsS -X POST https://travel.example.com/api/v1/trips/1/places -H "Authoriza
 curl -fsS -X POST https://travel.example.com/api/v1/trips/1/expenses -H "Authorization: Bearer pt_…" \
   -H "Content-Type: application/json" -d '{"name":"Dinner","category":"food","amount":4820,"currency":"EUR","kind":"actual","date":"2026-08-30"}'
 
-# pull Firefly now instead of waiting for the next sync
-curl -fsS -X POST https://travel.example.com/api/v1/trips/1/firefly/sync -H "Authorization: Bearer pt_…"
+# pull the trip's costs from Pocket Money now instead of waiting for the next sync
+curl -fsS -X POST https://travel.example.com/api/v1/trips/1/money/sync -H "Authorization: Bearer pt_…"
 
 # subscribe a phone's calendar to the trip
 https://travel.example.com/cal/1.ics?token=pt_…

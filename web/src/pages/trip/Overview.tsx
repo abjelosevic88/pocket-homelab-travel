@@ -55,7 +55,7 @@ export function OverviewTab() {
           {b.actual > 0 && <><dt>Planned</dt><dd><Money minor={b.planned} code={b.currency} /></dd></>}
           {trip.budget > 0 && <><dt>Remaining</dt><dd className={b.remaining < 0 ? 'bad' : ''}><Money minor={b.remaining} code={b.currency} /></dd></>}
           {b.per_day > 0 && <><dt>Per day</dt><dd><Money minor={b.per_day} code={b.currency} />{b.days_elapsed > 0 && <span className="muted small"> over {b.days_elapsed} days</span>}</dd></>}
-          {integ.firefly.configured && <><dt>Firefly</dt><dd>{trip.firefly_tag ? <>{b.firefly_count} transactions tagged <code>{trip.firefly_tag}</code>{integ.firefly.synced_at && <span className="muted small"> · synced {ago(integ.firefly.synced_at)}</span>}</> : <span className="muted">no tag linked — <a onClick={() => edit('trip', trip)} href="#" >set one</a></span>}</dd></>}
+          {integ.firefly.configured && <><dt>Pocket Money</dt><dd>{trip.firefly_tag ? <>{b.firefly_count} transactions tagged <code>{trip.firefly_tag}</code>{integ.firefly.synced_at && <span className="muted small"> · synced {ago(integ.firefly.synced_at)}</span>}</> : <span className="muted">no tag linked — <a onClick={() => edit('trip', trip)} href="#" >set one</a></span>}</dd></>}
         </div>
         {b.by_category.length > 0 && <div className="chips mt-sm">{b.by_category.slice(0, 5).map(c => <span key={c.category} className="chip sm">{c.category} <Money minor={c.actual || c.planned} code={b.currency} compact /></span>)}</div>}
       </Card>
@@ -101,7 +101,7 @@ export function OverviewTab() {
       </Card>}
       {trip.description && <Card title="About this trip" className="span2"><p style={{ whiteSpace: 'pre-wrap' }}>{trip.description}</p>{trip.link && <a href={trip.link} target="_blank" rel="noreferrer">{trip.link}</a>}</Card>}
       {trip.notes && <Card title="Notes" className="span2"><p style={{ whiteSpace: 'pre-wrap' }}>{trip.notes}</p></Card>}
-      {!integ.firefly.configured && !integ.dawarich.configured && !integ.immich.configured && <Card title="Connect your other apps" className="span2"><p className="muted">Link <b>Firefly III</b> to see what the trip really cost, <b>Dawarich</b> for the route you actually took, and <b>Immich</b> for the photos — all under <Link to="/settings?tab=integrations">Settings → Integrations</Link>.</p></Card>}
+      {!integ.firefly.configured && !integ.dawarich.configured && !integ.immich.configured && <Card title="Connect your other apps" className="span2"><p className="muted">Connect <b>Pocket Money</b> to see what the trip really cost, <b>Dawarich</b> for the route you actually took, and <b>Immich</b> for the photos — all under <Link to="/settings?tab=integrations">Settings → Integrations</Link>.</p></Card>}
     </div>
   )
 }

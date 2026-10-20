@@ -79,6 +79,8 @@ func (s *Store) GetSettings(ctx context.Context, userID int64) (Settings, error)
 			}
 		case "fx_auto":
 			st.FXAuto = v != "0"
+		case "money_mode":
+			st.MoneyMode = v
 		case "firefly_url":
 			st.FireflyURL = v
 		case "firefly_token":
@@ -119,6 +121,7 @@ func personalKV(st Settings) map[string]string {
 		"date_format":       st.DateFormat,
 		"time_format":       st.TimeFormat,
 		"distance_unit":     st.DistanceUnit,
+		"money_mode":        st.MoneyMode,
 		"firefly_url":       st.FireflyURL,
 		"firefly_token":     st.FireflyToken,
 		"dawarich_url":      st.DawarichURL,
@@ -194,6 +197,13 @@ func (s *Store) HasUserSetting(ctx context.Context, userID int64, key string) bo
 	var n int
 	_ = s.DB.QueryRowContext(ctx, `SELECT COUNT(1) FROM user_settings WHERE user_id = ? AND key = ?`, userID, key).Scan(&n)
 	return n > 0
+}
+
+// MarkUserSetting stores one personal key outside the Settings struct (e.g.
+// the "seeded:" markers that remember an environment value was copied once).
+func (s *Store) MarkUserSetting(ctx context.Context, userID int64, key, value string) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value`, userID, key, value)
+	return err
 }
 
 // ---- generic cache ----

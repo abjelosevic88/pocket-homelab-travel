@@ -40,11 +40,14 @@ func mask(s string) string {
 	return s[:4] + "••••" + s[len(s)-4:]
 }
 
-func (s *Server) publicSettings(st store.Settings, u *store.User) map[string]any {
+func (s *Server) publicSettings(ctx context.Context, st store.Settings, u *store.User) map[string]any {
+	moneyMode, moneyVia, moneyDetail := s.moneyStatus(ctx, u, st)
 	return map[string]any{
+		"core_configured": s.core.Configured(),
+		"money_mode":      moneyMode, "money_via": moneyVia, "money_detail": moneyDetail,
 		"title": st.Title, "home_currency": st.HomeCurrency, "date_format": st.DateFormat, "time_format": st.TimeFormat,
 		"distance_unit": st.DistanceUnit, "fx_auto": st.FXAuto, "fx_provider": s.cfg.FXProvider, "map_tiles": st.MapTiles, "auto_photos": st.AutoPhotos,
-		"firefly_url": st.FireflyURL, "firefly_token": mask(st.FireflyToken), "firefly_configured": st.FireflyURL != "" && st.FireflyToken != "",
+		"firefly_url": st.FireflyURL, "firefly_token": mask(st.FireflyToken), "firefly_configured": moneyVia != "",
 		"dawarich_url": st.DawarichURL, "dawarich_api_key": mask(st.DawarichAPIKey), "dawarich_configured": st.DawarichURL != "" && st.DawarichAPIKey != "",
 		"immich_url": st.ImmichURL, "immich_public_url": st.ImmichPublicURL, "immich_api_key": mask(st.ImmichAPIKey), "immich_configured": st.ImmichURL != "" && st.ImmichAPIKey != "",
 		"openai_api_key": mask(st.OpenAIKey), "openai_model": st.OpenAIModel, "openai_base_url": st.OpenAIBaseURL, "openai_configured": st.OpenAIKey != "",
@@ -61,7 +64,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "settings")
 		return
 	}
-	writeJSON(w, http.StatusOK, s.publicSettings(st, u))
+	writeJSON(w, http.StatusOK, s.publicSettings(r.Context(), st, u))
 }
 
 // handlePutSettings saves the caller's own preferences and integration
@@ -121,6 +124,12 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			*dst = strings.TrimSpace(v)
 		}
 	}
+	if keys["money_mode"] {
+		switch in.MoneyMode {
+		case modeCore, modeDirect, modeOff:
+			cur.MoneyMode = in.MoneyMode
+		}
+	}
 	if keys["firefly_url"] {
 		cur.FireflyURL = strings.TrimRight(strings.TrimSpace(in.FireflyURL), "/")
 	}
@@ -155,7 +164,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	// Only this person's route/photo caches depend on their credentials.
 	_ = s.store.CacheDeleteLike(r.Context(), "trip:%:u"+strconv.FormatInt(u.ID, 10)+":%")
-	writeJSON(w, http.StatusOK, s.publicSettings(cur, u))
+	writeJSON(w, http.StatusOK, s.publicSettings(r.Context(), cur, u))
 }
 
 // handleIntegrationTest checks a connection; a masked key means the caller's own stored one.
@@ -175,14 +184,34 @@ func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 	var msg string
 	var err error
 	switch in.Which {
-	case "firefly":
+	case "money", "firefly":
+		// A token typed into the form is tried as is (with the typed URL, or
+		// Money found through Pocket Core); otherwise the saved mode decides.
+		typed := in.Key != "" && !strings.Contains(in.Key, "••")
 		key := in.Key
-		if strings.Contains(key, "••") || key == "" {
+		if !typed {
 			key = st.FireflyToken
 		}
-		var v string
-		v, err = firefly.New(in.URL, key, 15*time.Second).About(ctx)
-		msg = "Firefly III " + v
+		if key != "" && (typed || connMode(st.MoneyMode, st.FireflyToken) == modeDirect) {
+			base := strings.TrimRight(strings.TrimSpace(in.URL), "/")
+			if base == "" {
+				base = st.FireflyURL
+			}
+			if base == "" {
+				if u := s.resolveSibling(ctx, "money"); u != "" {
+					base = u + "/firefly"
+				}
+			}
+			msg, err = firefly.New(base, key, 15*time.Second).Describe(ctx)
+			msg += ", direct connection"
+		} else {
+			var conn *moneyConn
+			conn, err = s.moneyFor(ctx, userFrom(r.Context()).ID)
+			if err == nil {
+				msg, err = conn.client.Describe(ctx)
+				msg += ", through Pocket Core as you"
+			}
+		}
 	case "dawarich":
 		key := in.Key
 		if strings.Contains(key, "••") || key == "" {
@@ -820,7 +849,7 @@ func (s *Server) fetchRoute(ctx context.Context, dw *dawarich.Client, t *store.T
 
 func (s *Server) handleDawarichRoute(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	_, _, dw, _ := s.clients(r.Context(), actorID(r.Context()))
+	_, dw, _ := s.clients(r.Context(), actorID(r.Context()))
 	if !dw.Configured() || !t.Dawarich {
 		writeJSON(w, http.StatusOK, RouteResponse{Points: [][3]float64{}, Days: map[string]float64{}, ByDay: []RouteDay{}})
 		return
@@ -836,7 +865,7 @@ func (s *Server) handleDawarichRoute(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDawarichTimeline(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	_, _, dw, _ := s.clients(r.Context(), actorID(r.Context()))
+	_, dw, _ := s.clients(r.Context(), actorID(r.Context()))
 	if !dw.Configured() || !t.Dawarich {
 		writeJSON(w, http.StatusOK, []any{})
 		return
@@ -867,7 +896,7 @@ func (s *Server) handleDawarichTimeline(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleTripPhotos(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	_, _, _, im := s.clients(r.Context(), actorID(r.Context()))
+	_, _, im := s.clients(r.Context(), actorID(r.Context()))
 	if !im.Configured() || !t.Immich {
 		writeJSON(w, http.StatusOK, []any{})
 		return
@@ -895,7 +924,7 @@ func (s *Server) handleTripPhotos(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePhotoThumb(w http.ResponseWriter, r *http.Request) {
-	_, _, _, im := s.clients(r.Context(), actorID(r.Context()))
+	_, _, im := s.clients(r.Context(), actorID(r.Context()))
 	if !im.Configured() {
 		writeErr(w, http.StatusNotFound, "immich not configured")
 		return
@@ -969,7 +998,7 @@ func (s *Server) handleExportGPX(w http.ResponseWriter, r *http.Request) {
 	lodging, _ := s.store.ListLodging(ctx, t.ID)
 	var route []export.RoutePoint
 	if queryBool(r, "route") {
-		_, _, dw, _ := s.clients(ctx, actorID(ctx))
+		_, dw, _ := s.clients(ctx, actorID(ctx))
 		if dw.Configured() && t.Dawarich {
 			if b, err := s.cached(r, t, "dawarich-route", func() (any, error) { return s.fetchRoute(ctx, dw, t) }); err == nil {
 				var rr RouteResponse

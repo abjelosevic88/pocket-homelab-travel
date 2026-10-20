@@ -1,6 +1,6 @@
-// Package firefly reads spending out of a Firefly III instance. A trip is
-// linked to a Firefly tag; withdrawals carrying that tag inside the trip's
-// dates are what was actually spent.
+// Package firefly reads spending through the Firefly III API: Pocket Money's
+// Firefly-compatible API (<money>/firefly) or a real Firefly III. A trip is
+// linked to a tag; withdrawals carrying that tag are what was actually spent.
 package firefly
 
 import (
@@ -54,11 +54,28 @@ type Transaction struct {
 	Notes       string   `json:"notes"`
 	Tags        []string `json:"tags"`
 	Type        string   `json:"type"`
+	// ExternalID is the split's external_id. Pocket Money fills it with
+	// "firefly:<journal id>" for transactions it mirrored from Firefly, which
+	// lets a cost synced from Firefly be recognised when it comes from Money.
+	ExternalID string `json:"external_id"`
+	// FromMoney: the transaction is served by Pocket Money (its
+	// original_source is "pocket-money-…"), so ID is a Money id.
+	FromMoney bool `json:"from_money"`
+}
+
+// FireflyOrigin returns the Firefly journal id a Pocket Money transaction was
+// mirrored from ("" when it says nothing about one). Only meaningful for a
+// transaction served by Pocket Money.
+func (t Transaction) FireflyOrigin() string {
+	if id, ok := strings.CutPrefix(t.ExternalID, "firefly:"); ok {
+		return id
+	}
+	return ""
 }
 
 func (c *Client) do(ctx context.Context, path string, q url.Values, v any) error {
 	if !c.Configured() {
-		return errors.New("firefly is not configured")
+		return errors.New("no URL or token")
 	}
 	u := c.BaseURL + path
 	if len(q) > 0 {
@@ -76,10 +93,13 @@ func (c *Client) do(ctx context.Context, path string, q url.Values, v any) error
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusUnauthorized {
-		return errors.New("firefly rejected the token (401)")
+		return errors.New("the token was rejected (401)")
+	}
+	if res.StatusCode == http.StatusForbidden {
+		return errors.New("the token may not read this (403)")
 	}
 	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("firefly HTTP %d", res.StatusCode)
+		return fmt.Errorf("HTTP %d from %s", res.StatusCode, path)
 	}
 	return json.NewDecoder(res.Body).Decode(v)
 }
@@ -95,6 +115,24 @@ func (c *Client) About(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return out.Data.Version, nil
+}
+
+// Describe names what answers the API ("Pocket Money 0.4.0" or
+// "Firefly III 6.1.0"), for the connection test.
+func (c *Client) Describe(ctx context.Context) (string, error) {
+	var out struct {
+		Data struct {
+			Version    string `json:"version"`
+			PHPVersion string `json:"php_version"`
+		} `json:"data"`
+	}
+	if err := c.do(ctx, "/api/v1/about", nil, &out); err != nil {
+		return "", err
+	}
+	if v, ok := strings.CutPrefix(out.Data.PHPVersion, "pocket-money"); ok {
+		return strings.TrimSpace("Pocket Money " + strings.TrimSpace(v)), nil
+	}
+	return "Firefly III " + out.Data.Version, nil
 }
 
 // Tags lists all tags.
@@ -162,6 +200,8 @@ type txPage struct {
 				DestinationName *string  `json:"destination_name"`
 				Notes           *string  `json:"notes"`
 				Tags            []string `json:"tags"`
+				ExternalID      *string  `json:"external_id"`
+				OriginalSource  *string  `json:"original_source"`
 			} `json:"transactions"`
 		} `json:"attributes"`
 	} `json:"data"`
@@ -203,6 +243,8 @@ func (c *Client) TagTransactions(ctx context.Context, tagID, start, end string) 
 				tx.Source = deref(t.SourceName)
 				tx.Destination = deref(t.DestinationName)
 				tx.Notes = deref(t.Notes)
+				tx.ExternalID = deref(t.ExternalID)
+				tx.FromMoney = strings.HasPrefix(deref(t.OriginalSource), "pocket-money")
 				out = append(out, tx)
 			}
 		}

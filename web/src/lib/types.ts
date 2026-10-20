@@ -34,7 +34,7 @@ export interface Transport {
 }
 export interface Expense {
   id: number; trip_id: number; name: string; category: string; amount: number; currency: string; amount_home: number; fx_rate: number
-  date: string; kind: 'planned' | 'actual'; source: 'manual' | 'firefly' | 'item'; external_id: string; link_kind: string; link_id: number
+  date: string; kind: 'planned' | 'actual'; source: 'manual' | 'money' | 'firefly' | 'item'; external_id: string; link_kind: string; link_id: number
   notes: string; created_at: string; updated_at: string
 }
 export interface ChecklistItem { id: number; checklist_id: number; text: string; done: boolean; assignee_id: number | null; sort_order: number; created_at: string }
@@ -52,7 +52,7 @@ export interface Budget {
 export interface Overview {
   trip: Trip; places: Place[]; lodging: Lodging[]; transport: Transport[]; expenses: Expense[]; checklists: Checklist[]
   journal: JournalEntry[]; documents: Doc[]; budget: Budget
-  integrations: { firefly: { configured: boolean; tag: string; synced_at: string }; dawarich: { configured: boolean; enabled: boolean }; immich: { configured: boolean; enabled: boolean; url: string }; ai: { configured: boolean; model: string } }
+  integrations: { firefly: { configured: boolean; via: '' | 'core' | 'direct'; tag: string; synced_at: string }; dawarich: { configured: boolean; enabled: boolean }; immich: { configured: boolean; enabled: boolean; url: string }; ai: { configured: boolean; model: string } }
 }
 export interface DayWeather { date: string; code: number; label: string; tmax: number; tmin: number; precip_mm: number; wind_kmh: number; sunrise?: string; sunset?: string; source: 'forecast' | 'archive' }
 export interface RouteDay { date: string; km: number; segments: [number, number][][]; start?: string; end?: string }
@@ -62,8 +62,11 @@ export interface TimelineEntry { type: 'journey' | 'visit'; track_id?: number; v
 export interface TimelineDay { date: string; summary: { total_distance: number; distance_unit: string; places_visited: number; time_moving_minutes: number; time_stationary_minutes: number; mode_distances: Record<string, number> }; entries: TimelineEntry[] }
 export interface Photo { id: string; type: 'IMAGE' | 'VIDEO'; file_name: string; taken_at: string; lat: number | null; lng: number | null; city: string; country: string; thumbhash: string; favorite: boolean; duration?: string }
 export interface GeoResult { name: string; display: string; lat: number; lng: number; type: string; category: string; country: string; city: string; website?: string; phone?: string; hours?: string; source: string; osm_id?: string; suggest?: string }
+export type ConnMode = 'core' | 'direct' | 'off'
 export interface Settings {
   title: string; home_currency: string; date_format: string; time_format: string; distance_unit: 'km' | 'mi'; fx_auto: boolean; fx_provider: string; map_tiles: string; auto_photos: boolean
+  core_configured: boolean
+  money_mode: ConnMode; money_via: '' | 'core' | 'direct'; money_detail: string
   firefly_url: string; firefly_token: string; firefly_configured: boolean
   dawarich_url: string; dawarich_api_key: string; dawarich_configured: boolean
   immich_url: string; immich_public_url: string; immich_api_key: string; immich_configured: boolean

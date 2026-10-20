@@ -228,10 +228,10 @@ func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	oldTag, oldStart, oldEnd := t.FireflyTag, t.StartDate, t.EndDate
-	// The Firefly tag pulls spending from the owner's Firefly account, so only
+	// The Money tag pulls spending from the owner's Pocket Money, so only
 	// the owner may point it somewhere else.
 	if keys["firefly_tag"] && strings.TrimSpace(in.FireflyTag) != t.FireflyTag && !s.isOwner(r) {
-		writeErr(w, http.StatusForbidden, "only the owner can change the Firefly tag")
+		writeErr(w, http.StatusForbidden, "only the owner can change the Money tag")
 		return
 	}
 	if msg := applyTripInput(t, in, keys); msg != "" {
@@ -245,7 +245,7 @@ func (s *Server) handleUpdateTrip(w http.ResponseWriter, r *http.Request) {
 	if oldStart != t.StartDate || oldEnd != t.EndDate || oldTag != t.FireflyTag {
 		_ = s.store.CacheDelete(r.Context(), cacheKey(t.ID, ""))
 		if t.FireflyTag != "" {
-			go s.syncFirefly(context.Background(), t.ID)
+			go s.syncMoney(context.Background(), t.ID)
 		}
 	}
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "updated", "trip details")
@@ -455,7 +455,7 @@ func (s *Server) handleDuplicateTrip(w http.ResponseWriter, r *http.Request) {
 	}
 	expenses, _ := s.store.ListExpenses(ctx, src.ID)
 	for _, e := range expenses {
-		if e.Kind != "planned" || e.Source == "firefly" {
+		if e.Kind != "planned" || store.IsSynced(e.Source) {
 			continue
 		}
 		e.ID, e.TripID, e.ExternalID, e.LinkKind, e.LinkID = 0, nt.ID, "", "", 0
@@ -494,18 +494,18 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 	journal, _ := s.store.ListJournal(ctx, t.ID)
 	docs, _ := s.store.ListDocuments(ctx, t.ID)
 	t.Counts, _ = s.store.TripCounts(ctx, t.ID)
-	// Firefly spending is synced with the trip owner's account; route, photos
+	// Spending is synced from the trip owner's Pocket Money; route, photos
 	// and AI use the viewer's own accounts.
-	_, ff, _, _ := s.clients(ctx, t.OwnerID)
-	st, _, dw, im := s.clients(ctx, actorID(ctx))
+	moneyVia := s.moneyVia(ctx, t.OwnerID)
+	st, dw, im := s.clients(ctx, actorID(ctx))
 	budget := s.budgetSummary(t, expenses)
-	// Freshness of the Firefly sync.
+	// Freshness of the cost sync.
 	_, syncedAt, _ := s.store.CacheGet(ctx, cacheKey(t.ID, "firefly-synced"))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"trip": t, "places": places, "lodging": lodging, "transport": transport, "expenses": expenses,
 		"checklists": lists, "journal": journal, "documents": docs, "budget": budget,
 		"integrations": map[string]any{
-			"firefly":  map[string]any{"configured": ff.Configured(), "tag": t.FireflyTag, "synced_at": syncedAt},
+			"firefly":  map[string]any{"configured": moneyVia != "", "via": moneyVia, "tag": t.FireflyTag, "synced_at": syncedAt},
 			"dawarich": map[string]any{"configured": dw.Configured(), "enabled": t.Dawarich},
 			"immich":   map[string]any{"configured": im.Configured(), "enabled": t.Immich, "url": firstNonEmpty(st.ImmichPublicURL, st.ImmichURL)},
 			"ai":       map[string]any{"configured": st.OpenAIKey != "", "model": firstNonEmpty(st.OpenAIModel, "gpt-4o-mini")},
@@ -513,13 +513,13 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleTripRefresh drops caches and re-syncs Firefly.
+// handleTripRefresh drops caches and re-syncs the costs from Pocket Money.
 func (s *Server) handleTripRefresh(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
 	_ = s.store.CacheDelete(r.Context(), cacheKey(t.ID, ""))
 	res := map[string]any{"ok": true}
 	if t.FireflyTag != "" {
-		n, err := s.syncFirefly(r.Context(), t.ID)
+		n, err := s.syncMoney(r.Context(), t.ID)
 		res["firefly_rows"] = n
 		if err != nil {
 			res["firefly_error"] = err.Error()

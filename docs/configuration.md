@@ -1,6 +1,6 @@
 # Configuration
 
-Everything is an environment variable with a sensible default. Data is per person: each account sees only its own trips plus the ones shared with it (trip members), and connects its own Firefly, Dawarich, Immich and OpenAI under Settings → Integrations. The integration variables below belong to the owner (the first admin): they fill the owner's empty settings and are never given to other accounts. Values saved in the UI take precedence over the environment once set.
+Everything is an environment variable with a sensible default. Data is per person: each account sees only its own trips plus the ones shared with it (trip members), and connects its own Pocket Money, Dawarich, Immich and OpenAI under Settings → Integrations. The integration variables below belong to the owner (the first admin): each fills the owner's empty setting once and is never given to other accounts. Values saved in the UI take precedence; a value cleared in the UI stays cleared at the next start.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -20,7 +20,7 @@ Everything is an environment variable with a sensible default. Data is per perso
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | | First admin, created only when no users exist |
 | `DEFAULT_CURRENCY` | `EUR` | Home currency until changed in Settings |
 | `FX_PROVIDER` | `auto` | `auto`, `frankfurter`, `erapi`, `none` |
-| `FIREFLY_URL` / `FIREFLY_TOKEN` | | Firefly III base URL + personal access token |
+| `FIREFLY_URL` / `FIREFLY_TOKEN` | | Direct Pocket Money connection for the owner: `https://money.example.com/firefly` + a Money API token, or a Firefly III URL + personal access token. Leave empty on a box with Pocket Core |
 | `DAWARICH_URL` / `DAWARICH_API_KEY` | | Dawarich base URL + API key |
 | `IMMICH_URL` / `IMMICH_API_KEY` | | Immich base URL + API key |
 | `IMMICH_PUBLIC_URL` | | Browser-facing Immich URL for "Open in Immich" links when `IMMICH_URL` is internal |
@@ -28,7 +28,7 @@ Everything is an environment variable with a sensible default. Data is per perso
 | `OPENAI_MODEL` | `gpt-4o-mini` | Any chat model of the provider |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible endpoint (Ollama, LM Studio, OpenRouter…) |
 | `USER_AGENT` | `PocketTravel/1.0 (+repo)` | Sent to Nominatim, Overpass, Open-Meteo, Wikipedia |
-| `CORE_URL` / `CORE_REGISTRATION_KEY` | | [Pocket Core](https://git.bjelke.org/abjelosevic88/pocket-homelab-core): register on start (the key is needed once; the minted app token lives in `$DATA_DIR/core.token`), publish `travel.trip_created` / `travel.trip_updated` / `travel.expense_linked`, accept the tokens Core hands to paired phones, and resolve Pocket Money's Firefly-compatible API through Core when `FIREFLY_URL` is empty but a token is set |
+| `CORE_URL` / `CORE_REGISTRATION_KEY` | | [Pocket Core](https://git.bjelke.org/abjelosevic88/pocket-homelab-core): register on start (the key is needed once; the minted app token lives in `$DATA_DIR/core.token`), publish `travel.trip_created` / `travel.trip_updated` / `travel.expense_linked`, accept the tokens Core hands to paired phones, read each person's trip costs from Pocket Money through an app link (`transactions:read`), and resolve Pocket Money's Firefly-compatible API through Core when a direct token is set without `FIREFLY_URL` |
 | `CORE_APP_URL` | `BASE_URL` | How Core reaches this app for health checks (e.g. `http://host.docker.internal:8174`) |
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | | Sign in with an OpenID Connect provider (PocketID, Authelia, Authentik, Keycloak…). Needs `BASE_URL`; the callback is `BASE_URL/api/v1/auth/oidc/callback`. On a box with Pocket Core none of these are needed — the app receives its client when it registers |
 | `OIDC_NAME` | `single sign-on` | Button label: “Sign in with …” (a Core-issued client is labelled “Pocket Core”) |
@@ -38,7 +38,11 @@ Everything is an environment variable with a sensible default. Data is per perso
 
 ## Integrations
 
-- **Firefly III** — create a personal access token under Options → Profile → OAuth. Tag the withdrawals of a trip (e.g. `lisbon 2027`) and set the same tag on the trip. Every withdrawal with the tag is synced as a *spent* expense; the user may re-categorise them locally, everything else follows Firefly. Sync runs every 30 minutes for running and upcoming trips, on every trip save, and on demand (Budget → Sync).
+- **Pocket Money** — tag the expenses of a trip (e.g. `lisbon 2027`) and set the same Money tag on the trip. Every withdrawal with the tag is synced as a *spent* expense from the trip owner's Money; the user may re-categorise them locally, everything else follows Money. Sync runs every 30 minutes for running and upcoming trips, on every trip save, and on demand (Budget → Sync). Three modes, per person:
+  - *Pocket Core* — the default when the app is registered with Core and no token is saved. Travel declares `uses: money transactions:read`; at every sync it asks Core for a five-minute `pcx_` token for the trip owner and reads `<money URL from Core>/firefly`. Switched off in Core, the settings say *not connected* and nothing is synced.
+  - *Direct* — URL + token of any Firefly-compatible API: Pocket Money's `/firefly` with a Money API token, or a real Firefly III with a personal access token (Options → Profile → OAuth). The default while a token is saved, so an existing Firefly setup keeps working until you switch.
+  - *Off* — nothing is read.
+  Costs synced from Firefly before are not imported again from Money's mirror: the matching Money transaction takes over the old row (by the `firefly:<id>` external id when Money exposes it, else by date + amount + currency, then date + description), keeping its category; unclaimed synced rows are removed.
 - **Dawarich** — Account → API key. The trip's date range (in the trip's timezone, or the server's) is fetched as slim points, simplified for drawing, and summed per day. The timeline endpoint supplies journeys and stops. Cached for an hour while the trip runs, a week after.
 - **Immich** — Account settings → API keys. Photos are searched by `takenAfter`/`takenBefore`; thumbnails are proxied through the app so the key stays on the server.
 

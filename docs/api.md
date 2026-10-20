@@ -7,13 +7,13 @@ All endpoints live under `/api/v1`. Authenticate with the session cookie (the UI
 | Method | Path | |
 |---|---|---|
 | GET | `/trips?archived=0&q=` | The caller's own trips and the ones shared with them, with counts. Everyone else's trips answer 404, admins included |
-| POST | `/trips` | Create: `name`, `destination`, `start_date`, `end_date`, `currency`, `budget`, `firefly_tag`, … |
+| POST | `/trips` | Create: `name`, `destination`, `start_date`, `end_date`, `currency`, `budget`, `firefly_tag` (the Money tag), … |
 | GET/PUT/DELETE | `/trips/{id}` | |
 | GET | `/trips/{id}/overview` | Everything: trip, places, lodging, transport, expenses, checklists, journal, documents, budget, integrations |
 | PUT | `/trips/{id}/members` | `{members:[{user_id, role}]}` (owner only) |
 | POST | `/trips/{id}/cover` | multipart `file` |
 | POST | `/trips/{id}/duplicate` | `{name, start_date}` |
-| POST | `/trips/{id}/refresh` | Drop caches, re-sync Firefly |
+| POST | `/trips/{id}/refresh` | Drop caches, re-sync the costs from Pocket Money |
 
 ## Items
 
@@ -29,8 +29,10 @@ All endpoints live under `/api/v1`. Authenticate with the session cookie (the UI
 | Method | Path | |
 |---|---|---|
 | GET | `/trips/{id}/budget` | Summary: planned, actual, remaining, per day, by category, by day |
-| POST | `/trips/{id}/firefly/sync` | Pull tagged withdrawals now |
-| GET | `/firefly/tags` | |
+| POST | `/trips/{id}/money/sync` | Pull the trip owner's tagged withdrawals from Pocket Money now (`/firefly/sync` still works) |
+| GET | `/money/tags` | Your own Pocket Money tags, through your connection mode (`/firefly/tags` still works) |
+
+Synced expenses have `source` `money` or `firefly` (direct connection to a real Firefly III); only `category` and `notes` may be changed. The budget's `firefly_count` counts both. `GET /settings` returns `money_mode` (`core` / `direct` / `off`, the mode in effect), `money_via` (`core` / `direct`, or empty when not connected), `money_detail` (why not) and `core_configured`; `PUT /settings` takes `money_mode`, and `firefly_url` / `firefly_token` for Direct (send both empty to disconnect). `POST /integrations/test` with `which: "money"` tests a typed token directly, otherwise the saved mode.
 | GET | `/trips/{id}/dawarich/route` | Simplified polyline `points:[[lat,lng,ts]]`, `distance_km`, `days_km` |
 | GET | `/trips/{id}/dawarich/timeline` | Dawarich's day summaries with journeys and visits |
 | GET | `/trips/{id}/photos` | Immich assets in the date range |

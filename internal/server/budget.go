@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/currency"
+	"github.com/abjelosevic88/pocket-homelab-travel/internal/firefly"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/store"
 )
 
@@ -211,8 +212,8 @@ func (s *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "get expense")
 		return
 	}
-	if e.Source == "firefly" {
-		// Only the category may be changed locally; amounts come from Firefly.
+	if store.IsSynced(e.Source) {
+		// Only the category and notes may be changed locally; amounts come from Pocket Money.
 		var in expenseInput
 		keys, err := decodeKeys(r, &in)
 		if err != nil {
@@ -275,7 +276,7 @@ type BudgetSummary struct {
 	ByDay        []DayTotal        `json:"by_day"`
 	ByCurrency   map[string]int64  `json:"by_currency"` // actual, in original currencies
 	Top          []store.Expense   `json:"top"`
-	FireflyCount int               `json:"firefly_count"`
+	FireflyCount int               `json:"firefly_count"` // actual costs synced from Pocket Money (or Firefly)
 	Days         int               `json:"days"`
 	DaysElapsed  int               `json:"days_elapsed"`
 	Sources      map[string]int    `json:"sources"`
@@ -312,7 +313,7 @@ func (s *Server) budgetSummary(t *store.Trip, expenses []store.Expense) BudgetSu
 			b.Actual += e.AmountHome
 			c.Actual += e.AmountHome
 			b.ByCurrency[e.Currency] += e.Amount
-			if e.Source == "firefly" {
+			if store.IsSynced(e.Source) {
 				b.FireflyCount++
 			}
 			if e.Date != "" {
@@ -394,9 +395,9 @@ func (s *Server) handleBudget(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.budgetSummary(t, e))
 }
 
-// ---- Firefly ----
+// ---- Pocket Money (trip costs) ----
 
-// fireflyCategory maps a Firefly category / description to one of ours.
+// fireflyCategory maps a Money/Firefly category / description to one of ours.
 func fireflyCategory(cat, desc, dest string) string {
 	s := strings.ToLower(cat + " " + desc + " " + dest)
 	switch {
@@ -431,9 +432,89 @@ func containsAny(s string, subs ...string) bool {
 	return false
 }
 
-// syncFirefly pulls the trip's tagged withdrawals into expenses (kind actual,
-// source firefly). Returns the number of synced rows.
-func (s *Server) syncFirefly(ctx context.Context, tripID int64) (int, error) {
+// syncedTx is one tagged withdrawal, ready to become a trip expense.
+type syncedTx struct {
+	tx     firefly.Transaction
+	source string // money | firefly: whose id tx.ID is
+	minor  int64
+	cur    string
+	row    *store.Expense // the existing row it updates (nil = new)
+}
+
+// matchSynced pairs incoming transactions with the trip's synced rows so a
+// re-sync updates instead of duplicating, also across a switch between
+// Firefly III and Pocket Money (whose transaction ids differ):
+//
+//  1. same source and id: the row this transaction made before;
+//  2. a Money transaction mirrored from Firefly ("firefly:<id>" in its
+//     external_id) takes the row synced from that Firefly journal;
+//  3. otherwise a row from the other source with the same date, amount and
+//     currency (the same description preferred), then one with the same
+//     date and description.
+//
+// Rows are taken at most once; what is left over is pruned by the caller.
+func matchSynced(in []*syncedTx, existing []store.Expense) {
+	taken := map[int64]bool{}
+	byKey := map[string]*store.Expense{}
+	for i := range existing {
+		e := &existing[i]
+		if store.IsSynced(e.Source) {
+			byKey[e.Source+"\x00"+e.ExternalID] = e
+		}
+	}
+	take := func(x *syncedTx, e *store.Expense) {
+		if e != nil && !taken[e.ID] {
+			x.row, taken[e.ID] = e, true
+		}
+	}
+	for _, x := range in {
+		take(x, byKey[x.source+"\x00"+x.tx.ID])
+	}
+	for _, x := range in {
+		if x.row == nil && x.source == "money" {
+			if id := x.tx.FireflyOrigin(); id != "" {
+				take(x, byKey["firefly\x00"+id])
+			}
+		}
+	}
+	norm := func(s string) string { return strings.Join(strings.Fields(strings.ToLower(s)), " ") }
+	other := func(x *syncedTx, ok func(e *store.Expense) bool) *store.Expense {
+		var first *store.Expense
+		for i := range existing {
+			e := &existing[i]
+			if taken[e.ID] || !store.IsSynced(e.Source) || e.Source == x.source || !ok(e) {
+				continue
+			}
+			if norm(e.Name) == norm(x.tx.Description) {
+				return e
+			}
+			if first == nil {
+				first = e
+			}
+		}
+		return first
+	}
+	for _, x := range in {
+		if x.row == nil {
+			take(x, other(x, func(e *store.Expense) bool {
+				return e.Date == x.tx.Date && e.Amount == x.minor && strings.EqualFold(e.Currency, x.cur)
+			}))
+		}
+	}
+	for _, x := range in {
+		if x.row == nil {
+			take(x, other(x, func(e *store.Expense) bool {
+				return e.Date == x.tx.Date && norm(e.Name) == norm(x.tx.Description) && norm(e.Name) != ""
+			}))
+		}
+	}
+}
+
+// syncMoney pulls the trip's tagged withdrawals into expenses (kind actual,
+// source money, or firefly for a real Firefly III) from the trip owner's
+// Pocket Money, connected the way the owner chose (Pocket Core, direct or
+// off). Returns the number of synced rows.
+func (s *Server) syncMoney(ctx context.Context, tripID int64) (int, error) {
 	s.syncMu.Lock()
 	if s.syncing[tripID] {
 		s.syncMu.Unlock()
@@ -452,77 +533,96 @@ func (s *Server) syncFirefly(ctx context.Context, tripID int64) (int, error) {
 		return 0, err
 	}
 	if t.FireflyTag == "" {
-		return 0, errors.New("the trip has no Firefly tag")
+		return 0, errors.New("the trip has no Money tag")
 	}
-	// The trip's spending comes from its owner's Firefly account, whoever
+	// The trip's spending comes from its owner's Pocket Money, whoever
 	// presses sync (an editor of a shared trip) or the scheduler.
-	_, ff, _, _ := s.clients(ctx, t.OwnerID)
-	if !ff.Configured() {
-		return 0, errors.New("firefly is not configured for the trip owner")
+	conn, err := s.moneyFor(ctx, t.OwnerID)
+	if err != nil {
+		return 0, err
 	}
+	ff := conn.client
 	tag, err := ff.TagByName(ctx, t.FireflyTag)
 	if err != nil {
 		return 0, err
 	}
 	if tag == nil {
-		return 0, fmt.Errorf("tag %q does not exist in Firefly", t.FireflyTag)
+		return 0, fmt.Errorf("tag %q does not exist in Pocket Money", t.FireflyTag)
 	}
-	// A little slack around the trip: flights are paid before, the last
-	// dinner is charged after. Expenses outside the window still count when
-	// they carry the tag — the tag is the user's explicit decision.
+	// Every withdrawal with the tag counts, also outside the trip's dates
+	// (flights are paid before, the last dinner is charged after): the tag
+	// is the person's explicit decision.
 	txs, err := ff.TagTransactions(ctx, tag.ID, "", "")
 	if err != nil {
 		return 0, err
 	}
-	// Keep existing categories the user may have edited.
-	existing, _ := s.store.ListExpenses(ctx, t.ID)
-	userCat := map[string]string{}
-	for _, e := range existing {
-		if e.Source == "firefly" {
-			userCat[e.ExternalID] = e.Category
-		}
-	}
-	keep := make([]string, 0, len(txs))
-	n := 0
+	in := make([]*syncedTx, 0, len(txs))
 	for _, tx := range txs {
+		x := &syncedTx{tx: tx, source: "firefly"}
+		if conn.via == modeCore || tx.FromMoney {
+			x.source = "money"
+		}
 		dec := tx.Decimals
 		if dec == 0 && currency.Decimals(tx.Currency) != 0 {
 			dec = currency.Decimals(tx.Currency)
 		}
-		minor := int64(math.Round(tx.Amount * math.Pow10(dec)))
-		cur := tx.Currency
+		x.minor = int64(math.Round(tx.Amount * math.Pow10(dec)))
+		x.cur = tx.Currency
 		// Prefer the foreign amount when the card was charged in the trip currency.
 		if tx.ForeignCur != "" && strings.EqualFold(tx.ForeignCur, t.Currency) {
-			cur = tx.ForeignCur
-			minor = int64(math.Round(tx.ForeignAmt * math.Pow10(currency.Decimals(cur))))
+			x.cur = tx.ForeignCur
+			x.minor = int64(math.Round(tx.ForeignAmt * math.Pow10(currency.Decimals(x.cur))))
 		}
-		rate, _ := s.rate(ctx, cur, t.Currency, tx.Date)
-		cat := userCat[tx.ID]
+		in = append(in, x)
+	}
+	existing, err := s.store.ListExpenses(ctx, t.ID)
+	if err != nil {
+		return 0, err
+	}
+	matchSynced(in, existing)
+	keep := make([]int64, 0, len(in))
+	n := 0
+	for _, x := range in {
+		tx := x.tx
+		rate, _ := s.rate(ctx, x.cur, t.Currency, tx.Date)
+		cat := ""
+		if x.row != nil {
+			cat = x.row.Category // keep what the person may have re-categorised
+			if x.row.Source != x.source || x.row.ExternalID != tx.ID {
+				if err := s.store.RekeyExternalExpense(ctx, t.ID, x.row.ID, x.source, tx.ID); err != nil {
+					s.log.Warn("money rekey", "err", err)
+					continue
+				}
+			}
+		}
 		if cat == "" {
 			cat = fireflyCategory(tx.Category, tx.Description, tx.Destination)
 		}
 		notes := strings.TrimSpace(strings.Join(nonEmpty(tx.Category, tx.Destination, tx.Notes), " · "))
-		e := &store.Expense{TripID: t.ID, Name: tx.Description, Category: cat, Amount: minor, Currency: cur, AmountHome: currency.Convert(minor, cur, t.Currency, rate), FXRate: rate, Date: tx.Date, Kind: "actual", Source: "firefly", ExternalID: tx.ID, Notes: notes}
+		e := &store.Expense{TripID: t.ID, Name: tx.Description, Category: cat, Amount: x.minor, Currency: x.cur, AmountHome: currency.Convert(x.minor, x.cur, t.Currency, rate), FXRate: rate, Date: tx.Date, Kind: "actual", Source: x.source, ExternalID: tx.ID, Notes: notes}
 		created, err := s.store.UpsertExternalExpense(ctx, e)
 		if err != nil {
-			s.log.Warn("firefly upsert", "err", err)
+			s.log.Warn("money upsert", "err", err)
 			continue
 		}
 		if created {
 			s.publish("travel.expense_linked", fmt.Sprintf("expense:%d", e.ID), t.OwnerID, map[string]any{
 				"expense_id": e.ID, "trip_id": t.ID, "trip": t.Name, "name": e.Name, "category": e.Category,
 				"amount": e.Amount, "currency": e.Currency, "amount_home": e.AmountHome, "home_currency": t.Currency,
-				"date": e.Date, "source": e.Source, "external_id": e.ExternalID, "firefly_tag": t.FireflyTag,
+				"date": e.Date, "source": e.Source, "external_id": e.ExternalID, "tag": t.FireflyTag, "firefly_tag": t.FireflyTag,
 			})
 		}
-		keep = append(keep, tx.ID)
+		keep = append(keep, e.ID)
 		n++
 	}
-	if _, err := s.store.DeleteExternalExpensesNotIn(ctx, t.ID, "firefly", keep); err != nil {
-		s.log.Warn("firefly prune", "err", err)
+	// Synced rows (from either source) that no tagged transaction claimed
+	// are gone upstream, or were the Firefly copy of a cost now read from
+	// Money: either way they must not count twice.
+	if _, err := s.store.DeleteSyncedExpensesExcept(ctx, t.ID, store.SyncedSources, keep); err != nil {
+		s.log.Warn("money prune", "err", err)
 	}
 	_ = s.store.CachePut(ctx, cacheKey(t.ID, "firefly-synced"), fmt.Sprintf("%d", n))
-	s.log.Info("firefly synced", "trip", t.Name, "tag", t.FireflyTag, "rows", n)
+	s.log.Info("trip costs synced", "trip", t.Name, "tag", t.FireflyTag, "via", conn.via, "rows", n)
 	return n, nil
 }
 
@@ -536,12 +636,12 @@ func nonEmpty(v ...string) []string {
 	return out
 }
 
-func (s *Server) handleFireflySync(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleMoneySync(w http.ResponseWriter, r *http.Request) {
 	if !s.canEdit(w, r) {
 		return
 	}
 	t := tripFrom(r.Context()).trip
-	n, err := s.syncFirefly(r.Context(), t.ID)
+	n, err := s.syncMoney(r.Context(), t.ID)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -550,14 +650,14 @@ func (s *Server) handleFireflySync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"synced": n, "budget": s.budgetSummary(t, e), "expenses": e})
 }
 
-// handleFireflyTags lists the caller's own Firefly tags.
-func (s *Server) handleFireflyTags(w http.ResponseWriter, r *http.Request) {
-	_, ff, _, _ := s.clients(r.Context(), actorID(r.Context()))
-	if !ff.Configured() {
+// handleMoneyTags lists the caller's own Pocket Money tags.
+func (s *Server) handleMoneyTags(w http.ResponseWriter, r *http.Request) {
+	conn, err := s.moneyFor(r.Context(), actorID(r.Context()))
+	if err != nil {
 		writeJSON(w, http.StatusOK, []any{})
 		return
 	}
-	tags, err := ff.Tags(r.Context())
+	tags, err := conn.client.Tags(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -566,9 +666,10 @@ func (s *Server) handleFireflyTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, tags)
 }
 
-// autoSync refreshes Firefly for trips that are running or recently finished.
-// Each trip syncs with its own owner's credentials (see syncFirefly), so the
-// job only ever touches that owner's spending.
+// autoSync refreshes trip costs for trips that are running, upcoming or
+// recently finished. Each trip syncs with its own owner's Pocket Money
+// connection (see syncMoney), so the job only ever touches that owner's
+// spending; an owner who switched Money off is skipped.
 func (s *Server) autoSync(ctx context.Context) {
 	trips, err := s.store.ListTrips(ctx, store.TripFilter{})
 	if err != nil {
@@ -583,7 +684,7 @@ func (s *Server) autoSync(ctx context.Context) {
 		recent := t.EndDate == "" || t.EndDate >= cutoff
 		upcoming := t.StartDate != "" && t.StartDate > today
 		if recent || upcoming {
-			if _, err := s.syncFirefly(ctx, t.ID); err != nil {
+			if _, err := s.syncMoney(ctx, t.ID); err != nil && !errors.Is(err, errMoneyOff) {
 				s.log.Warn("auto sync", "trip", t.Name, "err", err)
 			}
 		}

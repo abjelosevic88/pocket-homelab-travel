@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, V1 } from '../lib/api'
 import { useApp } from '../lib/app-context'
-import type { APIToken, Settings as SettingsT, User } from '../lib/types'
+import type { APIToken, ConnMode, Settings as SettingsT, User } from '../lib/types'
 import { DATE_FORMATS, TIME_FORMATS, fmtBytes, fmtDateTime, type DateFormat, type TimeFormat } from '../lib/format'
 import { Card, Confirm, Field, Loading, Modal, PageHeader, Segmented, Tabs, useAsync, useToast } from '../components/ui'
 import { Select } from '../components/Select'
@@ -73,7 +73,7 @@ function General() {
         <table className="table compact"><tbody>
           <tr><th>Trips</th><td className="muted">Dates, a home currency and a budget. Everything else hangs off a trip.</td></tr>
           <tr><th>Places</th><td className="muted">Ideas until you drag them onto a day. Tick them off as you go.</td></tr>
-          <tr><th>Budget</th><td className="muted">Stays and transport add their price as planned cost; Firefly brings the real spending in.</td></tr>
+          <tr><th>Budget</th><td className="muted">Stays and transport add their price as planned cost; Pocket Money brings the real spending in.</td></tr>
           <tr><th>Recorded</th><td className="muted">Dawarich draws where you actually went; Immich shows what you photographed.</td></tr>
           <tr><th>Outside</th><td className="muted">Places search and discover use OpenStreetMap; the weather is Open-Meteo. No keys needed.</td></tr>
         </tbody></table>
@@ -87,16 +87,17 @@ function Integrations() {
   const { toast } = useToast()
   const [test, setTest] = useState<Record<string, string>>({})
   if (!f) return <Loading />
-  const run = async (which: 'firefly' | 'dawarich' | 'immich' | 'openai', url: string, key: string) => {
+  const run = async (which: 'money' | 'dawarich' | 'immich' | 'openai', url: string, key: string) => {
     setTest(t => ({ ...t, [which]: 'testing…' }))
     try { const r = await api.post<{ ok: boolean; message?: string; error?: string }>(`${V1}/integrations/test`, { which, url, key }); setTest(t => ({ ...t, [which]: r.ok ? `✓ ${r.message}` : `✕ ${r.error}` })) } catch (e) { setTest(t => ({ ...t, [which]: `✕ ${(e as Error).message}` })) }
   }
-  const block = (which: 'firefly' | 'dawarich' | 'immich', title: string, urlKey: 'firefly_url' | 'dawarich_url' | 'immich_url', keyKey: 'firefly_token' | 'dawarich_api_key' | 'immich_api_key', what: string, help: string) => (
-    <Card title={title} actions={<span className={`badge ${f[`${which}_configured` as 'firefly_configured'] ? 'cat' : ''}`}>{f[`${which}_configured` as 'firefly_configured'] ? 'connected' : 'not set'}</span>}>
+  const status = (which: string) => <span className={`small ${test[which]?.startsWith('✓') ? 'ok' : test[which]?.startsWith('✕') ? 'bad' : 'muted'}`}>{test[which]}</span>
+  const block = (which: 'dawarich' | 'immich', title: string, urlKey: 'dawarich_url' | 'immich_url', keyKey: 'dawarich_api_key' | 'immich_api_key', what: string, help: string) => (
+    <Card title={title} actions={<span className={`badge ${f[`${which}_configured`] ? 'cat' : ''}`}>{f[`${which}_configured`] ? 'connected' : 'not set'}</span>}>
       <p className="muted small">{what}</p>
       <div className="grid" style={{ gap: 12 }}>
         <Field label="URL" help={help}><input value={f[urlKey]} onChange={e => setF({ ...f, [urlKey]: e.target.value })} placeholder="http://host.docker.internal:8080" /></Field>
-        <Field label={which === 'firefly' ? 'Personal access token' : 'API key'} help="Stored on the server; shown masked. Leave as is to keep the current one."><input value={f[keyKey]} onChange={e => setF({ ...f, [keyKey]: e.target.value })} autoComplete="off" /></Field>
+        <Field label="API key" help="Stored on the server; shown masked. Leave as is to keep the current one."><input value={f[keyKey]} onChange={e => setF({ ...f, [keyKey]: e.target.value })} autoComplete="off" /></Field>
         {which === 'immich' && <Field label="Public URL (optional)" help="What the browser opens for “Open in Immich” when the API URL above is internal (e.g. host.docker.internal)."><input value={f.immich_public_url} onChange={e => setF({ ...f, immich_public_url: e.target.value })} placeholder="https://photos.example.com" /></Field>}
         <div className="row"><button className="btn sm" onClick={() => run(which, f[urlKey], f[keyKey])} disabled={!f[urlKey]}>Test connection</button><span className={`small ${test[which]?.startsWith('✓') ? 'ok' : test[which]?.startsWith('✕') ? 'bad' : 'muted'}`}>{test[which]}</span></div>
       </div>
@@ -104,8 +105,17 @@ function Integrations() {
   )
   return (
     <div className="grid" style={{ gap: 16 }}>
-      <p className="muted small">These are your own accounts. Each person connects their own Firefly, Dawarich, Immich and OpenAI; nobody else on this box uses yours. On a trip shared with you, the route and photos come from your accounts and the spending from the trip owner's Firefly.</p>
-      {block('firefly', '💶 Firefly III', 'firefly_url', 'firefly_token', 'What the trip really cost. Tag the withdrawals in Firefly (e.g. "lisbon 2027") and set the same tag on the trip; they appear as spent, in their own currency, converted at the day\'s rate. Synced every 30 minutes while a trip is running or upcoming, and on demand.', 'Create the token under Firefly → Options → Profile → OAuth → Personal access tokens.')}
+      <p className="muted small">These are your own accounts. Each person connects their own Pocket Money, Dawarich, Immich and OpenAI; nobody else on this box uses yours. On a trip shared with you, the route and photos come from your accounts and the spending from the trip owner's Pocket Money.</p>
+      <Card title="👛 Pocket Money" actions={connBadge(f.money_mode, f.money_via)}>
+        <p className="muted small">What the trip really cost. Tag the expenses in Pocket Money (e.g. "lisbon 2027") and set the same Money tag on the trip; they appear as spent, in their own currency, converted at the day's rate. Synced every 30 minutes while a trip is running or upcoming, and on demand.</p>
+        <Connection app="Pocket Money" mode={f.money_mode} via={f.money_via} detail={f.money_detail} core={f.core_configured} hasToken={!!f.firefly_token}
+          onMode={m => save({ money_mode: m })} onDisconnect={() => save({ firefly_url: '', firefly_token: '' })}
+          test={<><button className="btn sm" onClick={() => run('money', f.firefly_url, f.firefly_token)}>Test connection</button>{status('money')}</>}
+          direct={<div className="two-col tight">
+            <Field label="Money or Firefly III URL" help="Pocket Money's Firefly-compatible API is its address plus /firefly (inside Docker e.g. http://host.docker.internal:8178/firefly); a real Firefly III works too."><input value={f.firefly_url} onChange={e => setF({ ...f, firefly_url: e.target.value })} placeholder="https://money.example.com/firefly" /></Field>
+            <Field label="Token" help="Pocket Money → Settings → API tokens, or a Firefly personal access token. Stored on the server; shown masked."><input value={f.firefly_token} onChange={e => setF({ ...f, firefly_token: e.target.value })} autoComplete="off" /></Field>
+          </div>} />
+      </Card>
       {block('dawarich', '🛰 Dawarich', 'dawarich_url', 'dawarich_api_key', 'Where you actually went. The recorded route is drawn on the map, each day shows the distance and the detected stops, and the GPX export can include the track.', 'Dawarich → Account → API key. Behind HTTPS use the public name; plain http works too.')}
       <Card title="✨ OpenAI (or any compatible API)" actions={<span className={`badge ${f.openai_configured ? 'cat' : ''}`}>{f.openai_configured ? 'connected' : 'not set'}</span>}>
         <p className="muted small">Optional. Adds five buttons: <b>Suggest places</b> (popular, well-rated places for the destination, located with OpenStreetMap), <b>Plan my days</b> (assigns ideas to days and times), <b>Describe</b> a place with practical tips, a <b>packing list</b> tailored to the trip and weather, and a <b>recap</b> written from your journal, visited places and spending. Trip details are sent to the provider when you use them; nothing runs automatically.</p>
@@ -123,6 +133,42 @@ function Integrations() {
     </div>
   )
 }
+
+/**
+ * One Pocket app connection: Pocket Core, Direct (URL + token) or Off, with
+ * what it actually is right now. The mode saves at once; Disconnect removes
+ * the saved URL and token.
+ */
+function Connection({ app, mode, via, detail, core, onMode, onDisconnect, hasToken, test, direct }: {
+  app: string; mode: ConnMode; via: string; detail: string; core: boolean; onMode: (m: ConnMode) => void; onDisconnect: () => void
+  hasToken: boolean; test: React.ReactNode; direct: React.ReactNode
+}) {
+  const ok = via !== ''
+  const line = mode === 'off' ? `Off: Travel does not read ${app}.`
+    : mode === 'core' ? (ok ? `Connected through Pocket Core, as you. Nothing to fill in; switch it off for yourself in Pocket Core → Settings → Apps acting for me.` : `Not connected: ${detail}.`)
+    : (ok ? `Direct connection with your own URL and token; use Test connection to check it.` : `Not connected: ${detail || 'add the URL and a token'}.`)
+  return (
+    <div className="conn-block">
+      <div className="conn-mode">
+        <Segmented size="sm" value={mode} onChange={m => onMode(m as ConnMode)} options={[
+          { value: 'core', label: 'Pocket Core', title: core ? 'Through Pocket Core: per person, nothing to paste' : 'There is no Pocket Core on this box' },
+          { value: 'direct', label: 'Direct', title: 'Your own URL and API token' },
+          { value: 'off', label: 'Off' },
+        ]} />
+      </div>
+      <div className={`conn-status ${mode === 'off' ? '' : ok ? 'ok' : 'bad'}`}><span className="dot" />{line}</div>
+      {mode === 'direct' && <>
+        {direct}
+        <div className="row wrap">{test}{hasToken && <button className="btn sm ghost danger-text" onClick={onDisconnect} title="Remove the saved URL and token">Disconnect</button>}</div>
+      </>}
+      {mode === 'core' && <div className="row wrap">{test}</div>}
+    </div>
+  )
+}
+
+const connBadge = (mode: ConnMode, via: string) => mode === 'off' ? <span className="badge">off</span>
+  : via ? <span className="badge cat">{via === 'core' ? 'Pocket Core' : 'direct'}</span>
+  : <span className="badge warn">not connected</span>
 
 function Import() {
   const { toast } = useToast()
@@ -301,7 +347,7 @@ function About() {
   const counts = (data?.counts || {}) as Record<string, number>
   return (
     <Card title="About">
-      <p><b>Pocket Travel</b> is a self-hosted trip planner: itinerary, places, stays, transport, budget, packing lists and a journal — with the real spending from Firefly III, the recorded route from Dawarich and the photos from Immich on the same page. One binary, one SQLite file, one volume.</p>
+      <p><b>Pocket Travel</b> is a self-hosted trip planner: itinerary, places, stays, transport, budget, packing lists and a journal — with the real spending from Pocket Money (or Firefly III), the recorded route from Dawarich and the photos from Immich on the same page. One binary, one SQLite file, one volume.</p>
       <p className="muted small">Open source (MIT) — <a href="https://github.com/abjelosevic88/pocket-homelab-travel" target="_blank" rel="noreferrer">github.com/abjelosevic88/pocket-homelab-travel</a>. Sibling projects: Pocket Habits, Pocket Inventory, Pocket Bookshelf, Pocket Split, Pocket Clips, Pocket Subtitles and Pocket Invoicing. Maps © OpenStreetMap contributors; weather by Open-Meteo; optional AI features via your own OpenAI-compatible key.</p>
       {data && (
         <table className="table compact mt">

@@ -25,7 +25,6 @@ import (
 	core "github.com/abjelosevic88/pocket-homelab-core/sdk"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/config"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/dawarich"
-	"github.com/abjelosevic88/pocket-homelab-travel/internal/firefly"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/fx"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/geo"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/immich"
@@ -125,7 +124,10 @@ func (s *Server) Bootstrap(ctx context.Context) error {
 
 // seedOwnerSettings gives the owner any personal settings still stored
 // box-wide and fills their empty integration settings from the environment
-// (the UI values win afterwards). Members never get these.
+// (the UI values win afterwards). Members never get these. Each value is
+// copied once: clearing it in Settings (to switch Pocket Money over to
+// Pocket Core, say) must not bring it back at the next start. A value
+// already there counts as copied.
 func (s *Server) seedOwnerSettings(ctx context.Context, owner int64) error {
 	if err := s.store.ClaimLegacySettings(ctx, owner); err != nil {
 		return err
@@ -135,24 +137,39 @@ func (s *Server) seedOwnerSettings(ctx context.Context, owner int64) error {
 		return err
 	}
 	changed := false
-	set := func(dst *string, v string) {
+	var marks []string
+	set := func(name string, dst *string, v string) {
+		key := "seeded:" + name
+		if s.store.HasUserSetting(ctx, owner, key) {
+			return
+		}
 		if *dst == "" && v != "" {
 			*dst = v
 			changed = true
 		}
+		if *dst != "" {
+			marks = append(marks, key)
+		}
 	}
-	set(&st.FireflyURL, s.cfg.FireflyURL)
-	set(&st.FireflyToken, s.cfg.FireflyToken)
-	set(&st.DawarichURL, s.cfg.DawarichURL)
-	set(&st.DawarichAPIKey, s.cfg.DawarichAPIKey)
-	set(&st.ImmichURL, s.cfg.ImmichURL)
-	set(&st.ImmichAPIKey, s.cfg.ImmichAPIKey)
-	set(&st.ImmichPublicURL, s.cfg.ImmichPublicURL)
-	set(&st.OpenAIKey, s.cfg.OpenAIKey)
-	set(&st.OpenAIModel, s.cfg.OpenAIModel)
-	set(&st.OpenAIBaseURL, s.cfg.OpenAIBaseURL)
+	set("FIREFLY_URL", &st.FireflyURL, s.cfg.FireflyURL)
+	set("FIREFLY_TOKEN", &st.FireflyToken, s.cfg.FireflyToken)
+	set("DAWARICH_URL", &st.DawarichURL, s.cfg.DawarichURL)
+	set("DAWARICH_API_KEY", &st.DawarichAPIKey, s.cfg.DawarichAPIKey)
+	set("IMMICH_URL", &st.ImmichURL, s.cfg.ImmichURL)
+	set("IMMICH_API_KEY", &st.ImmichAPIKey, s.cfg.ImmichAPIKey)
+	set("IMMICH_PUBLIC_URL", &st.ImmichPublicURL, s.cfg.ImmichPublicURL)
+	set("OPENAI_API_KEY", &st.OpenAIKey, s.cfg.OpenAIKey)
+	set("OPENAI_MODEL", &st.OpenAIModel, s.cfg.OpenAIModel)
+	set("OPENAI_BASE_URL", &st.OpenAIBaseURL, s.cfg.OpenAIBaseURL)
 	if changed {
-		return s.store.SaveUserSettings(ctx, owner, st)
+		if err := s.store.SaveUserSettings(ctx, owner, st); err != nil {
+			return err
+		}
+	}
+	for _, k := range marks {
+		if err := s.store.MarkUserSetting(ctx, owner, k, "1"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -195,6 +212,7 @@ func (s *Server) registerWithCore(ctx context.Context) error {
 		URL: s.cfg.CoreAppURL, PublicURL: s.cfg.BaseURL, HealthPath: "/healthz", EnvPrefix: "TRAVEL",
 		Publishes: []string{"travel.trip_created", "travel.trip_updated", "travel.expense_linked"},
 		Offers:    linkOffers,
+		Uses:      moneyUses,
 	}
 	// Ask Core for a relying-party client so "Sign in with Pocket Core" needs no configuration.
 	if s.cfg.BaseURL != "" {
@@ -261,7 +279,7 @@ func (s *Server) coreStatus() map[string]any {
 	return map[string]any{"configured": s.core.Configured(), "url": s.cfg.CoreURL, "registered": s.coreOK, "error": s.coreErr}
 }
 
-// janitor syncs Firefly for active trips every 30 minutes and trims caches.
+// janitor syncs trip costs from Pocket Money for active trips every 30 minutes.
 func (s *Server) janitor(ctx context.Context) {
 	t := time.NewTicker(30 * time.Minute)
 	defer t.Stop()
@@ -278,17 +296,12 @@ func (s *Server) janitor(ctx context.Context) {
 // ---- integration clients, built from one person's settings ----
 
 // clients builds the integration clients from userID's own credentials.
-// Nobody uses anyone else's Firefly, Dawarich, Immich or OpenAI account; a
-// person without credentials gets unconfigured clients.
-func (s *Server) clients(ctx context.Context, userID int64) (store.Settings, *firefly.Client, *dawarich.Client, *immich.Client) {
+// Nobody uses anyone else's Dawarich, Immich or OpenAI account; a person
+// without credentials gets unconfigured clients. Pocket Money (trip costs)
+// goes through moneyFor, which follows the person's connection mode.
+func (s *Server) clients(ctx context.Context, userID int64) (store.Settings, *dawarich.Client, *immich.Client) {
 	st, _ := s.store.GetSettings(ctx, userID)
-	if st.FireflyURL == "" && st.FireflyToken != "" {
-		// Pocket Money serves its Firefly-compatible API under /firefly.
-		if u := s.resolveSibling(ctx, "money"); u != "" {
-			st.FireflyURL = u + "/firefly"
-		}
-	}
-	return st, firefly.New(st.FireflyURL, st.FireflyToken, 20*time.Second), dawarich.New(st.DawarichURL, st.DawarichAPIKey, 60*time.Second), immich.New(st.ImmichURL, st.ImmichAPIKey, 30*time.Second)
+	return st, dawarich.New(st.DawarichURL, st.DawarichAPIKey, 60*time.Second), immich.New(st.ImmichURL, st.ImmichAPIKey, 30*time.Second)
 }
 
 // Router builds the chi router.
@@ -384,7 +397,8 @@ func (s *Server) Router() http.Handler {
 				r.Put("/expenses/{id}", s.handleUpdateExpense)
 				r.Delete("/expenses/{id}", s.handleDeleteExpense)
 				r.Get("/budget", s.handleBudget)
-				r.Post("/firefly/sync", s.handleFireflySync)
+				r.Post("/money/sync", s.handleMoneySync)
+				r.Post("/firefly/sync", s.handleMoneySync) // before v0.6.0
 
 				r.Get("/checklists", s.handleListChecklists)
 				r.Post("/checklists", s.handleCreateChecklist)
@@ -423,7 +437,8 @@ func (s *Server) Router() http.Handler {
 				r.Post("/ai/recap", s.handleAIRecap)
 			})
 
-			r.Get("/firefly/tags", s.handleFireflyTags)
+			r.Get("/money/tags", s.handleMoneyTags)
+			r.Get("/firefly/tags", s.handleMoneyTags) // before v0.6.0
 			r.Post("/integrations/test", s.handleIntegrationTest)
 			r.Post("/import/adventurelog/collections", s.handleALCollections)
 			r.Post("/import/adventurelog", s.handleALImport)

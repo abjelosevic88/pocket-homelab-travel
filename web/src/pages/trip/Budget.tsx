@@ -19,7 +19,7 @@ export function BudgetTab() {
   const integ = ov.integrations.firefly
   const sync = async () => {
     setSyncing(true)
-    try { const r = await api.post<{ synced: number }>(`${V1}/trips/${trip.id}/firefly/sync`); toast(`Synced ${r.synced} transactions from Firefly`); await reload() } catch (e) { toast((e as Error).message, 'err') } finally { setSyncing(false) }
+    try { const r = await api.post<{ synced: number }>(`${V1}/trips/${trip.id}/money/sync`); toast(`Synced ${r.synced} transactions from Pocket Money`); await reload() } catch (e) { toast((e as Error).message, 'err') } finally { setSyncing(false) }
   }
   const list = ov.expenses.filter(e => show === 'all' || e.kind === show)
   const max = Math.max(1, ...b.by_category.map(c => Math.max(c.planned, c.actual)))
@@ -29,7 +29,7 @@ export function BudgetTab() {
   return (
     <>
       <div className="stats">
-        <div className="stat"><div className="n"><Money minor={b.total} code={b.currency} compact /></div><div className="l">total{b.bookings > 0 && <> · <Money minor={b.actual} code={b.currency} compact /> spent + bookings</>}{b.bookings === 0 && b.firefly_count > 0 && ` · ${b.firefly_count} from Firefly`}</div></div>
+        <div className="stat"><div className="n"><Money minor={b.total} code={b.currency} compact /></div><div className="l">total{b.bookings > 0 && <> · <Money minor={b.actual} code={b.currency} compact /> spent + bookings</>}{b.bookings === 0 && b.firefly_count > 0 && ` · ${b.firefly_count} from Pocket Money`}</div></div>
         <div className="stat"><div className="n"><Money minor={b.planned} code={b.currency} compact /></div><div className="l">planned</div></div>
         {trip.budget > 0 && <div className="stat"><div className={`n ${b.remaining < 0 ? 'bad' : ''}`}><Money minor={b.remaining} code={b.currency} compact /></div><div className="l">left of <Money minor={trip.budget} code={b.currency} compact /></div></div>}
         <div className="stat"><div className="n"><Money minor={b.per_day} code={b.currency} compact /></div><div className="l">per day{b.days_elapsed > 0 ? ` · ${b.days_elapsed} days so far` : trip.days ? ` · planned over ${trip.days}` : ''}</div></div>
@@ -49,17 +49,17 @@ export function BudgetTab() {
       </div>
       <Card className="mt" title="Expenses" actions={<span className="row">
         <Segmented value={show} onChange={setShow} options={[{ value: 'all', label: 'All' }, { value: 'actual', label: 'Spent' }, { value: 'planned', label: 'Planned' }]} size="sm" />
-        {integ.configured && trip.firefly_tag && canEdit && <button className="btn sm" onClick={sync} disabled={syncing}>{syncing ? 'Syncing…' : '↻ Sync Firefly'}</button>}
+        {integ.configured && trip.firefly_tag && canEdit && <button className="btn sm" onClick={sync} disabled={syncing}>{syncing ? 'Syncing…' : '↻ Sync Pocket Money'}</button>}
         {canEdit && <button className="btn primary sm" onClick={() => edit('expense', null, { kind: trip.end_date && trip.end_date < today ? 'actual' : 'planned' })}>+ Cost</button>}
       </span>}>
-        {integ.configured && !trip.firefly_tag && <div className="hint-strip">💡 Link a Firefly III tag under <a href="#" onClick={e => { e.preventDefault(); edit('trip', trip) }}>Edit trip</a> and every withdrawal with that tag lands here as spent, in its own currency.</div>}
-        {integ.configured && trip.firefly_tag && <div className="hint-strip">Firefly tag <code>{trip.firefly_tag}</code>{integ.synced_at ? ` · synced ${ago(integ.synced_at)}` : ' · not synced yet'} · refreshes every 30 min while the trip is running.</div>}
-        {list.length === 0 ? <Empty title="No expenses">Planned costs come from stays, transport and anything you add; what you really spend comes from Firefly or by hand.</Empty> : (
+        {integ.configured && !trip.firefly_tag && <div className="hint-strip">💡 Set a Money tag under <a href="#" onClick={e => { e.preventDefault(); edit('trip', trip) }}>Edit trip</a> and every expense in Pocket Money with that tag lands here as spent, in its own currency.</div>}
+        {integ.configured && trip.firefly_tag && <div className="hint-strip">Money tag <code>{trip.firefly_tag}</code>{integ.via === 'core' ? ' · through Pocket Core' : ''}{integ.synced_at ? ` · synced ${ago(integ.synced_at)}` : ' · not synced yet'} · refreshes every 30 min while the trip is running.</div>}
+        {list.length === 0 ? <Empty title="No expenses">Planned costs come from stays, transport and anything you add; what you really spend comes from Pocket Money or by hand.</Empty> : (
           <table className="table compact">
             <thead><tr><th>Date</th><th>What</th><th>Category</th><th className="num">Amount</th><th className="num">In {b.currency}</th></tr></thead>
             <tbody>{list.map(e => <tr key={e.id} className="clickable" onClick={() => edit('expense', e)}>
               <td className="muted small">{e.date ? fmtDate(e.date, false) : '—'}</td>
-              <td><b>{e.name}</b> {e.source === 'firefly' && <span className="src-pill firefly">firefly</span>}{e.source === 'item' && <span className="src-pill">{e.link_kind}</span>}{e.kind === 'planned' && <span className="src-pill">planned</span>}{e.notes && <div className="small muted">{e.notes}</div>}</td>
+              <td><b>{e.name}</b> {e.source === 'money' && <span className="src-pill money">money</span>}{e.source === 'firefly' && <span className="src-pill firefly">firefly</span>}{e.source === 'item' && <span className="src-pill">{e.link_kind}</span>}{e.kind === 'planned' && <span className="src-pill">planned</span>}{e.notes && <div className="small muted">{e.notes}</div>}</td>
               <td className="muted">{EXPENSE_ICONS[e.category] || ''} {cap(e.category)}</td>
               <td className="num"><Money minor={e.amount} code={e.currency} /></td>
               <td className="num">{e.currency !== b.currency ? <Money minor={e.amount_home} code={b.currency} /> : ''}</td>
@@ -79,7 +79,8 @@ export function ExpenseModal({ trip, item, defaults = {}, onClose, onSaved }: { 
   const [del, setDel] = useState(false)
   const set = <K extends keyof Expense>(k: K, v: Expense[K]) => setF(x => ({ ...x, [k]: v }))
   const base = `${V1}/trips/${trip.id}/expenses`
-  const locked = item?.source === 'firefly' || item?.source === 'item'
+  const synced = item?.source === 'money' || item?.source === 'firefly'
+  const locked = synced || item?.source === 'item'
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true)
     try {
@@ -92,7 +93,7 @@ export function ExpenseModal({ trip, item, defaults = {}, onClose, onSaved }: { 
   return (
     <Modal title={item ? 'Edit cost' : 'Add a cost'} onClose={onClose}>
       <form onSubmit={save} className="grid" style={{ gap: 14 }}>
-        {item?.source === 'firefly' && <div className="callout">This comes from Firefly III (#{item.external_id}). Change the amount or date there; here you can only re-categorise it.</div>}
+        {synced && <div className="callout">This comes from {item?.source === 'money' ? 'Pocket Money' : 'Firefly III'} (#{item?.external_id}). Change the amount or date there; here you can only re-categorise it.</div>}
         {item?.source === 'item' && <div className="callout">This is the price of a {item.link_kind}. Edit it on the {item.link_kind} itself.</div>}
         <Field label="What"><input value={f.name || ''} onChange={e => set('name', e.target.value)} required autoFocus={!item} disabled={locked} /></Field>
         {!locked && <Field group label="Kind"><Segmented value={f.kind || 'planned'} onChange={v => set('kind', v as 'planned' | 'actual')} options={[{ value: 'planned', label: 'Planned (estimate)' }, { value: 'actual', label: 'Spent' }]} size="sm" /></Field>}

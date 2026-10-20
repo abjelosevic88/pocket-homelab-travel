@@ -203,7 +203,7 @@ type Expense struct {
 	FXRate     float64 `json:"fx_rate"`
 	Date       string  `json:"date"`
 	Kind       string  `json:"kind"`   // planned | actual
-	Source     string  `json:"source"` // manual | firefly | item
+	Source     string  `json:"source"` // manual | item | money | firefly (synced: money = Pocket Money transaction id, firefly = Firefly III journal id)
 	ExternalID string  `json:"external_id"`
 	LinkKind   string  `json:"link_kind"`
 	LinkID     int64   `json:"link_id"`
@@ -279,12 +279,17 @@ type Activity struct {
 
 // Settings are preferences stored as key/value pairs, shared by everyone.
 type Settings struct {
-	Title           string `json:"title"`
-	HomeCurrency    string `json:"home_currency"`
-	DateFormat      string `json:"date_format"`
-	TimeFormat      string `json:"time_format"`
-	DistanceUnit    string `json:"distance_unit"` // km | mi
-	FXAuto          bool   `json:"fx_auto"`
+	Title        string `json:"title"`
+	HomeCurrency string `json:"home_currency"`
+	DateFormat   string `json:"date_format"`
+	TimeFormat   string `json:"time_format"`
+	DistanceUnit string `json:"distance_unit"` // km | mi
+	FXAuto       bool   `json:"fx_auto"`
+	// Pocket Money (or Firefly III): how trip costs are read. MoneyMode is
+	// core | direct | off ("" = direct with a saved token, else core). The
+	// firefly_* keys hold the Direct connection: any Firefly-compatible API,
+	// e.g. <Money>/firefly or a real Firefly III.
+	MoneyMode       string `json:"money_mode"`
 	FireflyURL      string `json:"firefly_url"`
 	FireflyToken    string `json:"firefly_token"`
 	DawarichURL     string `json:"dawarich_url"`

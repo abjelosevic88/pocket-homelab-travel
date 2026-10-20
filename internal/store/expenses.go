@@ -1,6 +1,9 @@
 package store
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 const expenseCols = `id, trip_id, name, category, amount, currency, amount_home, fx_rate, date, kind, source, external_id, link_kind, link_id, notes, created_at, updated_at`
 
@@ -66,7 +69,46 @@ func (s *Store) UpdateExpense(ctx context.Context, e *Expense) error {
 	return err
 }
 
-// UpsertExternalExpense inserts or updates a synced row (Firefly) by external id.
+// SyncedSources are the expense sources written by the trip-cost sync.
+var SyncedSources = []string{"money", "firefly"}
+
+// IsSynced reports whether an expense came from the trip-cost sync (its
+// amount and date belong to Pocket Money / Firefly, not to this app).
+func IsSynced(source string) bool { return source == "money" || source == "firefly" }
+
+// RekeyExternalExpense moves a synced row to another source/external id, so
+// a cost first synced from Firefly keeps its row (and the category someone
+// picked for it) when the same transaction now comes from Pocket Money.
+func (s *Store) RekeyExternalExpense(ctx context.Context, tripID, id int64, source, externalID string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE expenses SET source = ?, external_id = ?, updated_at = ? WHERE id = ? AND trip_id = ?`, source, externalID, Now(), id, tripID)
+	return conflict(err)
+}
+
+// DeleteSyncedExpensesExcept removes the trip's synced rows (any of sources)
+// whose id is not in keep: what the tag no longer carries upstream.
+func (s *Store) DeleteSyncedExpensesExcept(ctx context.Context, tripID int64, sources []string, keep []int64) (int64, error) {
+	if len(sources) == 0 {
+		return 0, nil
+	}
+	q := `DELETE FROM expenses WHERE trip_id = ? AND source IN (?` + strings.Repeat(",?", len(sources)-1) + `)`
+	args := []any{tripID}
+	for _, src := range sources {
+		args = append(args, src)
+	}
+	if len(keep) > 0 {
+		q += ` AND id NOT IN (?` + strings.Repeat(",?", len(keep)-1) + `)`
+		for _, id := range keep {
+			args = append(args, id)
+		}
+	}
+	res, err := s.DB.ExecContext(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// UpsertExternalExpense inserts or updates a synced row (Pocket Money / Firefly) by source + external id.
 // Returns true when a new row was created.
 func (s *Store) UpsertExternalExpense(ctx context.Context, e *Expense) (bool, error) {
 	var id int64
