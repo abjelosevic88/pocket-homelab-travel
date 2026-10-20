@@ -24,10 +24,8 @@ import (
 
 	core "github.com/abjelosevic88/pocket-homelab-core/sdk"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/config"
-	"github.com/abjelosevic88/pocket-homelab-travel/internal/dawarich"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/fx"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/geo"
-	"github.com/abjelosevic88/pocket-homelab-travel/internal/immich"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/store"
 )
 
@@ -213,6 +211,7 @@ func (s *Server) registerWithCore(ctx context.Context) error {
 		Publishes: []string{"travel.trip_created", "travel.trip_updated", "travel.expense_linked"},
 		Offers:    linkOffers,
 		Uses:      moneyUses,
+		Services:  serviceUses,
 	}
 	// Ask Core for a relying-party client so "Sign in with Pocket Core" needs no configuration.
 	if s.cfg.BaseURL != "" {
@@ -291,17 +290,6 @@ func (s *Server) janitor(ctx context.Context) {
 			s.autoSync(ctx)
 		}
 	}
-}
-
-// ---- integration clients, built from one person's settings ----
-
-// clients builds the integration clients from userID's own credentials.
-// Nobody uses anyone else's Dawarich, Immich or OpenAI account; a person
-// without credentials gets unconfigured clients. Pocket Money (trip costs)
-// goes through moneyFor, which follows the person's connection mode.
-func (s *Server) clients(ctx context.Context, userID int64) (store.Settings, *dawarich.Client, *immich.Client) {
-	st, _ := s.store.GetSettings(ctx, userID)
-	return st, dawarich.New(st.DawarichURL, st.DawarichAPIKey, 60*time.Second), immich.New(st.ImmichURL, st.ImmichAPIKey, 30*time.Second)
 }
 
 // Router builds the chi router.

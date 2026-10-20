@@ -289,9 +289,15 @@ type Settings struct {
 	// core | direct | off ("" = direct with a saved token, else core). The
 	// firefly_* keys hold the Direct connection: any Firefly-compatible API,
 	// e.g. <Money>/firefly or a real Firefly III.
-	MoneyMode       string `json:"money_mode"`
-	FireflyURL      string `json:"firefly_url"`
-	FireflyToken    string `json:"firefly_token"`
+	MoneyMode    string `json:"money_mode"`
+	FireflyURL   string `json:"firefly_url"`
+	FireflyToken string `json:"firefly_token"`
+	// How Travel reaches the person's Dawarich and Immich: core (address +
+	// their own key from Pocket Core) | direct (the URL + key below) | off;
+	// "" = direct while a key is saved, else core when Travel is connected
+	// to Core, else direct.
+	DawarichMode    string `json:"dawarich_mode"`
+	ImmichMode      string `json:"immich_mode"`
 	DawarichURL     string `json:"dawarich_url"`
 	DawarichAPIKey  string `json:"dawarich_api_key"`
 	ImmichURL       string `json:"immich_url"`

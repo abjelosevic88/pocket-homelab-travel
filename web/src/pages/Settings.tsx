@@ -92,20 +92,25 @@ function Integrations() {
     try { const r = await api.post<{ ok: boolean; message?: string; error?: string }>(`${V1}/integrations/test`, { which, url, key }); setTest(t => ({ ...t, [which]: r.ok ? `✓ ${r.message}` : `✕ ${r.error}` })) } catch (e) { setTest(t => ({ ...t, [which]: `✕ ${(e as Error).message}` })) }
   }
   const status = (which: string) => <span className={`small ${test[which]?.startsWith('✓') ? 'ok' : test[which]?.startsWith('✕') ? 'bad' : 'muted'}`}>{test[which]}</span>
-  const block = (which: 'dawarich' | 'immich', title: string, urlKey: 'dawarich_url' | 'immich_url', keyKey: 'dawarich_api_key' | 'immich_api_key', what: string, help: string) => (
-    <Card title={title} actions={<span className={`badge ${f[`${which}_configured`] ? 'cat' : ''}`}>{f[`${which}_configured`] ? 'connected' : 'not set'}</span>}>
+  // Dawarich and Immich: Pocket Core (address + your own key from Core), Direct (URL + API key) or Off.
+  const block = (which: 'dawarich' | 'immich', title: string, app: string, urlKey: 'dawarich_url' | 'immich_url', keyKey: 'dawarich_api_key' | 'immich_api_key', what: string, help: string) => (
+    <Card title={title} actions={connBadge(f[`${which}_mode`], f[`${which}_via`])}>
       <p className="muted small">{what}</p>
-      <div className="grid" style={{ gap: 12 }}>
-        <Field label="URL" help={help}><input value={f[urlKey]} onChange={e => setF({ ...f, [urlKey]: e.target.value })} placeholder="http://host.docker.internal:8080" /></Field>
-        <Field label="API key" help="Stored on the server; shown masked. Leave as is to keep the current one."><input value={f[keyKey]} onChange={e => setF({ ...f, [keyKey]: e.target.value })} autoComplete="off" /></Field>
-        {which === 'immich' && <Field label="Public URL (optional)" help="What the browser opens for “Open in Immich” when the API URL above is internal (e.g. host.docker.internal)."><input value={f.immich_public_url} onChange={e => setF({ ...f, immich_public_url: e.target.value })} placeholder="https://photos.example.com" /></Field>}
-        <div className="row"><button className="btn sm" onClick={() => run(which, f[urlKey], f[keyKey])} disabled={!f[urlKey]}>Test connection</button><span className={`small ${test[which]?.startsWith('✓') ? 'ok' : test[which]?.startsWith('✕') ? 'bad' : 'muted'}`}>{test[which]}</span></div>
-      </div>
+      <Connection app={app} service source={f[`${which}_source`]} mode={f[`${which}_mode`]} via={f[`${which}_via`]} detail={f[`${which}_detail`]} core={f.core_configured} hasToken={!!f[keyKey]}
+        onMode={m => save({ [`${which}_mode`]: m })} onDisconnect={() => save(which === 'immich' ? { immich_url: '', immich_api_key: '', immich_public_url: '' } : { dawarich_url: '', dawarich_api_key: '' })}
+        test={<><button className="btn sm" onClick={() => run(which, f[urlKey], f[keyKey])}>Test connection</button>{status(which)}</>}
+        direct={<div className="grid" style={{ gap: 12 }}>
+          <div className="two-col tight">
+            <Field label="URL" help={help}><input value={f[urlKey]} onChange={e => setF({ ...f, [urlKey]: e.target.value })} placeholder="http://host.docker.internal:8080" /></Field>
+            <Field label="API key" help="Stored on the server; shown masked. Leave as is to keep the current one."><input value={f[keyKey]} onChange={e => setF({ ...f, [keyKey]: e.target.value })} autoComplete="off" /></Field>
+          </div>
+          {which === 'immich' && <Field label="Public URL (optional)" help="What the browser opens for “Open in Immich” when the API URL above is internal (e.g. host.docker.internal)."><input value={f.immich_public_url} onChange={e => setF({ ...f, immich_public_url: e.target.value })} placeholder="https://photos.example.com" /></Field>}
+        </div>} />
     </Card>
   )
   return (
     <div className="grid" style={{ gap: 16 }}>
-      <p className="muted small">These are your own accounts. Each person connects their own Pocket Money, Dawarich, Immich and OpenAI; nobody else on this box uses yours. On a trip shared with you, the route and photos come from your accounts and the spending from the trip owner's Pocket Money.</p>
+      <p className="muted small">These are your own accounts. Each person connects their own Pocket Money, Dawarich, Immich and OpenAI (through Pocket Core, with your own key there, or directly); nobody else on this box uses yours. On a trip shared with you, the route and photos come from your accounts and the spending from the trip owner's Pocket Money.</p>
       <Card title="👛 Pocket Money" actions={connBadge(f.money_mode, f.money_via)}>
         <p className="muted small">What the trip really cost. Tag the expenses in Pocket Money (e.g. "lisbon 2027") and set the same Money tag on the trip; they appear as spent, in their own currency, converted at the day's rate. Synced every 30 minutes while a trip is running or upcoming, and on demand.</p>
         <Connection app="Pocket Money" mode={f.money_mode} via={f.money_via} detail={f.money_detail} core={f.core_configured} hasToken={!!f.firefly_token}
@@ -116,7 +121,7 @@ function Integrations() {
             <Field label="Token" help="Pocket Money → Settings → API tokens, or a Firefly personal access token. Stored on the server; shown masked."><input value={f.firefly_token} onChange={e => setF({ ...f, firefly_token: e.target.value })} autoComplete="off" /></Field>
           </div>} />
       </Card>
-      {block('dawarich', '🛰 Dawarich', 'dawarich_url', 'dawarich_api_key', 'Where you actually went. The recorded route is drawn on the map, each day shows the distance and the detected stops, and the GPX export can include the track.', 'Dawarich → Account → API key. Behind HTTPS use the public name; plain http works too.')}
+      {block('dawarich', '🛰 Dawarich', 'Dawarich', 'dawarich_url', 'dawarich_api_key', 'Where you actually went. The recorded route is drawn on the map, each day shows the distance and the detected stops, and the GPX export can include the track.', 'Dawarich → Account → API key. Behind HTTPS use the public name; plain http works too.')}
       <Card title="✨ OpenAI (or any compatible API)" actions={<span className={`badge ${f.openai_configured ? 'cat' : ''}`}>{f.openai_configured ? 'connected' : 'not set'}</span>}>
         <p className="muted small">Optional. Adds five buttons: <b>Suggest places</b> (popular, well-rated places for the destination, located with OpenStreetMap), <b>Plan my days</b> (assigns ideas to days and times), <b>Describe</b> a place with practical tips, a <b>packing list</b> tailored to the trip and weather, and a <b>recap</b> written from your journal, visited places and spending. Trip details are sent to the provider when you use them; nothing runs automatically.</p>
         <div className="grid" style={{ gap: 12 }}>
@@ -128,38 +133,43 @@ function Integrations() {
           <div className="row"><button className="btn sm" onClick={() => run('openai', f.openai_base_url, f.openai_api_key)} disabled={!f.openai_api_key}>Test connection</button><span className={`small ${test.openai?.startsWith('✓') ? 'ok' : test.openai?.startsWith('✕') ? 'bad' : 'muted'}`}>{test.openai}</span></div>
         </div>
       </Card>
-      {block('immich', '📷 Immich', 'immich_url', 'immich_api_key', 'Every photo and video taken between the trip dates, grouped by day; the geotagged ones land on the map. Thumbnails are proxied so the browser never sees the key.', 'Immich → Account settings → API keys.')}
+      {block('immich', '📷 Immich', 'Immich', 'immich_url', 'immich_api_key', 'Every photo and video taken between the trip dates, grouped by day; the geotagged ones land on the map. Thumbnails are proxied so the browser never sees the key.', 'Immich → Account settings → API keys.')}
       <div><button className="btn primary" onClick={() => save()} disabled={busy}>Save integrations</button></div>
     </div>
   )
 }
 
 /**
- * One Pocket app connection: Pocket Core, Direct (URL + token) or Off, with
- * what it actually is right now. The mode saves at once; Disconnect removes
- * the saved URL and token.
+ * One connection — a Pocket app, or a third-party service (`service`, e.g.
+ * Dawarich, Immich) whose address and key come from Pocket Core — as Pocket
+ * Core, Direct (URL + token / API key) or Off, with what it actually is right
+ * now. The mode saves at once; Disconnect removes the saved URL and token.
  */
-function Connection({ app, mode, via, detail, core, onMode, onDisconnect, hasToken, test, direct }: {
+function Connection({ app, mode, via, detail, core, onMode, onDisconnect, hasToken, test, direct, service, source }: {
   app: string; mode: ConnMode; via: string; detail: string; core: boolean; onMode: (m: ConnMode) => void; onDisconnect: () => void
-  hasToken: boolean; test: React.ReactNode; direct: React.ReactNode
+  hasToken: boolean; test: React.ReactNode; direct: React.ReactNode; service?: boolean; source?: string
 }) {
   const ok = via !== ''
+  const secret = service ? 'API key' : 'token'
+  const coreOk = service
+    ? `Connected through Pocket Core (${source === 'box' ? "the box's key" : 'your own key'}). Nothing to fill in; switch it off for yourself in Pocket Core → Settings → Apps acting for me.`
+    : `Connected through Pocket Core, as you. Nothing to fill in; switch it off for yourself in Pocket Core → Settings → Apps acting for me.`
   const line = mode === 'off' ? `Off: Travel does not read ${app}.`
-    : mode === 'core' ? (ok ? `Connected through Pocket Core, as you. Nothing to fill in; switch it off for yourself in Pocket Core → Settings → Apps acting for me.` : `Not connected: ${detail}.`)
-    : (ok ? `Direct connection with your own URL and token; use Test connection to check it.` : `Not connected: ${detail || 'add the URL and a token'}.`)
+    : mode === 'core' ? (ok ? coreOk : `Not connected: ${detail}.`)
+    : (ok ? `Direct connection with your own URL and ${secret}; use Test connection to check it.` : `Not connected: ${detail || `add the URL and ${service ? 'an API key' : 'a token'}`}.`)
   return (
     <div className="conn-block">
       <div className="conn-mode">
         <Segmented size="sm" value={mode} onChange={m => onMode(m as ConnMode)} options={[
           { value: 'core', label: 'Pocket Core', title: core ? 'Through Pocket Core: per person, nothing to paste' : 'There is no Pocket Core on this box' },
-          { value: 'direct', label: 'Direct', title: 'Your own URL and API token' },
+          { value: 'direct', label: 'Direct', title: service ? 'Your own URL and API key' : 'Your own URL and API token' },
           { value: 'off', label: 'Off' },
         ]} />
       </div>
       <div className={`conn-status ${mode === 'off' ? '' : ok ? 'ok' : 'bad'}`}><span className="dot" />{line}</div>
       {mode === 'direct' && <>
         {direct}
-        <div className="row wrap">{test}{hasToken && <button className="btn sm ghost danger-text" onClick={onDisconnect} title="Remove the saved URL and token">Disconnect</button>}</div>
+        <div className="row wrap">{test}{hasToken && <button className="btn sm ghost danger-text" onClick={onDisconnect} title={`Remove the saved URL and ${secret}`}>Disconnect</button>}</div>
       </>}
       {mode === 'core' && <div className="row wrap">{test}</div>}
     </div>

@@ -95,7 +95,7 @@ Want to look around first? Add `-e DEMO_DATA=true -e AUTH_MODE=none` to get thre
 
 Binaries for Linux, macOS and Windows are attached to every [release](https://github.com/abjelosevic88/pocket-homelab-travel/releases), and a systemd unit is in [deploy/systemd](deploy/systemd).
 
-Then connect your other apps under **Settings → Integrations**: Pocket Money (through Pocket Core, or a URL + token), a Dawarich API key, an Immich API key, optionally an OpenAI key. Each has a *Test connection* button. Everything is per person: each account has its own trips and its own integrations, and sees someone else's trip only when the owner adds them to it (on a shared trip the route and photos come from the viewer's own Dawarich and Immich, the spending from the owner's Pocket Money).
+Then connect your other apps under **Settings → Integrations**: Pocket Money (through Pocket Core, or a URL + token), Dawarich and Immich (each **Pocket Core**, **Direct** with a URL + API key, or **Off** — through Pocket Core, Travel asks Core for the service's address and *your own* key there at every use, the box's key only for an admin; Direct stays the default while a key is saved), optionally an OpenAI key. Each has a *Test connection* button. Everything is per person: each account has its own trips and its own integrations, and sees someone else's trip only when the owner adds them to it (on a shared trip the route and photos come from the viewer's own Dawarich and Immich, the spending from the owner's Pocket Money).
 
 ## Configuration
 
@@ -111,8 +111,8 @@ Everything is an environment variable with a sensible default. The important one
 | `SECURE_COOKIES` | `false` | Set `true` behind HTTPS. |
 | `DEFAULT_CURRENCY` | `EUR` | Home currency until changed in Settings. |
 | `FIREFLY_URL` / `FIREFLY_TOKEN` | – | Direct Pocket Money connection for the owner: `<money>/firefly` + a Money API token, or a Firefly III URL + personal access token. Copied into the owner's settings once; cleared in the UI, it stays cleared. |
-| `DAWARICH_URL` / `DAWARICH_API_KEY` | – | Dawarich base URL + API key. |
-| `IMMICH_URL` / `IMMICH_API_KEY` | – | Immich base URL + API key (`IMMICH_PUBLIC_URL` for browser links when the API URL is internal). |
+| `DAWARICH_URL` / `DAWARICH_API_KEY` | – | Dawarich base URL + API key for the owner (Direct). Without them, on a box with Pocket Core, each person's Dawarich comes from Core. |
+| `IMMICH_URL` / `IMMICH_API_KEY` | – | Immich base URL + API key for the owner (Direct; `IMMICH_PUBLIC_URL` for browser links when the API URL is internal). Without them, on a box with Pocket Core, each person's Immich comes from Core. |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` / `OPENAI_BASE_URL` | – / `gpt-4o-mini` / OpenAI | Enables the ✨ features; any OpenAI-compatible endpoint works. |
 | `DEMO_DATA` | `false` | Seed sample trips into an empty database. |
 

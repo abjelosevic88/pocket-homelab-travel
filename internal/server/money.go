@@ -45,7 +45,11 @@ var errMoneyOff = errors.New("Pocket Money is switched off in Settings → Integ
 
 // connMode is the mode in effect: the chosen one, else direct when a token
 // was entered (how it always worked), else Pocket Core.
-func connMode(mode, token string) string {
+func connMode(mode, token string) string { return connModeOr(mode, token, modeCore) }
+
+// connModeOr is connMode with the mode to fall back on when nothing was
+// chosen and no token saved (services fall back on direct without Core).
+func connModeOr(mode, token, fallback string) string {
 	switch mode {
 	case modeCore, modeDirect, modeOff:
 		return mode
@@ -53,25 +57,29 @@ func connMode(mode, token string) string {
 	if token != "" {
 		return modeDirect
 	}
-	return modeCore
+	return fallback
 }
 
-func linkReason(reason string) string {
+// linkReason turns Core's refusal of a link (to a Pocket app or a service)
+// into a sentence for the person.
+func linkReason(app, reason string) string {
 	switch reason {
 	case "off_person":
-		return "you switched the Travel → Pocket Money link off in Pocket Core (Settings → Apps acting for me)"
+		return "you switched the Travel → " + app + " link off in Pocket Core (Settings → Apps acting for me)"
 	case "off_admin":
-		return "the Travel → Pocket Money link is switched off in Pocket Core (Links)"
+		return "the Travel → " + app + " link is switched off in Pocket Core (Links)"
 	case "target_missing":
-		return "Pocket Money is not registered with Pocket Core"
+		return app + " is not registered with Pocket Core"
 	case "not_offered":
-		return "this Pocket Money version does not let apps read transactions yet"
+		return "this " + app + " version does not let apps read transactions yet"
 	case "not_declared":
 		return "Pocket Core has not seen this Travel version yet; it re-registers within a minute of starting"
 	case "not_in_audience":
-		return "you do not have access to Pocket Money in Pocket Core"
+		return "you do not have access to " + app + " in Pocket Core"
 	case "unknown_user":
 		return "your email is not a person in Pocket Core"
+	case "no_account":
+		return "you have no " + app + " account of your own yet; ask the admin or let a connector create one"
 	}
 	return ""
 }
@@ -115,7 +123,7 @@ func (s *Server) moneyFor(ctx context.Context, userID int64) (*moneyConn, error)
 	if err != nil {
 		var le *core.LinkError
 		if errors.As(err, &le) {
-			if t := linkReason(le.Reason); t != "" {
+			if t := linkReason("Pocket Money", le.Reason); t != "" {
 				return nil, errors.New(t)
 			}
 		}
@@ -151,7 +159,7 @@ func (s *Server) moneyStatus(ctx context.Context, u *store.User, st store.Settin
 	if on {
 		return eff, modeCore, ""
 	}
-	if t := linkReason(reason); t != "" {
+	if t := linkReason("Pocket Money", reason); t != "" {
 		return eff, "", t
 	}
 	return eff, "", reason

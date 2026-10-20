@@ -85,6 +85,10 @@ func (s *Store) GetSettings(ctx context.Context, userID int64) (Settings, error)
 			st.FireflyURL = v
 		case "firefly_token":
 			st.FireflyToken = v
+		case "dawarich_mode":
+			st.DawarichMode = v
+		case "immich_mode":
+			st.ImmichMode = v
 		case "dawarich_url":
 			st.DawarichURL = v
 		case "dawarich_api_key":
@@ -124,6 +128,8 @@ func personalKV(st Settings) map[string]string {
 		"money_mode":        st.MoneyMode,
 		"firefly_url":       st.FireflyURL,
 		"firefly_token":     st.FireflyToken,
+		"dawarich_mode":     st.DawarichMode,
+		"immich_mode":       st.ImmichMode,
 		"dawarich_url":      st.DawarichURL,
 		"dawarich_api_key":  st.DawarichAPIKey,
 		"immich_url":        st.ImmichURL,

@@ -42,14 +42,18 @@ func mask(s string) string {
 
 func (s *Server) publicSettings(ctx context.Context, st store.Settings, u *store.User) map[string]any {
 	moneyMode, moneyVia, moneyDetail := s.moneyStatus(ctx, u, st)
+	dwMode, dwVia, dwDetail, dwSource := s.serviceStatus(ctx, u, savedDawarich(st), true)
+	imMode, imVia, imDetail, imSource := s.serviceStatus(ctx, u, savedImmich(st), true)
 	return map[string]any{
 		"core_configured": s.core.Configured(),
 		"money_mode":      moneyMode, "money_via": moneyVia, "money_detail": moneyDetail,
+		"dawarich_mode": dwMode, "dawarich_via": dwVia, "dawarich_detail": dwDetail, "dawarich_source": dwSource,
+		"immich_mode": imMode, "immich_via": imVia, "immich_detail": imDetail, "immich_source": imSource,
 		"title": st.Title, "home_currency": st.HomeCurrency, "date_format": st.DateFormat, "time_format": st.TimeFormat,
 		"distance_unit": st.DistanceUnit, "fx_auto": st.FXAuto, "fx_provider": s.cfg.FXProvider, "map_tiles": st.MapTiles, "auto_photos": st.AutoPhotos,
 		"firefly_url": st.FireflyURL, "firefly_token": mask(st.FireflyToken), "firefly_configured": moneyVia != "",
-		"dawarich_url": st.DawarichURL, "dawarich_api_key": mask(st.DawarichAPIKey), "dawarich_configured": st.DawarichURL != "" && st.DawarichAPIKey != "",
-		"immich_url": st.ImmichURL, "immich_public_url": st.ImmichPublicURL, "immich_api_key": mask(st.ImmichAPIKey), "immich_configured": st.ImmichURL != "" && st.ImmichAPIKey != "",
+		"dawarich_url": st.DawarichURL, "dawarich_api_key": mask(st.DawarichAPIKey), "dawarich_configured": dwVia != "",
+		"immich_url": st.ImmichURL, "immich_public_url": st.ImmichPublicURL, "immich_api_key": mask(st.ImmichAPIKey), "immich_configured": imVia != "",
 		"openai_api_key": mask(st.OpenAIKey), "openai_model": st.OpenAIModel, "openai_base_url": st.OpenAIBaseURL, "openai_configured": st.OpenAIKey != "",
 		"max_upload_bytes": s.cfg.MaxUploadBytes, "setup_complete": st.SetupComplete, "can_edit_global": u != nil && u.Role == "admin",
 	}
@@ -124,10 +128,12 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			*dst = strings.TrimSpace(v)
 		}
 	}
-	if keys["money_mode"] {
-		switch in.MoneyMode {
-		case modeCore, modeDirect, modeOff:
-			cur.MoneyMode = in.MoneyMode
+	for k, m := range map[string][2]*string{"money_mode": {&cur.MoneyMode, &in.MoneyMode}, "dawarich_mode": {&cur.DawarichMode, &in.DawarichMode}, "immich_mode": {&cur.ImmichMode, &in.ImmichMode}} {
+		if keys[k] {
+			switch v := *m[1]; v {
+			case modeCore, modeDirect, modeOff:
+				*m[0] = v
+			}
 		}
 	}
 	if keys["firefly_url"] {
@@ -213,12 +219,25 @@ func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "dawarich":
-		key := in.Key
-		if strings.Contains(key, "••") || key == "" {
-			key = st.DawarichAPIKey
+		// A key typed into the form is tried as is; otherwise the saved mode decides.
+		typed := in.Key != "" && !strings.Contains(in.Key, "••")
+		var c *dawarich.Client
+		how := "direct connection"
+		if typed || s.serviceMode(st.DawarichMode, st.DawarichAPIKey) == modeDirect {
+			key := in.Key
+			if !typed {
+				key = st.DawarichAPIKey
+			}
+			c = dawarich.New(firstNonEmpty(strings.TrimSpace(in.URL), st.DawarichURL), key, 15*time.Second)
+		} else {
+			var conn *serviceConn
+			if c, conn, err = s.dawarichFor(ctx, userFrom(r.Context()).ID); err == nil {
+				how = viaText(conn)
+			}
 		}
-		c := dawarich.New(in.URL, key, 15*time.Second)
-		err = c.Health(ctx)
+		if err == nil {
+			err = c.Health(ctx)
+		}
 		if err == nil {
 			var pts []dawarich.Point
 			pts, err = c.Points(ctx, time.Now().AddDate(0, 0, -30), time.Now(), 1)
@@ -226,6 +245,7 @@ func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 			if err == nil && len(pts) > 0 {
 				msg += ", points in the last 30 days"
 			}
+			msg += ", " + how
 		}
 	case "openai":
 		key := in.Key
@@ -251,13 +271,26 @@ func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "immich":
-		key := in.Key
-		if strings.Contains(key, "••") || key == "" {
-			key = st.ImmichAPIKey
+		typed := in.Key != "" && !strings.Contains(in.Key, "••")
+		var c *immich.Client
+		how := "direct connection"
+		if typed || s.serviceMode(st.ImmichMode, st.ImmichAPIKey) == modeDirect {
+			key := in.Key
+			if !typed {
+				key = st.ImmichAPIKey
+			}
+			c = immich.New(firstNonEmpty(strings.TrimSpace(in.URL), st.ImmichURL), key, 15*time.Second)
+		} else {
+			var conn *serviceConn
+			if c, conn, err = s.immichFor(ctx, userFrom(r.Context()).ID); err == nil {
+				how = viaText(conn)
+			}
 		}
-		var v string
-		v, err = immich.New(in.URL, key, 15*time.Second).Version(ctx)
-		msg = "Immich " + v
+		if err == nil {
+			var v string
+			v, err = c.Version(ctx)
+			msg = "Immich " + v + ", " + how
+		}
 	default:
 		writeErr(w, http.StatusBadRequest, "unknown integration")
 		return
@@ -849,8 +882,9 @@ func (s *Server) fetchRoute(ctx context.Context, dw *dawarich.Client, t *store.T
 
 func (s *Server) handleDawarichRoute(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	_, dw, _ := s.clients(r.Context(), actorID(r.Context()))
-	if !dw.Configured() || !t.Dawarich {
+	// the viewer's own Dawarich (a trip shared with them shows their route)
+	dw, _, err := s.tripDawarich(r.Context(), t)
+	if err != nil {
 		writeJSON(w, http.StatusOK, RouteResponse{Points: [][3]float64{}, Days: map[string]float64{}, ByDay: []RouteDay{}})
 		return
 	}
@@ -865,8 +899,8 @@ func (s *Server) handleDawarichRoute(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDawarichTimeline(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	_, dw, _ := s.clients(r.Context(), actorID(r.Context()))
-	if !dw.Configured() || !t.Dawarich {
+	dw, _, err := s.tripDawarich(r.Context(), t)
+	if err != nil {
 		writeJSON(w, http.StatusOK, []any{})
 		return
 	}
@@ -896,8 +930,13 @@ func (s *Server) handleDawarichTimeline(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleTripPhotos(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	_, _, im := s.clients(r.Context(), actorID(r.Context()))
-	if !im.Configured() || !t.Immich {
+	if !t.Immich {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+	// the viewer's own Immich (a trip shared with them shows their photos)
+	im, _, err := s.immichFor(r.Context(), actorID(r.Context()))
+	if err != nil {
 		writeJSON(w, http.StatusOK, []any{})
 		return
 	}
@@ -924,9 +963,11 @@ func (s *Server) handleTripPhotos(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePhotoThumb(w http.ResponseWriter, r *http.Request) {
-	_, _, im := s.clients(r.Context(), actorID(r.Context()))
-	if !im.Configured() {
-		writeErr(w, http.StatusNotFound, "immich not configured")
+	// the viewer's own Immich, resolved for every thumbnail (the key never
+	// reaches the browser, and a switch-off applies at once)
+	im, _, err := s.immichFor(r.Context(), actorID(r.Context()))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "immich: "+err.Error())
 		return
 	}
 	id := strings.Map(func(c rune) rune {
@@ -998,8 +1039,7 @@ func (s *Server) handleExportGPX(w http.ResponseWriter, r *http.Request) {
 	lodging, _ := s.store.ListLodging(ctx, t.ID)
 	var route []export.RoutePoint
 	if queryBool(r, "route") {
-		_, dw, _ := s.clients(ctx, actorID(ctx))
-		if dw.Configured() && t.Dawarich {
+		if dw, _, err := s.tripDawarich(ctx, t); err == nil {
 			if b, err := s.cached(r, t, "dawarich-route", func() (any, error) { return s.fetchRoute(ctx, dw, t) }); err == nil {
 				var rr RouteResponse
 				if json.Unmarshal(b, &rr) == nil {

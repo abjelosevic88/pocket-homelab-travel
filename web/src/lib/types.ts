@@ -67,6 +67,8 @@ export interface Settings {
   title: string; home_currency: string; date_format: string; time_format: string; distance_unit: 'km' | 'mi'; fx_auto: boolean; fx_provider: string; map_tiles: string; auto_photos: boolean
   core_configured: boolean
   money_mode: ConnMode; money_via: '' | 'core' | 'direct'; money_detail: string
+  dawarich_mode: ConnMode; dawarich_via: '' | 'core' | 'direct'; dawarich_detail: string; dawarich_source: '' | 'personal' | 'box'
+  immich_mode: ConnMode; immich_via: '' | 'core' | 'direct'; immich_detail: string; immich_source: '' | 'personal' | 'box'
   firefly_url: string; firefly_token: string; firefly_configured: boolean
   dawarich_url: string; dawarich_api_key: string; dawarich_configured: boolean
   immich_url: string; immich_public_url: string; immich_api_key: string; immich_configured: boolean

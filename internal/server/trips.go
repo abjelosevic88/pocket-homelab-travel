@@ -497,7 +497,13 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 	// Spending is synced from the trip owner's Pocket Money; route, photos
 	// and AI use the viewer's own accounts.
 	moneyVia := s.moneyVia(ctx, t.OwnerID)
-	st, dw, im := s.clients(ctx, actorID(ctx))
+	st, _ := s.store.GetSettings(ctx, actorID(ctx))
+	dwOK := s.dawarichVia(ctx, actorID(ctx)) != ""
+	imURL := ""
+	_, imConn, imErr := s.immichFor(ctx, actorID(ctx))
+	if imErr == nil {
+		imURL = imConn.public
+	}
 	budget := s.budgetSummary(t, expenses)
 	// Freshness of the cost sync.
 	_, syncedAt, _ := s.store.CacheGet(ctx, cacheKey(t.ID, "firefly-synced"))
@@ -506,8 +512,8 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 		"checklists": lists, "journal": journal, "documents": docs, "budget": budget,
 		"integrations": map[string]any{
 			"firefly":  map[string]any{"configured": moneyVia != "", "via": moneyVia, "tag": t.FireflyTag, "synced_at": syncedAt},
-			"dawarich": map[string]any{"configured": dw.Configured(), "enabled": t.Dawarich},
-			"immich":   map[string]any{"configured": im.Configured(), "enabled": t.Immich, "url": firstNonEmpty(st.ImmichPublicURL, st.ImmichURL)},
+			"dawarich": map[string]any{"configured": dwOK, "enabled": t.Dawarich},
+			"immich":   map[string]any{"configured": imErr == nil, "enabled": t.Immich, "url": imURL},
 			"ai":       map[string]any{"configured": st.OpenAIKey != "", "model": firstNonEmpty(st.OpenAIModel, "gpt-4o-mini")},
 		},
 	})
