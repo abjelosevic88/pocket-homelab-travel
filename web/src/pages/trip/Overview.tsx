@@ -5,6 +5,7 @@ import type { Activity, Lodging, Place, Transport } from '../../lib/types'
 import { LODGING_ICONS, PLACE_ICONS, TRANSPORT_ICONS, WX_ICON } from '../../lib/types'
 import { ago, daysBetween, fmtClock, fmtDate, fmtDateTime, fmtKm, plural, todayISO, weekday } from '../../lib/format'
 import { Card, useAsync } from '../../components/ui'
+import { Icon } from '../../components/icons'
 import { Money } from '../../components/Money'
 import { useTrip } from './ctx'
 import { RecapModal } from './ai'
@@ -47,7 +48,7 @@ export function OverviewTab() {
         {!running && !until && !past && <p className="muted">Set the dates to get a countdown, weather and the recorded route.</p>}
         {next.length > 0 && <div className="mt"><div className="muted small mb-sm">Next up</div><div className="day-items">{next.map((n, i) => <div key={i} className="item" onClick={n.onClick}><span className="ico">{n.icon}</span><span className="txt"><span className="title">{n.label}</span><span className="sub">{n.sub}</span></span></div>)}</div></div>}
       </Card>
-      <Card title="Budget" actions={<button className="btn ghost sm" onClick={() => go('budget')}>Details</button>}>
+      <Card title="Budget" actions={<button type="button" className="btn ghost sm" onClick={() => go('budget')}>Details</button>}>
         <div className="row" style={{ alignItems: 'baseline', gap: 6 }}><span style={{ fontSize: 26, fontWeight: 700 }}><Money minor={b.total > 0 ? b.total : b.planned} code={b.currency} /></span><span className="muted small">{b.total > 0 ? 'total' : 'planned'}{trip.budget > 0 && <> of <Money minor={trip.budget} code={b.currency} /></>}</span></div>
         {b.total > 0 && b.bookings > 0 && <div className="muted small"><Money minor={b.actual} code={b.currency} /> spent + <Money minor={b.bookings} code={b.currency} /> booked stays & transport not marked paid</div>}
         {trip.budget > 0 && <div className={`budget-bar mt-sm ${b.actual > trip.budget ? 'over' : ''}`}><div className="actual" style={{ width: `${Math.min(100, b.actual / trip.budget * 100)}%` }} /><div className="planned" style={{ width: `${Math.max(0, Math.min(100 - b.actual / trip.budget * 100, (b.planned - b.actual) / trip.budget * 100))}%` }} /></div>}
@@ -59,7 +60,7 @@ export function OverviewTab() {
         </div>
         {b.by_category.length > 0 && <div className="chips mt-sm">{b.by_category.slice(0, 5).map(c => <span key={c.category} className="chip sm">{c.category} <Money minor={c.actual || c.planned} code={b.currency} compact /></span>)}</div>}
       </Card>
-      <Card title="Progress" actions={canEdit && <button className="btn ghost sm" onClick={() => edit('place', null, {})}>+ Place</button>}>
+      <Card title="Progress" actions={canEdit && <button type="button" className="btn ghost sm" onClick={() => edit('place', null, {})}><Icon name="plus" size={14} />Place</button>}>
         <div className="stats" style={{ marginBottom: 8 }}>
           <a className="stat" onClick={() => go('places')}><div className="n">{ov.places.length}</div><div className="l">places · {ideas} unscheduled</div></a>
           <a className="stat" onClick={() => go('places')}><div className="n">{visited}</div><div className="l">visited</div></a>
@@ -70,10 +71,10 @@ export function OverviewTab() {
         {ov.transport.length === 0 && !past && <p className="muted small">No transport yet. <a href="#" onClick={e => { e.preventDefault(); edit('transport', null, {}) }}>Add the flight, train or drive</a>.</p>}
       </Card>
       {wx.length > 0 && <Card title={`Weather${trip.destination ? ' · ' + trip.destination : ''}`} className="span2">
-        <div className="wx-strip">{wx.map(w => <div key={w.date} className={`wx-day ${w.date === today ? 'today' : ''}`} title={`${w.label}${w.precip_mm ? ` · ${w.precip_mm.toFixed(1)} mm` : ''} · wind ${Math.round(w.wind_kmh)} km/h`}><div className="muted">{weekday(w.date)} {fmtDate(w.date, false)}</div><div className="big">{WX_ICON(w.code)}</div><div><b>{Math.round(w.tmax)}°</b> <span className="muted">{Math.round(w.tmin)}°</span></div>{w.precip_mm >= 1 && <div className="muted">💧 {w.precip_mm.toFixed(0)}</div>}</div>)}</div>
+        <div className="wx-strip">{wx.map(w => <div key={w.date} className={`wx-day ${w.date === today ? 'today' : ''}`} title={`${w.label}${w.precip_mm ? ` · ${w.precip_mm.toFixed(1)} mm` : ''} · wind ${Math.round(w.wind_kmh)} km/h`}><div className="muted">{weekday(w.date)} {fmtDate(w.date, false)}</div><div className="big">{WX_ICON(w.code)}</div><div><b>{Math.round(w.tmax)}°</b> <span className="muted">{Math.round(w.tmin)}°</span></div>{w.precip_mm >= 1 && <div className="muted row" style={{ justifyContent: 'center', gap: 2 }}><Icon name="droplet" size={11} />{w.precip_mm.toFixed(0)}</div>}</div>)}</div>
         <p className="muted small mt-sm" style={{ margin: '6px 0 0' }}>Open-Meteo · {wx.some(w => w.source === 'archive') ? 'recorded weather for past days, ' : ''}forecast up to 16 days ahead.</p>
       </Card>}
-      {(integ.dawarich.configured && trip.dawarich) && <Card title="Recorded by Dawarich" actions={<button className="btn ghost sm" onClick={refreshExternal}>Refresh</button>}>
+      {(integ.dawarich.configured && trip.dawarich) && <Card title="Recorded by Dawarich" actions={<button type="button" className="btn ghost sm" onClick={refreshExternal}><Icon name="refresh" size={14} />Refresh</button>}>
         {extErrors.dawarich ? <p className="bad small">{extErrors.dawarich}</p> : !route ? <p className="muted">Loading…</p> : route.raw_count === 0 ? <p className="muted">No location points in this date range{!past && !running ? ' yet' : ''}.</p> : (
           <>
             <div className="stats" style={{ marginBottom: 8 }}>
@@ -82,18 +83,18 @@ export function OverviewTab() {
               <div className="stat"><div className="n">{timeline.reduce((n, d) => n + d.entries.filter(e => e.type === 'visit').length, 0)}</div><div className="l">stops detected</div></div>
             </div>
             <div className="timeline-mini">{timeline.slice(-5).reverse().map(d => <div key={d.date} className="row"><span className="muted" style={{ width: 60 }}>{fmtDate(d.date, false)}</span><span>{fmtKm(d.summary.total_distance, unit)}</span><span className="muted">{Object.entries(d.summary.mode_distances || {}).filter(([, v]) => v >= 0.5).map(([m, v]) => `${m} ${fmtKm(v, unit)}`).join(' · ')}</span></div>)}</div>
-            <button className="btn ghost sm mt-sm" onClick={() => go('map')}>See the route on the map</button>
+            <button type="button" className="btn ghost sm mt-sm" onClick={() => go('map')}>See the route on the map</button>
           </>
         )}
       </Card>}
-      {(integ.immich.configured && trip.immich) && <Card title="Photos" actions={<button className="btn ghost sm" onClick={() => go('photos')}>All {photos.length ? photos.length : ''}</button>}>
+      {(integ.immich.configured && trip.immich) && <Card title="Photos" actions={<button type="button" className="btn ghost sm" onClick={() => go('photos')}>All {photos.length ? photos.length : ''}</button>}>
         {extErrors.immich ? <p className="bad small">{extErrors.immich}</p> : photos.length === 0 ? <p className="muted">No photos from Immich in this date range{!past && !running ? ' yet' : ''}.</p> : (
-          <div className="photo-grid sm">{photos.slice(0, 12).map(p => <a key={p.id} href={`${integ.immich.url}/photos/${p.id}`} target="_blank" rel="noreferrer"><img src={`${V1}/trips/${trip.id}/photos/${p.id}/thumb`} loading="lazy" alt="" />{p.type === 'VIDEO' && <span className="vid">▶</span>}</a>)}</div>
+          <div className="photo-grid sm">{photos.slice(0, 12).map(p => <a key={p.id} href={`${integ.immich.url}/photos/${p.id}`} target="_blank" rel="noreferrer"><img src={`${V1}/trips/${trip.id}/photos/${p.id}/thumb`} loading="lazy" alt="" />{p.type === 'VIDEO' && <span className="vid"><Icon name="play" size={10} /></span>}</a>)}</div>
         )}
       </Card>}
-      {integ.ai.configured && (past || running) && <Card title="✨ Recap">
+      {integ.ai.configured && (past || running) && <Card title={<><Icon name="sparkles" size={16} />Recap</>}>
         <p className="muted small">Turn the visited places, journal entries, spending and recorded distance into a story, a factual summary or a caption — and keep it in the journal.</p>
-        <button className="btn sm" onClick={() => setRecap(true)}>Write a recap</button>
+        <button type="button" className="btn sm" onClick={() => setRecap(true)}>Write a recap</button>
         {recap && <RecapModal onClose={() => setRecap(false)} />}
       </Card>}
       {activity && activity.length > 0 && <Card title="Recent changes">
@@ -101,7 +102,7 @@ export function OverviewTab() {
       </Card>}
       {trip.description && <Card title="About this trip" className="span2"><p style={{ whiteSpace: 'pre-wrap' }}>{trip.description}</p>{trip.link && <a href={trip.link} target="_blank" rel="noreferrer">{trip.link}</a>}</Card>}
       {trip.notes && <Card title="Notes" className="span2"><p style={{ whiteSpace: 'pre-wrap' }}>{trip.notes}</p></Card>}
-      {!integ.firefly.configured && !integ.dawarich.configured && !integ.immich.configured && <Card title="Connect your other apps" className="span2"><p className="muted">Connect <b>Pocket Money</b> to see what the trip really cost, <b>Dawarich</b> for the route you actually took, and <b>Immich</b> for the photos — all under <Link to="/settings?tab=integrations">Settings → Integrations</Link>.</p></Card>}
+      {!integ.firefly.configured && !integ.dawarich.configured && !integ.immich.configured && <Card title="Connect your other apps" className="span2"><p className="muted">Connect <b>Pocket Money</b> to see what the trip really cost, <b>Dawarich</b> for the route you actually took, and <b>Immich</b> for the photos — all under <Link to="/settings/integrations">Settings → Integrations</Link>.</p></Card>}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { useApp } from '../../lib/app-context'
 import type { Checklist, ChecklistItem } from '../../lib/types'
 import { cap } from '../../lib/format'
 import { Card, Confirm, Empty, Field, Modal, Segmented, useToast } from '../../components/ui'
+import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
 import { useTrip } from './ctx'
 
@@ -44,8 +45,8 @@ export function Checklists() {
   const total = ov.checklists.reduce((n, c) => n + c.items.length, 0), done = ov.checklists.reduce((n, c) => n + c.items.filter(i => i.done).length, 0)
   return (
     <>
-      <div className="toolbar"><span className="muted">{total ? `${done} of ${total} done · ${Math.round(done / total * 100)}%` : 'Packing lists, to-dos before leaving, shopping — anything with a tick box.'}</span><span className="spacer" />{canEdit && <button className="btn primary sm" onClick={() => setAdding(true)}>+ List</button>}</div>
-      {ov.checklists.length === 0 ? <Empty title="No checklists">Start from a template: beach, city, hiking, winter…</Empty> : (
+      <div className="toolbar"><span className="muted">{total ? `${done} of ${total} done · ${Math.round(done / total * 100)}%` : 'Packing lists, to-dos before leaving, shopping — anything with a tick box.'}</span><span className="spacer" />{canEdit && <button type="button" className="btn primary sm" onClick={() => setAdding(true)}><Icon name="plus" size={14} />List</button>}</div>
+      {ov.checklists.length === 0 ? <Empty icon="checklist" title="No checklists">Start from a template: beach, city, hiking, winter…</Empty> : (
         <div className="overview-grid">
           {ov.checklists.map(c => <ListCard key={c.id} c={c} canEdit={canEdit} onToggle={it => toggle(c, it)} onAdd={t => add(c, t)} onRemove={it => remove(c, it)} onRename={(it, t) => rename(c, it, t)} onClearDone={() => clearDone(c)} onReset={() => resetAll(c)} onDelete={() => setDel(c)} />)}
         </div>
@@ -62,14 +63,14 @@ function ListCard({ c, canEdit, onToggle, onAdd, onRemove, onRename, onClearDone
   const done = c.items.filter(i => i.done).length
   const items = hideDone ? c.items.filter(i => !i.done) : c.items
   return (
-    <Card title={<span>{c.kind === 'packing' ? '🧳' : c.kind === 'shopping' ? '🛒' : '☑'} {c.name} <span className="progress">{done}/{c.items.length}</span></span>} actions={canEdit && <span className="row"><button className="btn ghost sm" onClick={() => setHideDone(h => !h)} title="Hide ticked">{hideDone ? '👁' : '👁‍🗨'}</button>{done > 0 && <button className="btn ghost sm" onClick={onReset} title="Untick all">↺</button>}{done > 0 && <button className="btn ghost sm" onClick={onClearDone} title="Remove ticked">🧹</button>}<button className="btn ghost sm danger-text" onClick={onDelete} title="Delete list">✕</button></span>}>
+    <Card title={<><Icon name={c.kind === 'packing' ? 'luggage' : c.kind === 'shopping' ? 'tag' : 'checklist'} size={16} />{c.name} <span className="progress">{done}/{c.items.length}</span></>} actions={canEdit && <span className="row"><button type="button" className={`btn ghost icon-only sm ${hideDone ? 'active' : ''}`} onClick={() => setHideDone(h => !h)} title={hideDone ? 'Show ticked' : 'Hide ticked'} aria-label={hideDone ? 'Show ticked' : 'Hide ticked'} aria-pressed={hideDone}><Icon name={hideDone ? 'eye-off' : 'eye'} size={15} /></button>{done > 0 && <button type="button" className="btn ghost icon-only sm" onClick={onReset} title="Untick all" aria-label="Untick all"><Icon name="undo" size={15} /></button>}{done > 0 && <button type="button" className="btn ghost icon-only sm" onClick={onClearDone} title="Remove ticked" aria-label="Remove ticked"><Icon name="check-circle" size={15} /></button>}<button type="button" className="btn ghost icon-only sm danger-text" onClick={onDelete} title="Delete list" aria-label="Delete list"><Icon name="trash" size={15} /></button></span>}>
       {c.items.length > 0 && <div className="bar lg mb-sm"><span className="fill" style={{ width: `${done / c.items.length * 100}%`, background: done === c.items.length ? 'var(--success)' : undefined }} /></div>}
       {items.length === 0 && <p className="muted small">{c.items.length ? 'All done 🎉' : 'Empty — add items below, one per line.'}</p>}
       {items.map(it => (
         <div key={it.id} className={`checklist-item ${it.done ? 'done' : ''}`}>
           <input type="checkbox" checked={it.done} onChange={() => onToggle(it)} disabled={!canEdit} />
           <input className="inline-edit t" defaultValue={it.text} disabled={!canEdit} onBlur={e => onRename(it, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} />
-          {canEdit && <button className="icon-btn x" onClick={() => onRemove(it)} title="Remove">✕</button>}
+          {canEdit && <button type="button" className="icon-btn x" onClick={() => onRemove(it)} title="Remove" aria-label="Remove item"><Icon name="x" size={14} /></button>}
         </div>
       ))}
       {canEdit && <form className="row mt-sm" onSubmit={e => { e.preventDefault(); onAdd(text); setText('') }}><input value={text} onChange={e => setText(e.target.value)} placeholder="Add item… (paste several lines)" /><button className="btn sm">Add</button></form>}
@@ -94,7 +95,7 @@ function NewListModal({ tripId, onClose, onSaved }: { tripId: number; onClose: (
       <form onSubmit={save} className="grid" style={{ gap: 14 }}>
         <Field label="Name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} required autoFocus /></Field>
         <Field group label="Kind"><Segmented value={f.kind} onChange={v => setF({ ...f, kind: v })} options={[{ value: 'packing', label: 'Packing' }, { value: 'todo', label: 'To-do' }, { value: 'shopping', label: 'Shopping' }, { value: 'custom', label: 'Other' }]} size="sm" /></Field>
-        {settings?.openai_configured && <label className="row"><input type="checkbox" checked={f.ai} onChange={e => setF({ ...f, ai: e.target.checked })} style={{ width: 'auto' }} /> ✨ Generate it for this trip (destination, dates, weather, activities)</label>}
+        {settings?.openai_configured && <label className="row"><input type="checkbox" checked={f.ai} onChange={e => setF({ ...f, ai: e.target.checked })} style={{ width: 'auto' }} /> <Icon name="sparkles" size={14} />Generate it for this trip (destination, dates, weather, activities)</label>}
         {f.ai && <Field label="Who is going, anything special?"><input value={f.notes} onChange={e => setF({ ...f, notes: e.target.value })} placeholder="two adults and a toddler, we'll hike one day, no checked luggage" /></Field>}
         {!f.ai && <Field label="Start from a template" help="Items are added to the list; remove what you don't need."><Select value={f.template} onChange={v => setF({ ...f, template: v })} options={[{ value: '', label: 'Empty list' }, ...(meta?.packing_templates || []).map(t => ({ value: t, label: cap(t) }))]} /></Field>}
         {!f.ai && <Field label="Extra items" help="One per line."><textarea value={f.items} onChange={e => setF({ ...f, items: e.target.value })} rows={3} /></Field>}

@@ -5,6 +5,7 @@ import type { Place } from '../../lib/types'
 import { LODGING_ICONS, PLACE_ICONS, TRANSPORT_ICONS, WX_ICON } from '../../lib/types'
 import { dateRange, fmtClock, fmtDate, fmtDateTime, fmtDuration, fmtKm, todayISO, weekday } from '../../lib/format'
 import { Card, Empty, useToast } from '../../components/ui'
+import { Icon } from '../../components/icons'
 import { useTrip } from './ctx'
 import { lodgingSub, placeSub, transportSub } from './Overview'
 import { PlanModal } from './ai'
@@ -64,7 +65,7 @@ export function Itinerary() {
           <div className="row wrap" style={{ marginBottom: 6 }}>
             <span className="muted small">{days.length} days · drag places between days to reschedule · tick when visited</span>
             <span className="spacer" />
-            {canEdit && ov.integrations.ai.configured && <button className="btn sm" onClick={() => setPlan(true)}>✨ Plan my days</button>}
+            {canEdit && ov.integrations.ai.configured && <button type="button" className="btn sm" onClick={() => setPlan(true)}><Icon name="sparkles" size={14} />Plan my days</button>}
             {hasRecorded && <label className="row small muted" style={{ gap: 4 }}><input type="checkbox" checked={showRecorded} onChange={e => setShowRecorded(e.target.checked)} style={{ width: 'auto' }} /> show Dawarich</label>}
           </div>
         </div>
@@ -78,7 +79,7 @@ export function Itinerary() {
                 <div className="day-head">
                   <h3>Day {i + 1}{d === today && ' · today'}</h3>
                   <div className="muted">{weekday(d, true)}, {fmtDate(d, false)}</div>
-                  {(wx || km) && <div className="wx">{wx && <span><span className="big">{WX_ICON(wx.code)}</span> {Math.round(wx.tmax)}° <span className="muted">/ {Math.round(wx.tmin)}°</span></span>}{km != null && km > 0 && <span className="muted">🛰 {fmtKm(km, unit)}</span>}</div>}
+                  {(wx || km) && <div className="wx">{wx && <span><span className="big">{WX_ICON(wx.code)}</span> {Math.round(wx.tmax)}° <span className="muted">/ {Math.round(wx.tmin)}°</span></span>}{km != null && km > 0 && <span className="muted" title="Recorded by Dawarich"><Icon name="route" size={13} />{fmtKm(km, unit)}</span>}</div>}
                 </div>
                 <div className={`day-items ${over === d ? 'over' : ''}`} onDragOver={e => { if (dragId != null) { e.preventDefault(); setOver(d) } }} onDragLeave={() => setOver(o => o === d ? null : o)} onDrop={e => { e.preventDefault(); drop(d) }}>
                   {rows.length === 0 && <div className="item ghost" onClick={() => canEdit && edit('place', null, { day_date: d })}>Free day{canEdit && ' — click to add something or drop a place here'}</div>}
@@ -88,7 +89,7 @@ export function Itinerary() {
                       <span className="time">{r.when.startsWith('99:') ? '' : fmtClock(r.when)}</span>
                       <span className={`ico ${r.cls || ''} ${r.place?.status === 'visited' ? 'visited' : ''}`}>{r.icon}</span>
                       <span className="txt"><span className="title">{r.title}{r.place?.status === 'booked' && <span className="badge warn">booked</span>}{r.place?.status === 'skipped' && <span className="badge">skipped</span>}</span>{r.sub && <span className="sub">{r.sub}</span>}</span>
-                      {r.place && canEdit && <span className={`check ${r.place.status === 'visited' ? 'on' : ''}`} title={r.place.status === 'visited' ? 'Visited' : 'Mark visited'} onClick={e => { e.stopPropagation(); toggleVisited(r.place!) }}>{r.place.status === 'visited' ? '✓' : ''}</span>}
+                      {r.place && canEdit && <span className={`check ${r.place.status === 'visited' ? 'on' : ''}`} title={r.place.status === 'visited' ? 'Visited' : 'Mark visited'} onClick={e => { e.stopPropagation(); toggleVisited(r.place!) }}>{r.place.status === 'visited' ? <Icon name="check" size={14} strokeWidth={2.6} /> : null}</span>}
                     </div>
                   ))}
                   {rows.length > 0 && canEdit && <div className="drop" />}
@@ -99,10 +100,10 @@ export function Itinerary() {
         </div>
       </Card>
       <div>
-        <Card title={`Ideas · ${ideas.length}`} actions={canEdit && <button className="btn ghost sm" onClick={() => edit('place', null, {})}>+ Add</button>}>
+        <Card title={`Ideas · ${ideas.length}`} actions={canEdit && <button type="button" className="btn ghost sm" onClick={() => edit('place', null, {})}><Icon name="plus" size={14} />Add</button>}>
           {ideas.length === 0 ? <p className="muted small">Every place has a day. Add more ideas from the Places tab or Discover on the map.</p> : (
             <div className="day-items" onDragOver={e => { if (dragId != null) { e.preventDefault(); setOver('') } }} onDrop={e => { e.preventDefault(); drop('') }}>
-              {ideas.map(p => <div key={p.id} className={`item ${dragId === p.id ? 'dragging' : ''}`} draggable={canEdit} onDragStart={() => setDragId(p.id)} onDragEnd={() => { setDragId(null); setOver(null) }} onClick={() => edit('place', p)}><span className="ico">{PLACE_ICONS[p.category] || '📍'}</span><span className="txt"><span className="title">{p.name}</span><span className="sub">{placeSub(p) || p.category}</span></span>{canEdit && <span className="drag-handle">⋮⋮</span>}</div>)}
+              {ideas.map(p => <div key={p.id} className={`item ${dragId === p.id ? 'dragging' : ''}`} draggable={canEdit} onDragStart={() => setDragId(p.id)} onDragEnd={() => { setDragId(null); setOver(null) }} onClick={() => edit('place', p)}><span className="ico">{PLACE_ICONS[p.category] || '📍'}</span><span className="txt"><span className="title">{p.name}</span><span className="sub">{placeSub(p) || p.category}</span></span>{canEdit && <span className="drag-handle"><Icon name="grip" size={16} strokeWidth={2.8} /></span>}</div>)}
             </div>
           )}
           <p className="muted small mt-sm">Drag an idea onto a day to schedule it; drop a scheduled place here to unschedule.</p>

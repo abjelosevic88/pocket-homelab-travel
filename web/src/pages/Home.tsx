@@ -8,13 +8,14 @@ import { Card, Empty, Loading, PageHeader, useAsync } from '../components/ui'
 import { Money } from '../components/Money'
 import { MapView, type Marker } from '../components/Map'
 import { TripCard } from './Trips'
+import { Icon } from '../components/icons'
 
 export default function Home() {
   const { user, settings } = useApp()
   const navigate = useNavigate()
   const { data, error, loading } = useAsync(() => api.get<HomeData>(`${V1}/home`), [])
   if (loading && !data) return <Loading />
-  if (error) return <div className="callout danger">{error}</div>
+  if (error) return <div className="callout danger"><Icon name="alert" size={15} /><span>{error}</span></div>
   if (!data) return null
   const { stats, current, next, upcoming, recent, today, journal, pins, hero_weather: wx } = data
   const unit = settings?.distance_unit || 'km'
@@ -28,7 +29,7 @@ export default function Home() {
   const c = next?.counts
   return (
     <>
-      <PageHeader title={`${greet}, ${first}`} sub={current ? `You are on the road.` : next ? `Next up in ${until} days.` : 'Where to next?'} actions={<Link className="btn primary" to="/trips?new=1">+ New trip</Link>} />
+      <PageHeader title={`${greet}, ${first}`} sub={current ? `You are on the road.` : next ? `Next up in ${until} days.` : 'Where to next?'} actions={<Link className="btn primary" to="/trips?new=1"><Icon name="plus" size={15} />New trip</Link>} />
 
       {hero ? (
         <div className={`hero home-hero ${hero.has_cover ? 'has-cover' : ''}`} style={heroStyle} onClick={() => navigate(`/trips/${hero.id}`)}>
@@ -36,17 +37,17 @@ export default function Home() {
             <div>
               <div className="row" style={{ gap: 8, marginBottom: 6 }}><span className="status-pill">{current && today ? `Day ${today.day_number} of ${hero.days}` : `In ${until} days`}</span>{wx && <span className="status-pill">{WX_ICON(wx.code)} {Math.round(wx.tmax)}° / {Math.round(wx.tmin)}° {current ? 'today' : 'on arrival'}</span>}</div>
               <h1>{hero.name}</h1>
-              <div className="meta-line"><span>{hero.destination}</span><span>{fmtRange(hero.start_date, hero.end_date)}</span><span>{plural(hero.days, 'day')}</span></div>
+              <div className="meta-line">{hero.destination && <span><Icon name="pin" size={14} />{hero.destination}</span>}<span><Icon name="calendar" size={14} />{fmtRange(hero.start_date, hero.end_date)}</span><span>{plural(hero.days, 'day')}</span></div>
             </div>
             <div className="row" onClick={e => e.stopPropagation()}>
-              <Link className="btn ghost" to={`/trips/${hero.id}/itinerary`}>Itinerary</Link>
-              <Link className="btn ghost" to={`/trips/${hero.id}/budget`}>Budget</Link>
-              <Link className="btn ghost" to={`/trips/${hero.id}/lists`}>Checklists</Link>
+              <Link className="btn glass" to={`/trips/${hero.id}/itinerary`}><Icon name="calendar" size={15} />Itinerary</Link>
+              <Link className="btn glass" to={`/trips/${hero.id}/budget`}><Icon name="wallet" size={15} />Budget</Link>
+              <Link className="btn glass" to={`/trips/${hero.id}/lists`}><Icon name="checklist" size={15} />Checklists</Link>
             </div>
           </div>
         </div>
       ) : (
-        <Card className="mb"><Empty title="No trip on the horizon">Create one and start dropping in ideas — or import your collections from AdventureLog under Settings → Import.</Empty></Card>
+        <Card className="mb"><Empty icon="luggage" title="No trip on the horizon">Create one and start dropping in ideas — or import your collections from AdventureLog under Settings → Import.</Empty></Card>
       )}
 
       {current && today && (
@@ -101,9 +102,9 @@ export default function Home() {
 
       <div className="home-grid">
         <div>
-          {upcoming.length > 0 && <><h2 className="mb-sm">Upcoming</h2><div className="trip-grid mb">{upcoming.map(t => <TripCard key={t.id} t={t} />)}</div></>}
-          {recent.length > 0 && <><h2 className="mb-sm">Past trips</h2><div className="trip-grid mb">{recent.map(t => <TripCard key={t.id} t={t} />)}</div></>}
-          {upcoming.length === 0 && recent.length === 0 && <Card><Empty title="No trips yet" /></Card>}
+          {upcoming.length > 0 && <><h2 className="section-h">Upcoming</h2><div className="trip-grid mb">{upcoming.map(t => <TripCard key={t.id} t={t} />)}</div></>}
+          {recent.length > 0 && <><h2 className="section-h">Past trips</h2><div className="trip-grid mb">{recent.map(t => <TripCard key={t.id} t={t} />)}</div></>}
+          {upcoming.length === 0 && recent.length === 0 && <Card><Empty icon="luggage" title="No trips yet" /></Card>}
         </div>
         <Card title="From the journal">
           {journal.length === 0 ? <p className="muted">Entries you write during a trip show up here. A few lines a day beats a blank page later.</p> : journal.map(j => (

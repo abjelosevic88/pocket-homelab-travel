@@ -6,6 +6,7 @@ import type { APIToken, GeoResult, Trip, TripMember, TripStatus } from '../../li
 import { STATUS_LABEL } from '../../lib/types'
 import { TRIP_COLORS } from '../../lib/format'
 import { Card, Confirm, Field, Modal, Segmented, useAsync, useToast } from '../../components/ui'
+import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
 import { AmountInput } from '../../components/Money'
 import { GeoSearch } from '../../components/GeoSearch'
@@ -33,7 +34,7 @@ export function TripSettings() {
   const calUrl = `${location.origin}/cal/${trip.id}.ics?token=`
   return (
     <div className="overview-grid">
-      <Card title="Trip" actions={canEdit && <button className="btn sm" onClick={() => edit('trip', trip)}>Edit details</button>}>
+      <Card title="Trip" actions={canEdit && <button type="button" className="btn sm" onClick={() => edit('trip', trip)}><Icon name="edit" size={14} />Edit details</button>}>
         <dl className="kv">
           <dt>Status</dt><dd>{STATUS_LABEL[trip.status]}{trip.archived && ' · archived'}</dd>
           <dt>Currency</dt><dd>{trip.currency}</dd>
@@ -43,24 +44,24 @@ export function TripSettings() {
           <dt>Timezone</dt><dd>{trip.timezone || <span className="muted">server default</span>}</dd>
           {trip.external_id && <><dt>Imported from</dt><dd className="mono small">{trip.external_id}</dd></>}
         </dl>
-        {canEdit && <div className="row mt"><label className="btn sm">Upload cover photo…<input type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && uploadCover(e.target.files[0])} /></label>{trip.has_cover && <button className="btn ghost sm" onClick={async () => { await api.del(`${base}/cover`); reload() }}>Remove cover</button>}</div>}
+        {canEdit && <div className="row mt"><label className="btn sm"><Icon name="image" size={14} />Upload cover photo…<input type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && uploadCover(e.target.files[0])} /></label>{trip.has_cover && <button type="button" className="btn ghost sm" onClick={async () => { await api.del(`${base}/cover`); reload() }}>Remove cover</button>}</div>}
       </Card>
       <Card title="Who can see this trip">
-        <p className="muted small">The owner can do everything. Editors plan, tick and write; viewers only look. Companions need an account (Settings → Users).</p>
+        <p className="muted small">The owner can do everything. Editors plan, tick and write; viewers only look. Companions need an account (Settings → People).</p>
         <table className="table compact">
           <tbody>
             <tr><td><b>{trip.members?.find(m => m.role === 'owner')?.name || 'Owner'}</b></td><td className="muted">owner</td><td /></tr>
-            {members.filter(m => m.role !== 'owner').map(m => <tr key={m.user_id}><td>{m.name || m.email}</td><td>{isOwner ? <Segmented value={m.role} onChange={r => saveMembers(members.map(x => x.user_id === m.user_id ? { ...x, role: r } : x))} options={[{ value: 'editor', label: 'Editor' }, { value: 'viewer', label: 'Viewer' }]} size="sm" /> : <span className="muted">{m.role}</span>}</td><td className="right">{isOwner && <button className="btn ghost sm danger-text" onClick={() => saveMembers(members.filter(x => x.user_id !== m.user_id))}>Remove</button>}</td></tr>)}
+            {members.filter(m => m.role !== 'owner').map(m => <tr key={m.user_id}><td>{m.name || m.email}</td><td>{isOwner ? <Segmented value={m.role} onChange={r => saveMembers(members.map(x => x.user_id === m.user_id ? { ...x, role: r } : x))} options={[{ value: 'editor', label: 'Editor' }, { value: 'viewer', label: 'Viewer' }]} size="sm" /> : <span className="muted">{m.role}</span>}</td><td className="right">{isOwner && <button type="button" className="btn ghost sm danger-text" onClick={() => saveMembers(members.filter(x => x.user_id !== m.user_id))}>Remove</button>}</td></tr>)}
           </tbody>
         </table>
         {isOwner && others.filter(u => !members.some(m => m.user_id === u.id)).length > 0 && <div className="row mt-sm"><Select value="" onChange={v => { const u = users.find(x => x.id === Number(v)); if (u) saveMembers([...members, { user_id: u.id, name: u.name, email: u.email, role: 'editor' }]) }} options={others.filter(u => !members.some(m => m.user_id === u.id)).map(u => ({ value: String(u.id), label: u.name || u.email, hint: u.email }))} placeholder="+ Add a companion…" /></div>}
       </Card>
       <Card title="Export & calendar">
         <div className="row wrap mb-sm">
-          <a className="btn sm" href={`${base}/export/calendar.ics`}>Calendar (.ics)</a>
-          <a className="btn sm" href={`${base}/export/trip.gpx`}>GPX (places)</a>
-          {ov.integrations.dawarich.configured && trip.dawarich && <a className="btn sm" href={`${base}/export/trip.gpx?route=1`}>GPX with recorded route</a>}
-          <a className="btn sm" href={`${base}/export/trip.json`}>JSON backup</a>
+          <a className="btn sm" href={`${base}/export/calendar.ics`}><Icon name="calendar" size={14} />Calendar (.ics)</a>
+          <a className="btn sm" href={`${base}/export/trip.gpx`}><Icon name="map" size={14} />GPX (places)</a>
+          {ov.integrations.dawarich.configured && trip.dawarich && <a className="btn sm" href={`${base}/export/trip.gpx?route=1`}><Icon name="route" size={14} />GPX with recorded route</a>}
+          <a className="btn sm" href={`${base}/export/trip.json`}><Icon name="download" size={14} />JSON backup</a>
         </div>
         <p className="muted small">Subscribe your phone's calendar to the trip so stays, legs and scheduled places appear with their booking references. The feed needs an API token (Settings → API tokens):</p>
         <pre className="small">{calUrl}{tokens && tokens.length ? 'pt_… (your token)' : 'pt_…'}</pre>
@@ -68,9 +69,9 @@ export function TripSettings() {
       </Card>
       <Card title="Danger zone">
         <div className="row wrap">
-          <button className="btn sm" onClick={() => setDup(true)}>Duplicate trip…</button>
-          {isOwner && <button className="btn sm" onClick={archive}>{trip.archived ? 'Unarchive' : 'Archive'}</button>}
-          {isOwner && <button className="btn sm danger" onClick={() => setDel(true)}>Delete trip</button>}
+          <button type="button" className="btn sm" onClick={() => setDup(true)}><Icon name="copy" size={14} />Duplicate trip…</button>
+          {isOwner && <button type="button" className="btn sm" onClick={archive}><Icon name="archive" size={14} />{trip.archived ? 'Unarchive' : 'Archive'}</button>}
+          {isOwner && <button type="button" className="btn sm danger" onClick={() => setDel(true)}><Icon name="trash" size={14} />Delete trip</button>}
         </div>
         <p className="muted small mt-sm">Duplicating copies places, stays, transport, planned costs and checklists (unticked) into a new planning trip; dates shift to the new start. Deleting removes everything including documents.</p>
       </Card>

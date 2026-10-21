@@ -3,6 +3,7 @@ import { api, V1 } from '../../lib/api'
 import type { JournalEntry, Trip } from '../../lib/types'
 import { dateRange, fmtDate, todayISO, weekday } from '../../lib/format'
 import { Card, Confirm, Empty, Field, Modal, useToast } from '../../components/ui'
+import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
 import { useTrip } from './ctx'
 
@@ -17,8 +18,8 @@ export function Journal() {
   const dates = Array.from(byDate.keys()).sort()
   return (
     <div className="wrap-sm">
-      <div className="toolbar"><span className="muted">A few lines a day beats a blank page later. Entries from everyone on the trip, in order.</span><span className="spacer" />{canEdit && <button className="btn primary sm" onClick={() => edit('journal', null, { date: inRange ? today : trip.end_date || today })}>+ Entry</button>}</div>
-      {dates.length === 0 ? <Empty title="No entries yet">{canEdit && 'Write the first one — what you saw, ate, the thing that went wrong.'}</Empty> : dates.map(d => (
+      <div className="toolbar"><span className="muted">A few lines a day beats a blank page later. Entries from everyone on the trip, in order.</span><span className="spacer" />{canEdit && <button type="button" className="btn primary sm" onClick={() => edit('journal', null, { date: inRange ? today : trip.end_date || today })}><Icon name="plus" size={14} />Entry</button>}</div>
+      {dates.length === 0 ? <Empty icon="book" title="No entries yet">{canEdit && 'Write the first one — what you saw, ate, the thing that went wrong.'}</Empty> : dates.map(d => (
         <Card key={d} className="mb" title={<span>{weekday(d, true)}, {fmtDate(d)}{trip.start_date && d >= trip.start_date && <span className="muted small"> · day {dateRange(trip.start_date, d).length}</span>}</span>}>
           {byDate.get(d)!.map(j => (
             <div key={j.id} className="journal-entry" onClick={() => canEdit && edit('journal', j)} style={{ cursor: canEdit ? 'pointer' : 'default' }}>

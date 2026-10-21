@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api, V1 } from '../lib/api'
 import type { DayWeather, Expense, JournalEntry, Lodging, Overview, Photo, Place, Route, TimelineDay, Transport, Trip } from '../lib/types'
 import { STATUS_LABEL } from '../lib/types'
 import { daysBetween, fmtRange, plural, todayISO } from '../lib/format'
 import { Loading, Tabs, useToast } from '../components/ui'
+import { Icon } from '../components/icons'
+import { TRIP_TABS } from '../components/CommandPalette'
+import { useApp } from '../lib/app-context'
 import { TripCtx, type EditKind } from './trip/ctx'
 import { OverviewTab } from './trip/Overview'
 import { Itinerary } from './trip/Itinerary'
@@ -18,16 +21,15 @@ import { Photos } from './trip/Photos'
 import { Documents } from './trip/Documents'
 import { TripSettings, TripModal } from './trip/TripSettings'
 
-const TABS = [
-  { id: 'overview', label: 'Overview' }, { id: 'itinerary', label: 'Itinerary' }, { id: 'places', label: 'Places' }, { id: 'map', label: 'Map' },
-  { id: 'stay', label: 'Stay & transport' }, { id: 'budget', label: 'Budget' }, { id: 'lists', label: 'Checklists' }, { id: 'journal', label: 'Journal' },
-  { id: 'photos', label: 'Photos' }, { id: 'documents', label: 'Documents' }, { id: 'settings', label: 'Settings' },
-]
+const TABS = TRIP_TABS.map(([id, label, icon]) => ({ id, label, icon }))
+const ADD_KINDS: EditKind[] = ['place', 'lodging', 'transport', 'expense', 'journal']
 
 export default function TripPage() {
   const { id, tab = 'overview' } = useParams()
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { reloadTrips } = useApp()
+  const [params, setParams] = useSearchParams()
   const [ov, setOv] = useState<Overview | null>(null)
   const [err, setErr] = useState('')
   const [weather, setWeather] = useState<DayWeather[]>([])
@@ -69,7 +71,19 @@ export default function TripPage() {
     reload, patch, weather, route, timeline, photos, extErrors, refreshExternal, edit, go,
   }) : null, [ov, reload, patch, weather, route, timeline, photos, extErrors, refreshExternal, edit, go])
 
-  if (err) return <div className="callout danger">{err} — <Link to="/trips">back to trips</Link></div>
+  // ?add=place|expense|lodging|transport|journal (the New menu, shortcuts, links) opens that form on this trip
+  const addKind = params.get('add') as EditKind | null
+  useEffect(() => {
+    if (!addKind || !ov || String(ov.trip.id) !== id) return
+    const next = new URLSearchParams(params); next.delete('add'); setParams(next, { replace: true })
+    if (ov.trip.role === 'viewer' || !ADD_KINDS.includes(addKind)) return
+    const t = ov.trip, today = todayISO()
+    const on = t.start_date && t.start_date <= today && t.end_date >= today
+    const defaults: Record<string, unknown> = addKind === 'expense' ? { kind: on || (t.end_date && t.end_date < today) ? 'actual' : 'planned' } : addKind === 'journal' ? { date: on ? today : t.end_date || today } : {}
+    setEditing({ kind: addKind, item: null, defaults })
+  }, [addKind, ov, id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (err) return <div className="callout danger"><Icon name="alert" size={15} /><span>{err} — <Link to="/trips">back to trips</Link></span></div>
   if (!state || !ov) return <Loading />
   const t = ov.trip
   const today = todayISO()
@@ -77,24 +91,24 @@ export default function TripPage() {
   const until = t.start_date > today ? daysBetween(today, t.start_date) : 0
   const heroStyle = t.has_cover ? { backgroundImage: `url(${V1}/trips/${t.id}/cover?v=${t.updated_at})` } : { background: `linear-gradient(135deg, ${t.color || '#0284c7'} 0%, #0f172a 100%)` }
   const close = () => setEditing(null)
-  const afterSave = async () => { close(); await reload() }
+  const afterSave = async () => { close(); await reload(); reloadTrips() }
   return (
     <TripCtx.Provider value={state}>
       <div className={`hero ${t.has_cover ? 'has-cover' : ''}`} style={heroStyle}>
         <div className="hero-body">
           <div>
-            <div className="row" style={{ gap: 8, marginBottom: 6 }}><span className="status-pill">{running ? `Day ${daysBetween(t.start_date, today) + 1} of ${t.days}` : until ? `In ${until} days` : STATUS_LABEL[t.status]}</span>{t.archived && <span className="status-pill">Archived</span>}</div>
+            <div className="row" style={{ gap: 8, marginBottom: 6 }}><span className="status-pill">{running ? `Day ${daysBetween(t.start_date, today) + 1} of ${t.days}` : until ? `In ${until} days` : STATUS_LABEL[t.status]}</span>{t.archived && <span className="status-pill"><Icon name="archive" size={12} />Archived</span>}</div>
             <h1>{t.name}</h1>
-            <div className="meta-line"><span>{t.destination || 'No destination yet'}</span><span>{fmtRange(t.start_date, t.end_date)}</span>{t.days > 0 && <span>{plural(t.days, 'day')}</span>}{t.members && t.members.length > 1 && <span>👥 {t.members.map(m => m.name.split(' ')[0]).join(', ')}</span>}</div>
+            <div className="meta-line"><span><Icon name="pin" size={14} />{t.destination || 'No destination yet'}</span><span><Icon name="calendar" size={14} />{fmtRange(t.start_date, t.end_date)}</span>{t.days > 0 && <span>{plural(t.days, 'day')}</span>}{t.members && t.members.length > 1 && <span><Icon name="users" size={14} />{t.members.map(m => m.name.split(' ')[0]).join(', ')}</span>}</div>
           </div>
           <div className="row">
-            {state.canEdit && <button className="btn ghost" onClick={() => edit('place', null, {})}>+ Place</button>}
-            {state.canEdit && <button className="btn ghost" onClick={() => edit('expense', null, { kind: running || t.end_date < today ? 'actual' : 'planned' })}>+ Cost</button>}
-            <button className="btn ghost" onClick={() => edit('trip', t)}>Edit</button>
+            {state.canEdit && <button type="button" className="btn glass" onClick={() => edit('place', null, {})}><Icon name="pin" size={15} />Place</button>}
+            {state.canEdit && <button type="button" className="btn glass" onClick={() => edit('expense', null, { kind: running || t.end_date < today ? 'actual' : 'planned' })}><Icon name="wallet" size={15} />Cost</button>}
+            <button type="button" className="btn glass" onClick={() => edit('trip', t)}><Icon name="edit" size={15} />Edit</button>
           </div>
         </div>
       </div>
-      <Tabs tabs={TABS} value={tab} onChange={go} />
+      <div className="trip-tabs"><Tabs tabs={TABS} value={tab} onChange={go} /></div>
       <div className="mt">
         {tab === 'overview' && <OverviewTab />}
         {tab === 'itinerary' && <Itinerary />}

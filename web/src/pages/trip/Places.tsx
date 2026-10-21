@@ -5,6 +5,7 @@ import type { GeoResult, Place, PlacePhoto, PlaceStatus, Trip } from '../../lib/
 import { PLACE_ICONS, PLACE_STATUS_LABEL } from '../../lib/types'
 import { appleMaps, cap, dateRange, fmtClock, fmtDate, gmaps, stars } from '../../lib/format'
 import { Confirm, Empty, Field, Modal, Segmented, useToast } from '../../components/ui'
+import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
 import { AmountInput, Money } from '../../components/Money'
 import { GeoSearch } from '../../components/GeoSearch'
@@ -36,20 +37,20 @@ export function Places() {
   return (
     <>
       <div className="toolbar">
-        <div className="search"><span className="ico">⌕</span><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter places…" /></div>
+        <div className="search"><Icon name="search" size={15} /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Filter places…" aria-label="Filter places" /></div>
         <Select value={cat} onChange={setCat} options={cats.map(c => ({ value: c, label: `${PLACE_ICONS[c] || ''} ${cap(c)}` }))} placeholder="All categories" clearLabel="All categories" />
         <Select value={status} onChange={setStatus} options={Object.entries(PLACE_STATUS_LABEL).map(([v, l]) => ({ value: v, label: l }))} placeholder="Any status" clearLabel="Any status" />
-        <Segmented value={view} onChange={setView} options={[{ value: 'cards', label: '▦' }, { value: 'table', label: '☰' }]} size="sm" />
-        {canEdit && ov.places.some(p => !p.photos?.length) && <button className="btn" title="Look up pictures on Wikipedia and Wikimedia Commons for places without any" onClick={findMissing} disabled={finding}>{finding ? 'Looking…' : `📷 Find photos (${ov.places.filter(p => !p.photos?.length).length})`}</button>}
-        {canEdit && ov.integrations.ai.configured && <button className="btn" onClick={() => setSuggest(true)}>✨ Suggest</button>}
-        {canEdit && <button className="btn primary" onClick={() => edit('place', null, {})}>+ Place</button>}
+        <Segmented value={view} onChange={setView} options={[{ value: 'cards', label: <Icon name="grid" size={14} />, title: 'Cards' }, { value: 'table', label: <Icon name="list" size={14} />, title: 'Table' }]} size="sm" label="View" />
+        {canEdit && ov.places.some(p => !p.photos?.length) && <button type="button" className="btn" title="Look up pictures on Wikipedia and Wikimedia Commons for places without any" onClick={findMissing} disabled={finding}><Icon name="image" size={15} />{finding ? 'Looking…' : `Find photos (${ov.places.filter(p => !p.photos?.length).length})`}</button>}
+        {canEdit && ov.integrations.ai.configured && <button type="button" className="btn" onClick={() => setSuggest(true)}><Icon name="sparkles" size={15} />Suggest</button>}
+        {canEdit && <button type="button" className="btn primary" onClick={() => edit('place', null, {})}><Icon name="plus" size={15} />Place</button>}
       </div>
       {suggest && <SuggestModal onClose={() => setSuggest(false)} />}
-      {list.length === 0 ? <Empty title={ov.places.length ? 'Nothing matches' : 'No places yet'}>{!ov.places.length && (ov.integrations.ai.configured ? 'Add the sights, restaurants and beaches you want to see, or press ✨ Suggest for popular places at the destination.' : 'Add the sights, restaurants and beaches you want to see. Use the map tab to discover what is nearby.')}</Empty> : view === 'cards' ? (
+      {list.length === 0 ? <Empty icon="pin" title={ov.places.length ? 'Nothing matches' : 'No places yet'}>{!ov.places.length && (ov.integrations.ai.configured ? 'Add the sights, restaurants and beaches you want to see, or press Suggest for popular places at the destination.' : 'Add the sights, restaurants and beaches you want to see. Use the map tab to discover what is nearby.')}</Empty> : view === 'cards' ? (
         <div className="pool">
           {list.map(p => (
             <div key={p.id} className="place-card" onClick={() => edit('place', p)}>
-              <div className="img" style={p.photos?.length ? { backgroundImage: `url(${V1}/trips/${trip.id}/places/photos/${p.photos[0].id})` } : undefined}>{!p.photos?.length && (PLACE_ICONS[p.category] || '📍')}{p.photos?.length > 1 && <span className="img-count">📷 {p.photos.length}</span>}</div>
+              <div className="img" style={p.photos?.length ? { backgroundImage: `url(${V1}/trips/${trip.id}/places/photos/${p.photos[0].id})` } : undefined}>{!p.photos?.length && (PLACE_ICONS[p.category] || '📍')}{p.photos?.length > 1 && <span className="img-count"><Icon name="camera" size={11} />{p.photos.length}</span>}</div>
               <div className="pc-body">
                 <h4><span className={`status-dot ${p.status}`} /> {p.name}</h4>
                 <div className="sub">{cap(p.category)}{p.day_date ? ` · ${fmtDate(p.day_date, false)}${p.start_time ? ' ' + fmtClock(p.start_time) : ''}` : ' · unscheduled'}</div>
@@ -125,7 +126,7 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
           <Field label="Where is it" help="Search OpenStreetMap, paste a Google/Apple Maps link, or type coordinates — or click the map to drop the pin. The category is guessed from what the place is.">
             <GeoSearch onPick={pick} placeholder="Search a place, paste a maps link, or 42.42, 18.77…" initial={item?.address || ''} />
             <MapView className="sm" markers={marker} center={f.lat != null ? [f.lat, f.lng!] : trip.lat != null ? [trip.lat, trip.lng!] : undefined} zoom={f.lat != null ? 15 : 10} onClick={dropPin} fitKey={`${f.lat}:${f.lng}`} />
-            <div className="small muted" style={{ marginTop: 4 }}>{f.lat != null ? <>📍 {picked || f.address || `${f.lat.toFixed(5)}, ${f.lng!.toFixed(5)}`} <a href="#" onClick={e => { e.preventDefault(); setF(x => ({ ...x, lat: null, lng: null })); setPicked('') }}>clear</a></> : 'No location yet — the place will not show on the map.'}</div>
+            <div className="small muted row" style={{ marginTop: 4, gap: 4, flexWrap: 'wrap' }}>{f.lat != null ? <><Icon name="pin" size={13} />{picked || f.address || `${f.lat.toFixed(5)}, ${f.lng!.toFixed(5)}`} <a href="#" onClick={e => { e.preventDefault(); setF(x => ({ ...x, lat: null, lng: null })); setPicked('') }}>clear</a></> : 'No location yet — the place will not show on the map.'}</div>
           </Field>
           <div className="two-col tight">
             <Field label="Day"><Select value={f.day_date || ''} onChange={v => set('day_date', v)} options={days.map((d, i) => ({ value: d, label: `Day ${i + 1} · ${fmtDate(d, false)}` }))} placeholder="Unscheduled (idea)" clearLabel="Unscheduled" /></Field>
@@ -150,14 +151,14 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
             <Field label="Phone"><input value={f.phone || ''} onChange={e => set('phone', e.target.value)} /></Field>
             <Field label="Tags" help="Comma separated."><input value={f.tags || ''} onChange={e => set('tags', e.target.value)} placeholder="sunset, kids, rainy day" /></Field>
           </div>
-          <Field label={<span className="row">Description <button type="button" className="btn ghost sm" onClick={wiki} disabled={wikiBusy || !f.name}>{wikiBusy ? 'Looking up…' : 'Fill from Wikipedia'}</button>{settings?.openai_configured && <button type="button" className="btn ghost sm" onClick={describe} disabled={aiBusy || !f.name}>{aiBusy ? 'Writing…' : '✨ Describe + tips'}</button>}</span>}><textarea value={f.description || ''} onChange={e => set('description', e.target.value)} rows={4} /></Field>
+          <Field label={<span className="row">Description <button type="button" className="btn ghost sm" onClick={wiki} disabled={wikiBusy || !f.name}>{wikiBusy ? 'Looking up…' : 'Fill from Wikipedia'}</button>{settings?.openai_configured && <button type="button" className="btn ghost sm" onClick={describe} disabled={aiBusy || !f.name}><Icon name="sparkles" size={14} />{aiBusy ? 'Writing…' : 'Describe + tips'}</button>}</span>}><textarea value={f.description || ''} onChange={e => set('description', e.target.value)} rows={4} /></Field>
           <Field label="Notes" help="Tips, opening hours, what to order."><textarea value={f.notes || ''} onChange={e => set('notes', e.target.value)} rows={3} /></Field>
           {item && <PhotoGallery tripId={trip.id} placeId={item.id} initial={item.photos || []} onChange={onSaved} />}
           {!item && <p className="muted small">Photos are looked up automatically once the place is saved (Wikipedia and Wikimedia Commons); you can add your own afterwards.</p>}
         </>}
         <div className="form-actions">
           {item && <button type="button" className="btn ghost danger-text" onClick={() => setDel(true)}>Delete</button>}
-          {item && f.lat != null && <><a className="btn ghost sm" href={gmaps(f.lat, f.lng!)} target="_blank" rel="noreferrer">Google Maps</a><a className="btn ghost sm" href={appleMaps(f.lat, f.lng!)} target="_blank" rel="noreferrer">Apple Maps</a></>}
+          {item && f.lat != null && <><a className="btn ghost sm" href={gmaps(f.lat, f.lng!)} target="_blank" rel="noreferrer"><Icon name="external" size={13} />Google Maps</a><a className="btn ghost sm" href={appleMaps(f.lat, f.lng!)} target="_blank" rel="noreferrer"><Icon name="external" size={13} />Apple Maps</a></>}
           <span className="spacer" />
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
           <button className="btn primary" disabled={busy}>{item ? 'Save' : 'Add place'}</button>
@@ -187,16 +188,16 @@ function PhotoGallery({ tripId, placeId, initial, onChange }: { tripId: number; 
   const remove = async (p: PlacePhoto) => { try { await api.del(`${base}/photos/${p.id}`); setPhotos(x => x.filter(y => y.id !== p.id)); onChange() } catch (e) { toast((e as Error).message, 'err') } }
   const cover = async (p: PlacePhoto) => { try { setPhotos(await api.post<PlacePhoto[]>(`${base}/photos/${p.id}/cover`)); onChange() } catch (e) { toast((e as Error).message, 'err') } }
   return (
-    <Field group label={<span className="row">Photos <span className="muted small">{photos.length ? `· ${photos.length}` : ''}</span><span className="spacer" /><button type="button" className="btn ghost sm" onClick={find} disabled={!!busy}>{busy === 'find' ? 'Looking…' : '📷 Find photos'}</button><label className="btn ghost sm">{busy === 'upload' ? 'Uploading…' : 'Upload…'}<input type="file" accept="image/*" multiple hidden onChange={e => upload(e.target.files)} /></label></span>}>
+    <Field group label={<span className="row">Photos <span className="muted small">{photos.length ? `· ${photos.length}` : ''}</span><span className="spacer" /><button type="button" className="btn ghost sm" onClick={find} disabled={!!busy}><Icon name="image" size={14} />{busy === 'find' ? 'Looking…' : 'Find photos'}</button><label className="btn ghost sm"><Icon name="upload" size={14} />{busy === 'upload' ? 'Uploading…' : 'Upload…'}<input type="file" accept="image/*" multiple hidden onChange={e => upload(e.target.files)} /></label></span>}>
       {photos.length === 0 ? <p className="muted small">No photos yet. “Find photos” looks on Wikipedia and Wikimedia Commons; or upload your own.</p> : (
         <div className="gallery">
           {photos.map((p, i) => (
             <figure key={p.id} className={`g-item ${i === 0 ? 'cover' : ''}`}>
               <a href={url(p)} target="_blank" rel="noreferrer"><img src={url(p)} alt="" loading="lazy" /></a>
               <figcaption>
-                {i === 0 ? <span className="badge cat">cover</span> : <button type="button" className="icon-btn" title="Use as cover" onClick={() => cover(p)}>★</button>}
+                {i === 0 ? <span className="badge cat">cover</span> : <button type="button" className="icon-btn" title="Use as cover" aria-label="Use as cover" onClick={() => cover(p)}><Icon name="star" size={13} /></button>}
                 <span className="credit" title={`${p.credit}${p.license ? ' · ' + p.license : ''}`}>{p.source_url ? <a href={p.source_url} target="_blank" rel="noreferrer">{p.credit || p.source}</a> : p.credit || (p.source === 'upload' ? 'uploaded' : p.source)}{p.license && <span className="muted"> · {p.license}</span>}</span>
-                <button type="button" className="icon-btn" title="Remove" onClick={() => remove(p)}>✕</button>
+                <button type="button" className="icon-btn" title="Remove" aria-label="Remove photo" onClick={() => remove(p)}><Icon name="x" size={13} /></button>
               </figcaption>
             </figure>
           ))}

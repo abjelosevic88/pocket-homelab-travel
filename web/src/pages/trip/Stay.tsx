@@ -5,6 +5,7 @@ import type { GeoResult, Lodging, Transport, Trip } from '../../lib/types'
 import { LODGING_ICONS, TRANSPORT_ICONS } from '../../lib/types'
 import { appleMaps, cap, daysBetween, fmtDate, fmtDateTime, fmtKm, gmaps, todayISO } from '../../lib/format'
 import { Card, Confirm, Empty, Field, Modal, useToast } from '../../components/ui'
+import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
 import { AmountInput, Money } from '../../components/Money'
 import { GeoSearch } from '../../components/GeoSearch'
@@ -17,8 +18,8 @@ export function Stay() {
   const unit = settings?.distance_unit || 'km'
   return (
     <div className="two-col">
-      <Card title="Where you sleep" actions={canEdit && <button className="btn primary sm" onClick={() => edit('lodging', null, {})}>+ Stay</button>}>
-        {ov.lodging.length === 0 ? <Empty title="No stays yet">Hotels, apartments, a friend's couch — with check-in dates they show up in the itinerary and the calendar export.</Empty> : (
+      <Card title="Where you sleep" actions={canEdit && <button type="button" className="btn primary sm" onClick={() => edit('lodging', null, {})}><Icon name="plus" size={14} />Stay</button>}>
+        {ov.lodging.length === 0 ? <Empty icon="bed" title="No stays yet">Hotels, apartments, a friend's couch — with check-in dates they show up in the itinerary and the calendar export.</Empty> : (
           <div className="day-items">
             {ov.lodging.map(l => {
               const now = l.check_in.slice(0, 10) <= today && today < l.check_out.slice(0, 10)
@@ -31,15 +32,15 @@ export function Stay() {
                     <span className="sub wrap">{fmtDate(l.check_in, false)} → {fmtDate(l.check_out, false)}{nights > 0 && ` · ${nights} night${nights === 1 ? '' : 's'}`}{l.address && ` · ${l.address}`}</span>
                     <span className="sub wrap">{[l.reservation_number && `Reservation ${l.reservation_number}`, l.phone, l.price > 0 && <Money key="m" minor={l.price} code={l.currency || trip.currency} />].filter(Boolean).map((x, i) => <span key={i}>{i > 0 && ' · '}{x}</span>)}</span>
                   </span>
-                  <span className="row" onClick={e => e.stopPropagation()}>{l.link && <a className="icon-btn" href={l.link} target="_blank" rel="noreferrer" title="Booking">🔗</a>}{l.lat != null && <a className="icon-btn" href={gmaps(l.lat, l.lng!)} target="_blank" rel="noreferrer" title="Directions">🧭</a>}</span>
+                  <span className="row" onClick={e => e.stopPropagation()}>{l.link && <a className="icon-btn" href={l.link} target="_blank" rel="noreferrer" title="Booking" aria-label="Booking"><Icon name="link" size={15} /></a>}{l.lat != null && <a className="icon-btn" href={gmaps(l.lat, l.lng!)} target="_blank" rel="noreferrer" title="Directions" aria-label="Directions"><Icon name="navigation" size={15} /></a>}</span>
                 </div>
               )
             })}
           </div>
         )}
       </Card>
-      <Card title="How you get there" actions={canEdit && <button className="btn primary sm" onClick={() => edit('transport', null, {})}>+ Leg</button>}>
-        {ov.transport.length === 0 ? <Empty title="No transport yet">Flights, trains, ferries and drives. Booking references and seats live here, and the calendar export carries them.</Empty> : (
+      <Card title="How you get there" actions={canEdit && <button type="button" className="btn primary sm" onClick={() => edit('transport', null, {})}><Icon name="plus" size={14} />Leg</button>}>
+        {ov.transport.length === 0 ? <Empty icon="plane" title="No transport yet">Flights, trains, ferries and drives. Booking references and seats live here, and the calendar export carries them.</Empty> : (
           <div className="day-items">
             {ov.transport.map(t => (
               <div key={t.id} className="item" onClick={() => edit('transport', t)}>
@@ -49,7 +50,7 @@ export function Stay() {
                   <span className="sub wrap">{t.depart_at && fmtDateTime(t.depart_at)}{t.arrive_at && ` → ${fmtDateTime(t.arrive_at, false)}`}{t.name && (t.from_name || t.to_name) && ` · ${t.from_name} → ${t.to_name}`}</span>
                   <span className="sub wrap">{[t.carrier, t.number, t.booking_ref && `ref ${t.booking_ref}`, t.seat && `seat ${t.seat}`, t.distance_km > 0 && fmtKm(t.distance_km, unit), t.price > 0 && <Money key="m" minor={t.price} code={t.currency || trip.currency} />].filter(Boolean).map((x, i) => <span key={i}>{i > 0 && ' · '}{x}</span>)}</span>
                 </span>
-                {t.link && <a className="icon-btn" href={t.link} target="_blank" rel="noreferrer" title="Booking" onClick={e => e.stopPropagation()}>🔗</a>}
+                {t.link && <a className="icon-btn" href={t.link} target="_blank" rel="noreferrer" title="Booking" aria-label="Booking" onClick={e => e.stopPropagation()}><Icon name="link" size={15} /></a>}
               </div>
             ))}
           </div>
@@ -98,10 +99,10 @@ export function LodgingModal({ trip, item, defaults = {}, onClose, onSaved }: { 
         </div>
         <label className="row"><input type="checkbox" checked={!!f.paid} onChange={e => set('paid', e.target.checked)} style={{ width: 'auto' }} /> Paid already</label>
         <Field label="Notes" help="Door codes, parking, breakfast times."><textarea value={f.notes || ''} onChange={e => set('notes', e.target.value)} rows={3} /></Field>
-        {item && <Field label="Photo"><div className="row">{item.has_image && <img src={`${V1}/trips/${trip.id}/lodging/${item.id}/image?v=${item.updated_at}`} alt="" style={{ height: 60, borderRadius: 8 }} />}<label className="btn sm">Upload image…<input type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && upload(e.target.files[0])} /></label></div></Field>}
+        {item && <Field label="Photo"><div className="row">{item.has_image && <img src={`${V1}/trips/${trip.id}/lodging/${item.id}/image?v=${item.updated_at}`} alt="" style={{ height: 60, borderRadius: 8 }} />}<label className="btn sm"><Icon name="upload" size={14} />Upload image…<input type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && upload(e.target.files[0])} /></label></div></Field>}
         <div className="form-actions">
           {item && <button type="button" className="btn ghost danger-text" onClick={() => setDel(true)}>Delete</button>}
-          {item && f.lat != null && <><a className="btn ghost sm" href={gmaps(f.lat, f.lng!)} target="_blank" rel="noreferrer">Google Maps</a><a className="btn ghost sm" href={appleMaps(f.lat, f.lng!)} target="_blank" rel="noreferrer">Apple Maps</a></>}
+          {item && f.lat != null && <><a className="btn ghost sm" href={gmaps(f.lat, f.lng!)} target="_blank" rel="noreferrer"><Icon name="external" size={13} />Google Maps</a><a className="btn ghost sm" href={appleMaps(f.lat, f.lng!)} target="_blank" rel="noreferrer"><Icon name="external" size={13} />Apple Maps</a></>}
           <span className="spacer" /><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{item ? 'Save' : 'Add stay'}</button>
         </div>
       </form>

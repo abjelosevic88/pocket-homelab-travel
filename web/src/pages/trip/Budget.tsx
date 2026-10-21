@@ -5,6 +5,7 @@ import type { Expense, Trip } from '../../lib/types'
 import { EXPENSE_ICONS } from '../../lib/types'
 import { ago, cap, fmtDate, fmtMoney, todayISO } from '../../lib/format'
 import { Card, Confirm, Empty, Field, Modal, Segmented, useToast } from '../../components/ui'
+import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
 import { AmountInput, Money } from '../../components/Money'
 import { useTrip } from './ctx'
@@ -49,12 +50,12 @@ export function BudgetTab() {
       </div>
       <Card className="mt" title="Expenses" actions={<span className="row">
         <Segmented value={show} onChange={setShow} options={[{ value: 'all', label: 'All' }, { value: 'actual', label: 'Spent' }, { value: 'planned', label: 'Planned' }]} size="sm" />
-        {integ.configured && trip.firefly_tag && canEdit && <button className="btn sm" onClick={sync} disabled={syncing}>{syncing ? 'Syncing…' : '↻ Sync Pocket Money'}</button>}
-        {canEdit && <button className="btn primary sm" onClick={() => edit('expense', null, { kind: trip.end_date && trip.end_date < today ? 'actual' : 'planned' })}>+ Cost</button>}
+        {integ.configured && trip.firefly_tag && canEdit && <button type="button" className="btn sm" onClick={sync} disabled={syncing}><Icon name="refresh" size={13} />{syncing ? 'Syncing…' : 'Sync Pocket Money'}</button>}
+        {canEdit && <button type="button" className="btn primary sm" onClick={() => edit('expense', null, { kind: trip.end_date && trip.end_date < today ? 'actual' : 'planned' })}><Icon name="plus" size={14} />Cost</button>}
       </span>}>
-        {integ.configured && !trip.firefly_tag && <div className="hint-strip">💡 Set a Money tag under <a href="#" onClick={e => { e.preventDefault(); edit('trip', trip) }}>Edit trip</a> and every expense in Pocket Money with that tag lands here as spent, in its own currency.</div>}
+        {integ.configured && !trip.firefly_tag && <div className="hint-strip"><Icon name="info" size={14} />Set a Money tag under <a href="#" onClick={e => { e.preventDefault(); edit('trip', trip) }}>Edit trip</a> and every expense in Pocket Money with that tag lands here as spent, in its own currency.</div>}
         {integ.configured && trip.firefly_tag && <div className="hint-strip">Money tag <code>{trip.firefly_tag}</code>{integ.via === 'core' ? ' · through Pocket Core' : ''}{integ.synced_at ? ` · synced ${ago(integ.synced_at)}` : ' · not synced yet'} · refreshes every 30 min while the trip is running.</div>}
-        {list.length === 0 ? <Empty title="No expenses">Planned costs come from stays, transport and anything you add; what you really spend comes from Pocket Money or by hand.</Empty> : (
+        {list.length === 0 ? <Empty icon="wallet" title="No expenses">Planned costs come from stays, transport and anything you add; what you really spend comes from Pocket Money or by hand.</Empty> : (
           <table className="table compact">
             <thead><tr><th>Date</th><th>What</th><th>Category</th><th className="num">Amount</th><th className="num">In {b.currency}</th></tr></thead>
             <tbody>{list.map(e => <tr key={e.id} className="clickable" onClick={() => edit('expense', e)}>

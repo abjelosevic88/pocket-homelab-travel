@@ -5,6 +5,7 @@ import type { GeoResult } from '../../lib/types'
 import { DAY_COLORS, LODGING_ICONS, PLACE_ICONS } from '../../lib/types'
 import { cap, fmtDate, fmtKm, weekday } from '../../lib/format'
 import { Card, useToast } from '../../components/ui'
+import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
 import { MapView, type Line, type Marker } from '../../components/Map'
 import { useTrip } from './ctx'
@@ -61,35 +62,35 @@ export function MapTab() {
     <>
       <div className="toolbar">
         <div className="chips">
-          <button className={`chip ${layers.places ? 'active' : ''}`} onClick={() => tog('places')}>📍 Places</button>
-          <button className={`chip ${layers.numbers ? 'active' : ''}`} onClick={() => tog('numbers')}>Order</button>
-          <button className={`chip ${layers.lodging ? 'active' : ''}`} onClick={() => tog('lodging')}>🛏 Stays</button>
-          {route && route.raw_count > 0 && <button className={`chip ${layers.route ? 'active' : ''}`} onClick={() => tog('route')}>🛰 Route {fmtKm(route.distance_km, unit)}</button>}
-          {timeline.length > 0 && <button className={`chip ${layers.visits ? 'active' : ''}`} onClick={() => tog('visits')}>📌 Stops</button>}
-          {photos.some(p => p.lat != null) && <button className={`chip ${layers.photos ? 'active' : ''}`} onClick={() => tog('photos')}>📷 Photos</button>}
+          <button type="button" className={`chip ${layers.places ? 'active' : ''}`} onClick={() => tog('places')}><Icon name="pin" size={13} />Places</button>
+          <button type="button" className={`chip ${layers.numbers ? 'active' : ''}`} onClick={() => tog('numbers')}><Icon name="list" size={13} />Order</button>
+          <button type="button" className={`chip ${layers.lodging ? 'active' : ''}`} onClick={() => tog('lodging')}><Icon name="bed" size={13} />Stays</button>
+          {route && route.raw_count > 0 && <button type="button" className={`chip ${layers.route ? 'active' : ''}`} onClick={() => tog('route')}><Icon name="route" size={13} />Route {fmtKm(route.distance_km, unit)}</button>}
+          {timeline.length > 0 && <button type="button" className={`chip ${layers.visits ? 'active' : ''}`} onClick={() => tog('visits')}><Icon name="flag" size={13} />Stops</button>}
+          {photos.some(p => p.lat != null) && <button type="button" className={`chip ${layers.photos ? 'active' : ''}`} onClick={() => tog('photos')}><Icon name="camera" size={13} />Photos</button>}
         </div>
         <span className="spacer" />
-        <button className={`btn sm ${discover.open ? 'primary' : ''}`} onClick={() => setDiscover(d => ({ ...d, open: !d.open }))}>✚ Discover nearby</button>
+        <button type="button" className={`btn sm ${discover.open ? 'primary' : ''}`} onClick={() => setDiscover(d => ({ ...d, open: !d.open }))}><Icon name="compass" size={14} />Discover nearby</button>
       </div>
       {discover.open && (
         <Card className="mb">
           <div className="row wrap">
             <Select value={discover.cat} onChange={v => setDiscover(d => ({ ...d, cat: v }))} options={(meta?.discover_categories || []).map(c => ({ value: c, label: `${PLACE_ICONS[c] || '📍'} ${cap(c)}` }))} />
             <Select value={String(discover.radius)} onChange={v => setDiscover(d => ({ ...d, radius: Number(v) }))} options={[1000, 2000, 3000, 5000, 10000, 20000].map(r => ({ value: String(r), label: `within ${r / 1000} km` }))} />
-            <button className="btn primary sm" onClick={() => runDiscover()} disabled={discover.busy}>{discover.busy ? 'Searching…' : 'Search'}</button>
-            {discover.results.length > 0 && <button className="btn ghost sm" onClick={() => setDiscover(d => ({ ...d, results: [] }))}>Clear {discover.results.length}</button>}
+            <button type="button" className="btn primary sm" onClick={() => runDiscover()} disabled={discover.busy}>{discover.busy ? 'Searching…' : 'Search'}</button>
+            {discover.results.length > 0 && <button type="button" className="btn ghost sm" onClick={() => setDiscover(d => ({ ...d, results: [] }))}>Clear {discover.results.length}</button>}
             <span className="muted small">OpenStreetMap points of interest around {center ? 'the clicked spot' : 'the trip destination'}. Click the map to search elsewhere, click a ✚ pin to add it.</span>
           </div>
         </Card>
       )}
-      {extErrors.dawarich && <div className="callout danger mb">Dawarich: {extErrors.dawarich}</div>}
+      {extErrors.dawarich && <div className="callout danger mb"><Icon name="alert" size={15} /><span>Dawarich: {extErrors.dawarich}</span></div>}
       {routeDays.length > 0 && layers.route && (
         <div className="day-strip">
-          <button className={`chip sm ${day === 'all' ? 'active' : ''}`} onClick={() => setDay('all')}>All days · {fmtKm(route!.distance_km, unit)}</button>
-          {routeDays.map((d, i) => <button key={d.date} className={`chip sm ${day === d.date ? 'active' : ''}`} style={{ '--c': DAY_COLORS[i % DAY_COLORS.length] } as React.CSSProperties} onClick={() => setDay(day === d.date ? 'all' : d.date)} title={`${weekday(d.date, true)} ${fmtDate(d.date)}${d.start ? ` · ${d.start}–${d.end}` : ''}`}><span className="swatch" style={{ background: DAY_COLORS[i % DAY_COLORS.length] }} /> {i + 1} <span className="muted">{fmtKm(d.km, unit)}</span></button>)}
+          <button type="button" className={`chip sm ${day === 'all' ? 'active' : ''}`} onClick={() => setDay('all')}>All days · {fmtKm(route!.distance_km, unit)}</button>
+          {routeDays.map((d, i) => <button type="button" key={d.date} className={`chip sm ${day === d.date ? 'active' : ''}`} style={{ '--c': DAY_COLORS[i % DAY_COLORS.length] } as React.CSSProperties} onClick={() => setDay(day === d.date ? 'all' : d.date)} title={`${weekday(d.date, true)} ${fmtDate(d.date)}${d.start ? ` · ${d.start}–${d.end}` : ''}`}><span className="swatch" style={{ background: DAY_COLORS[i % DAY_COLORS.length] }} /> {i + 1} <span className="muted">{fmtKm(d.km, unit)}</span></button>)}
           <span className="spacer" />
-          <button className="btn ghost sm" onClick={() => setDay(d => { const i = dayIndex(d); return routeDays[(i - 1 + routeDays.length) % routeDays.length].date })} title="Previous day">‹</button>
-          <button className="btn ghost sm" onClick={() => setDay(d => { const i = dayIndex(d); return routeDays[(i + 1) % routeDays.length].date })} title="Next day">›</button>
+          <button type="button" className="btn ghost sm" onClick={() => setDay(d => { const i = dayIndex(d); return routeDays[(i - 1 + routeDays.length) % routeDays.length].date })} title="Previous day" aria-label="Previous day"><Icon name="chevron-left" size={15} /></button>
+          <button type="button" className="btn ghost sm" onClick={() => setDay(d => { const i = dayIndex(d); return routeDays[(i + 1) % routeDays.length].date })} title="Next day" aria-label="Next day"><Icon name="chevron-right" size={15} /></button>
         </div>
       )}
       {selected && <div className="hint-strip"><b>Day {dayIndex(selected.date) + 1}</b> · {weekday(selected.date, true)}, {fmtDate(selected.date)}{selected.start && ` · recorded ${selected.start}–${selected.end}`} · {fmtKm(selected.km, unit)}{(() => { const tl = timeline.find(x => x.date === selected.date); return tl ? ` · ${Object.entries(tl.summary.mode_distances || {}).filter(([, v]) => v >= 0.5).map(([m, v]) => `${m} ${fmtKm(v, unit)}`).join(', ')} · ${tl.entries.filter(e => e.type === 'visit').length} stops` : '' })()}<span className="spacer" /><span className="muted">Only this day's places{layers.photos ? ', photos' : ''}{layers.visits ? ', stops' : ''} are shown.</span></div>}

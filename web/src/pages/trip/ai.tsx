@@ -3,6 +3,7 @@ import { api, V1 } from '../../lib/api'
 import { PLACE_ICONS } from '../../lib/types'
 import { cap, fmtDate, fmtDuration, weekday } from '../../lib/format'
 import { Field, Modal, Segmented, useToast } from '../../components/ui'
+import { Icon } from '../../components/icons'
 import { useTrip } from './ctx'
 
 /** "✨ Suggest places": the model proposes popular places; picked ones become places. */
@@ -34,7 +35,7 @@ export function SuggestModal({ onClose }: { onClose: () => void }) {
     setAdding(false); toast(`Added ${n} place${n === 1 ? '' : 's'} as ideas`); await reload(); onClose()
   }
   return (
-    <Modal title="✨ Suggest places" onClose={onClose} size="lg">
+    <Modal title={<span className="row"><Icon name="sparkles" size={17} />Suggest places</span>} onClose={onClose} size="lg">
       {!res && (
         <div className="grid" style={{ gap: 14 }}>
           <p className="muted small">The model proposes popular, well-rated places for <b>{trip.destination || trip.name}</b> that are not in your plan yet ({ov.places.length} places known). Each suggestion is located with OpenStreetMap before it is shown.</p>
@@ -43,7 +44,7 @@ export function SuggestModal({ onClose }: { onClose: () => void }) {
             <Field label="Around (optional)"><input value={near} onChange={e => setNear(e.target.value)} placeholder="the old town, near our hotel, Montmartre…" /></Field>
             <Field group label="How many"><Segmented value={count} onChange={setCount} options={[5, 8, 12].map(n => ({ value: n, label: String(n) }))} size="sm" /></Field>
           </div>
-          <div className="form-actions"><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={run} disabled={busy}>{busy ? 'Thinking and locating… ~15 s' : 'Suggest'}</button></div>
+          <div className="form-actions"><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className="btn primary" onClick={run} disabled={busy}>{busy ? 'Thinking and locating… ~15 s' : 'Suggest'}</button></div>
         </div>
       )}
       {res && (
@@ -60,7 +61,7 @@ export function SuggestModal({ onClose }: { onClose: () => void }) {
               </span>
             </label>
           ))}
-          <div className="form-actions"><button className="btn ghost" onClick={() => setRes(null)}>Ask again</button><span className="spacer" /><button className="btn" onClick={onClose}>Close</button><button className="btn primary" onClick={add} disabled={adding || sel.size === 0}>{adding ? 'Adding…' : `Add ${sel.size} as ideas`}</button></div>
+          <div className="form-actions"><button type="button" className="btn ghost" onClick={() => setRes(null)}>Ask again</button><span className="spacer" /><button type="button" className="btn" onClick={onClose}>Close</button><button type="button" className="btn primary" onClick={add} disabled={adding || sel.size === 0}>{adding ? 'Adding…' : `Add ${sel.size} as ideas`}</button></div>
           <p className="muted small">Added places land in <b>Ideas</b> with the tag <code>suggested</code>; drag them onto days or let <i>Plan my days</i> do it. Double-check facts before you book anything.</p>
         </div>
       )}
@@ -88,14 +89,14 @@ export function PlanModal({ onClose }: { onClose: () => void }) {
   }
   const days = plan ? Array.from(new Set(plan.items.map(i => i.day_date))) : []
   return (
-    <Modal title="✨ Plan my days" onClose={onClose} size="lg">
+    <Modal title={<span className="row"><Icon name="sparkles" size={17} />Plan my days</span>} onClose={onClose} size="lg">
       {!plan ? (
         <div className="grid" style={{ gap: 14 }}>
           <p className="muted small">Unscheduled places get a day and a start time: nearby things on the same day, meals at meal times, light arrival and departure days. Booked places and transport stay where they are. You review the proposal before anything changes.</p>
           <Field group label="Pace"><Segmented value={pace} onChange={setPace} options={[{ value: 'relaxed', label: 'Relaxed' }, { value: '', label: 'Normal' }, { value: 'packed', label: 'Packed' }]} size="sm" /></Field>
           <Field label="Wishes (optional)"><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="beach every afternoon, museums on a weekday, nothing before 9…" /></Field>
           <label className="row"><input type="checkbox" checked={reschedule} onChange={e => setReschedule(e.target.checked)} style={{ width: 'auto' }} /> Also move places that already have a day (except booked ones)</label>
-          <div className="form-actions"><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={run} disabled={busy}>{busy ? 'Planning…' : 'Propose a plan'}</button></div>
+          <div className="form-actions"><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className="btn primary" onClick={run} disabled={busy}>{busy ? 'Planning…' : 'Propose a plan'}</button></div>
         </div>
       ) : (
         <div className="grid" style={{ gap: 12 }}>
@@ -107,13 +108,13 @@ export function PlanModal({ onClose }: { onClose: () => void }) {
                 <div key={i.place_id} className="item" style={{ cursor: 'default' }}>
                   <span className="time"><input type="time" value={i.start_time} onChange={e => setPlan(p => p && ({ ...p, items: p.items.map(x => x.place_id === i.place_id ? { ...x, start_time: e.target.value } : x) }))} style={{ padding: '2px 4px', fontSize: 12 }} /></span>
                   <span className="txt"><span className="title">{i.name}</span><span className="sub wrap">{[i.duration_min ? fmtDuration(i.duration_min) : '', i.note].filter(Boolean).join(' · ')}</span></span>
-                  <button className="icon-btn" title="Leave unscheduled" onClick={() => setPlan(p => p && ({ ...p, items: p.items.filter(x => x.place_id !== i.place_id) }))}>✕</button>
+                  <button type="button" className="icon-btn" title="Leave unscheduled" aria-label="Leave unscheduled" onClick={() => setPlan(p => p && ({ ...p, items: p.items.filter(x => x.place_id !== i.place_id) }))}><Icon name="x" size={14} /></button>
                 </div>
               ))}</div>
             </div>
           ))}
           {plan.unplaced > 0 && <p className="muted small">{plan.unplaced} place{plan.unplaced === 1 ? '' : 's'} left unscheduled on purpose — not enough days at this pace.</p>}
-          <div className="form-actions"><button className="btn ghost" onClick={() => setPlan(null)}>Try again</button><span className="spacer" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={apply} disabled={busy || plan.items.length === 0}>{busy ? 'Applying…' : `Apply ${plan.items.length} slots`}</button></div>
+          <div className="form-actions"><button type="button" className="btn ghost" onClick={() => setPlan(null)}>Try again</button><span className="spacer" /><button type="button" className="btn" onClick={onClose}>Cancel</button><button type="button" className="btn primary" onClick={apply} disabled={busy || plan.items.length === 0}>{busy ? 'Applying…' : `Apply ${plan.items.length} slots`}</button></div>
         </div>
       )}
     </Modal>
@@ -137,12 +138,12 @@ export function RecapModal({ onClose }: { onClose: () => void }) {
   }
   useEffect(() => { run() }, []) // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <Modal title="✨ Trip recap" onClose={onClose} size="lg">
+    <Modal title={<span className="row"><Icon name="sparkles" size={17} />Trip recap</span>} onClose={onClose} size="lg">
       <div className="grid" style={{ gap: 12 }}>
-        <div className="row"><Segmented value={style} onChange={v => { setStyle(v); setText('') }} options={[{ value: 'story', label: 'Story' }, { value: 'summary', label: 'Summary' }, { value: 'social', label: 'Caption' }]} size="sm" /><button className="btn sm" onClick={run} disabled={busy}>{busy ? 'Writing…' : text ? 'Rewrite' : 'Write'}</button></div>
+        <div className="row"><Segmented value={style} onChange={v => { setStyle(v); setText('') }} options={[{ value: 'story', label: 'Story' }, { value: 'summary', label: 'Summary' }, { value: 'social', label: 'Caption' }]} size="sm" /><button type="button" className="btn sm" onClick={run} disabled={busy}>{busy ? 'Writing…' : text ? 'Rewrite' : 'Write'}</button></div>
         <textarea className="tall" value={text} onChange={e => setText(e.target.value)} placeholder={busy ? 'Writing from your places, journal and spending…' : ''} style={{ minHeight: 320 }} />
         <p className="muted small">Written only from what the trip knows: visited places, journal entries, spending, recorded distance. Edit freely, then save it as a journal entry.</p>
-        <div className="form-actions"><button className="btn" onClick={onClose}>Close</button><button className="btn primary" onClick={save} disabled={busy || !text.trim()}>Save to journal</button></div>
+        <div className="form-actions"><button type="button" className="btn" onClick={onClose}>Close</button><button type="button" className="btn primary" onClick={save} disabled={busy || !text.trim()}>Save to journal</button></div>
       </div>
     </Modal>
   )

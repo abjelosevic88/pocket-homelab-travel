@@ -1,7 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { api, V1 } from './api'
 import { setDateFormats, type DateFormat, type TimeFormat } from './format'
-import type { Currency, Meta, Settings, User } from './types'
+import type { Currency, Meta, Settings, Trip, User } from './types'
+
+export type ThemeMode = 'system' | 'light' | 'dark'
 
 interface AuthStatus { needs_setup: boolean; auth_mode: string; authenticated: boolean; user: User | null; version: string; title: string; oidc?: boolean; oidc_name?: string }
 interface AppState {
@@ -11,10 +13,14 @@ interface AppState {
   users: User[]
   currencies: Currency[]
   meta: Meta | null
+  trips: Trip[]
+  themeMode: ThemeMode
   theme: 'light' | 'dark'
+  setThemeMode: (m: ThemeMode) => void
   toggleTheme: () => void
   refresh: () => Promise<void>
   reloadMeta: () => Promise<void>
+  reloadTrips: () => Promise<void>
   setUser: (u: User | null) => void
   setSettings: (s: Settings) => void
 }
@@ -30,14 +36,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [users, setUsers] = useState<User[]>([])
   const [currencies, setCurrencies] = useState<Currency[]>([])
   const [meta, setMeta] = useState<Meta | null>(null)
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('pt-theme') as 'light' | 'dark') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))
-  useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem('pt-theme', theme) }, [theme])
+  const [trips, setTrips] = useState<Trip[]>([])
+  // The theme follows the system unless set to light or dark.
+  const [themeMode, setThemeModeRaw] = useState<ThemeMode>(() => (localStorage.getItem('pt-theme') as ThemeMode) || 'system')
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const h = () => setSystemDark(mq.matches)
+    mq.addEventListener('change', h)
+    return () => mq.removeEventListener('change', h)
+  }, [])
+  const theme: 'light' | 'dark' = themeMode === 'system' ? (systemDark ? 'dark' : 'light') : themeMode
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.setAttribute('content', theme === 'dark' ? '#111113' : '#ffffff'))
+  }, [theme])
+  const setThemeMode = useCallback((m: ThemeMode) => { setThemeModeRaw(m); if (m === 'system') localStorage.removeItem('pt-theme'); else localStorage.setItem('pt-theme', m) }, [])
   useEffect(() => { if (settings?.title) document.title = settings.title }, [settings?.title])
   const setSettings = useCallback((s: Settings) => { setSettingsRaw(s); setDateFormats(s.date_format as DateFormat, s.time_format as TimeFormat) }, [])
+  // The trips in the sidebar and the palette (archived ones stay out).
+  const reloadTrips = useCallback(async () => { setTrips(await api.get<Trip[]>(`${V1}/trips?archived=0`).catch(() => [] as Trip[])) }, [])
   const reloadMeta = useCallback(async () => {
     const [u, c, m] = await Promise.all([api.get<User[]>(`${V1}/users`), api.get<Currency[]>(`${V1}/currencies`), api.get<Meta>(`${V1}/meta`).catch(() => EMPTY_META)])
     setUsers(u); setCurrencies(c); setMeta(m)
-  }, [])
+    await reloadTrips()
+  }, [reloadTrips])
   const refresh = useCallback(async () => {
     const st = await api.get<AuthStatus>(`${V1}/auth/status`)
     setStatus(st)
@@ -53,5 +76,5 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener('pt:unauthorized', h)
     return () => window.removeEventListener('pt:unauthorized', h)
   }, [])
-  return <Ctx.Provider value={{ status, user, settings, users, currencies, meta, theme, toggleTheme: () => setTheme(t => t === 'dark' ? 'light' : 'dark'), refresh, reloadMeta, setUser, setSettings }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ status, user, settings, users, currencies, meta, trips, themeMode, theme, setThemeMode, toggleTheme: () => setThemeMode(theme === 'dark' ? 'light' : 'dark'), refresh, reloadMeta, reloadTrips, setUser, setSettings }}>{children}</Ctx.Provider>
 }

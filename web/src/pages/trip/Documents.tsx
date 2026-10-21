@@ -3,6 +3,7 @@ import { api, uploadForm, V1 } from '../../lib/api'
 import type { Doc } from '../../lib/types'
 import { cap, fmtBytes, fmtDate } from '../../lib/format'
 import { Card, Confirm, Empty, useToast } from '../../components/ui'
+import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
 import { useTrip } from './ctx'
 
@@ -33,9 +34,9 @@ export function Documents() {
   }
   const groups = KINDS.filter(k => ov.documents.some(d => d.kind === k)).map(k => ({ kind: k, docs: ov.documents.filter(d => d.kind === k) }))
   return (
-    <Card title={`Documents · ${ov.documents.length}`} actions={canEdit && <span className="row"><span className="muted small">Upload as</span><Select className="doc-kind" value={kind} onChange={setKind} options={KINDS.map(k => ({ value: k, label: `${KIND_ICON[k]} ${cap(k)}` }))} /><label className="btn primary sm">{busy ? 'Uploading…' : 'Upload…'}<input type="file" multiple hidden onChange={e => upload(e.target.files)} /></label></span>}>
+    <Card title={`Documents · ${ov.documents.length}`} actions={canEdit && <span className="row"><span className="muted small">Upload as</span><Select className="doc-kind" value={kind} onChange={setKind} options={KINDS.map(k => ({ value: k, label: `${KIND_ICON[k]} ${cap(k)}` }))} /><label className="btn primary sm"><Icon name="upload" size={14} />{busy ? 'Uploading…' : 'Upload…'}<input type="file" multiple hidden onChange={e => upload(e.target.files)} /></label></span>}>
       <div className={`dropzone ${drag ? 'over' : ''}`} onDragOver={e => { if (canEdit) { e.preventDefault(); setDrag(true) } }} onDragLeave={() => setDrag(false)} onDrop={e => { e.preventDefault(); setDrag(false); if (canEdit) upload(e.dataTransfer.files) }}>
-        {ov.documents.length === 0 ? <Empty title="No documents yet">{canEdit ? 'Tickets, booking confirmations, insurance, passport scans — drop files here or use Upload. They are stored next to the database and backed up with it.' : 'Tickets, bookings and insurance would show up here.'}</Empty> : groups.map(g => (
+        {ov.documents.length === 0 ? <Empty icon="file" title="No documents yet">{canEdit ? 'Tickets, booking confirmations, insurance, passport scans — drop files here or use Upload. They are stored next to the database and backed up with it.' : 'Tickets, bookings and insurance would show up here.'}</Empty> : groups.map(g => (
           <div key={g.kind} className="doc-group">
             <h3>{KIND_ICON[g.kind]} {cap(g.kind)} <span className="muted small">· {g.docs.length}</span></h3>
             {g.docs.map(d => (
@@ -43,11 +44,11 @@ export function Documents() {
                 <a className="ext" href={`${base}/${d.id}/file`} target="_blank" rel="noreferrer" title="Open">{ext(d)}</a>
                 <div className="doc-main">
                   {canEdit ? <input className="inline-edit doc-name" defaultValue={d.name} onBlur={e => e.target.value.trim() && e.target.value !== d.name && save(d, { name: e.target.value.trim() })} onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }} /> : <a className="doc-name" href={`${base}/${d.id}/file`} target="_blank" rel="noreferrer">{d.name}</a>}
-                  <div className="small muted">{fmtBytes(d.bytes)} · {fmtDate(d.created_at)}{linked(d) && <> · <span title={d.link_kind}>{d.link_kind === 'lodging' ? '🛏' : d.link_kind === 'place' ? '📍' : '🚗'} {linked(d)}</span></>}</div>
+                  <div className="small muted">{fmtBytes(d.bytes)} · {fmtDate(d.created_at)}{linked(d) && <> · <span title={d.link_kind} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, verticalAlign: 'bottom' }}><Icon name={d.link_kind === 'lodging' ? 'bed' : d.link_kind === 'place' ? 'pin' : 'plane'} size={12} />{linked(d)}</span></>}</div>
                 </div>
                 {canEdit ? <Select className="doc-kind" value={d.kind} onChange={k => save(d, { kind: k })} options={KINDS.map(k => ({ value: k, label: `${KIND_ICON[k]} ${cap(k)}` }))} /> : <span className="badge">{d.kind}</span>}
-                <a className="btn ghost sm" href={`${base}/${d.id}/file?download=1`} title="Download">↓</a>
-                {canEdit && <button className="btn ghost sm danger-text" onClick={() => setDel(d)} title="Delete">✕</button>}
+                <a className="btn ghost icon-only sm" href={`${base}/${d.id}/file?download=1`} title="Download" aria-label="Download"><Icon name="download" size={15} /></a>
+                {canEdit && <button type="button" className="btn ghost icon-only sm danger-text" onClick={() => setDel(d)} title="Delete" aria-label="Delete"><Icon name="trash" size={15} /></button>}
               </div>
             ))}
           </div>

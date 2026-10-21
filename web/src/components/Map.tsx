@@ -40,7 +40,10 @@ export function MapView({ markers, lines = [], className = '', center, zoom, onC
     if (tiles.overlay) L.tileLayer(tiles.overlay, { maxZoom: tiles.maxZoom || 19, pane: 'tilePane' }).addTo(m)
     layer.current = L.layerGroup().addTo(m)
     map.current = m
-    return () => { m.remove(); map.current = null }
+    // the sidebar opening or closing resizes the map without a render: keep the tiles filling it
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => m.invalidateSize()) : null
+    ro?.observe(ref.current)
+    return () => { ro?.disconnect(); m.remove(); map.current = null }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const m = map.current
