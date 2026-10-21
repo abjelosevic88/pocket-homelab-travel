@@ -47,7 +47,7 @@ With an OpenAI key (or any compatible endpoint) five more buttons appear: **sugg
 <p align="center">
   <img src="docs/screenshots/mobile.png" width="260" alt="The itinerary on a phone">&nbsp;&nbsp;
   <img src="docs/screenshots/overview-dark.png" width="520" alt="The overview in dark mode"><br>
-  <sub>Installable PWA with a bottom tab bar, plus dark mode.</sub>
+  <sub>Installable PWA: on a phone the sidebar becomes a drawer and a + button adds a place, a cost or a journal entry; dark mode follows the system.</sub>
 </p>
 
 <p align="center"><img src="docs/screenshots/trips.png" width="900" alt="The trips page: one card per trip with the cover photo, dates, counts and the budget bar"></p>
