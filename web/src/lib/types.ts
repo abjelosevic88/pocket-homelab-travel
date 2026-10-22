@@ -64,6 +64,8 @@ export interface Photo { id: string; type: 'IMAGE' | 'VIDEO'; file_name: string;
 export interface GeoResult { name: string; display: string; lat: number; lng: number; type: string; category: string; country: string; city: string; website?: string; phone?: string; hours?: string; source: string; osm_id?: string; suggest?: string }
 export type ConnMode = 'core' | 'direct' | 'off'
 export interface Settings {
+  ai_provider: string; ai_status: { provider: string; selected: string; ready: boolean; detail: string }
+
   title: string; home_currency: string; date_format: string; time_format: string; distance_unit: 'km' | 'mi'; fx_auto: boolean; fx_provider: string; map_tiles: string; auto_photos: boolean
   core_configured: boolean
   money_mode: ConnMode; money_via: '' | 'core' | 'direct'; money_detail: string
@@ -72,7 +74,7 @@ export interface Settings {
   firefly_url: string; firefly_token: string; firefly_configured: boolean
   dawarich_url: string; dawarich_api_key: string; dawarich_configured: boolean
   immich_url: string; immich_public_url: string; immich_api_key: string; immich_configured: boolean
-  openai_api_key: string; openai_model: string; openai_base_url: string; openai_configured: boolean
+  openai_api_key: string; openai_model: string; openai_base_url: string; openai_configured: boolean; ai_configured: boolean
   max_upload_bytes: number; setup_complete: boolean; can_edit_global?: boolean
 }
 export interface Meta { place_categories: string[]; expense_categories: string[]; discover_categories: string[]; packing_templates: string[]; lodging_types: string[]; transport_types: string[] }

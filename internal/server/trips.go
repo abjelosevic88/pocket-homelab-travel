@@ -502,6 +502,11 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 	// and AI use the viewer's own accounts.
 	moneyVia := s.moneyVia(ctx, t.OwnerID)
 	st, _ := s.store.GetSettings(ctx, actorID(ctx))
+	_, aiStatus := s.inferenceFor(ctx, actorID(ctx), st.AIProvider, st.OpenAIKey != "")
+	aiModel := firstNonEmpty(st.OpenAIModel, "gpt-4o-mini")
+	if aiStatus.Selected == "pocket" {
+		aiModel = "pocket-ai"
+	}
 	dwOK := s.dawarichVia(ctx, actorID(ctx)) != ""
 	imURL := ""
 	_, imConn, imErr := s.immichFor(ctx, actorID(ctx))
@@ -518,7 +523,7 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 			"firefly":  map[string]any{"configured": moneyVia != "", "via": moneyVia, "tag": t.FireflyTag, "synced_at": syncedAt},
 			"dawarich": map[string]any{"configured": dwOK, "enabled": t.Dawarich},
 			"immich":   map[string]any{"configured": imErr == nil, "enabled": t.Immich, "url": imURL},
-			"ai":       map[string]any{"configured": st.OpenAIKey != "", "model": firstNonEmpty(st.OpenAIModel, "gpt-4o-mini")},
+			"ai":       map[string]any{"configured": aiStatus.Ready, "model": aiModel, "provider": aiStatus.Selected},
 		},
 	})
 }

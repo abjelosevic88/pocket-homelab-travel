@@ -44,7 +44,9 @@ func (s *Server) publicSettings(ctx context.Context, st store.Settings, u *store
 	moneyMode, moneyVia, moneyDetail := s.moneyStatus(ctx, u, st)
 	dwMode, dwVia, dwDetail, dwSource := s.serviceStatus(ctx, u, savedDawarich(st), true)
 	imMode, imVia, imDetail, imSource := s.serviceStatus(ctx, u, savedImmich(st), true)
+	_, aiStatus := s.inferenceFor(ctx, u.ID, st.AIProvider, st.OpenAIKey != "")
 	return map[string]any{
+		"ai_provider": aiStatus.Provider, "ai_status": aiStatus, "ai_configured": aiStatus.Ready,
 		"core_configured": s.core.Configured(),
 		"money_mode":      moneyMode, "money_via": moneyVia, "money_detail": moneyDetail,
 		"dawarich_mode": dwMode, "dawarich_via": dwVia, "dawarich_detail": dwDetail, "dawarich_source": dwSource,
@@ -149,6 +151,13 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	secret("immich_api_key", &cur.ImmichAPIKey, in.ImmichAPIKey)
 	secret("openai_api_key", &cur.OpenAIKey, in.OpenAIKey)
+	if keys["ai_provider"] {
+		if !validAIProvider(in.AIProvider) {
+			writeErr(w, 400, "choose automatic, Pocket AI or OpenAI")
+			return
+		}
+		cur.AIProvider = in.AIProvider
+	}
 	if keys["openai_model"] {
 		cur.OpenAIModel = strings.TrimSpace(in.OpenAIModel)
 	}

@@ -99,6 +99,8 @@ func (s *Store) GetSettings(ctx context.Context, userID int64) (Settings, error)
 			st.ImmichAPIKey = v
 		case "immich_public_url":
 			st.ImmichPublicURL = v
+		case "ai_provider":
+			st.AIProvider = v
 		case "openai_api_key":
 			st.OpenAIKey = v
 		case "openai_model":
@@ -135,6 +137,7 @@ func personalKV(st Settings) map[string]string {
 		"immich_url":        st.ImmichURL,
 		"immich_api_key":    st.ImmichAPIKey,
 		"immich_public_url": st.ImmichPublicURL,
+		"ai_provider":       st.AIProvider,
 		"openai_api_key":    st.OpenAIKey,
 		"openai_model":      st.OpenAIModel,
 		"openai_base_url":   st.OpenAIBaseURL,

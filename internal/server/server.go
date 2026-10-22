@@ -220,7 +220,7 @@ func (s *Server) registerWithCore(ctx context.Context) error {
 		URL: s.cfg.CoreAppURL, PublicURL: s.cfg.BaseURL, HealthPath: "/healthz", EnvPrefix: "TRAVEL",
 		Publishes: []string{"travel.trip_created", "travel.trip_updated", "travel.expense_linked"},
 		Offers:    linkOffers,
-		Uses:      moneyUses,
+		Uses:      append(append([]core.Use{}, moneyUses...), core.InferenceUse()),
 		Services:  serviceUses,
 	}
 	// Ask Core for a relying-party client so "Sign in with Pocket Core" needs no configuration.
@@ -296,7 +296,7 @@ func (s *Server) Router() http.Handler {
 	r.Use(s.logging)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Compress(5))
-	r.Use(middleware.Timeout(120 * time.Second))
+	r.Use(middleware.Timeout(180 * time.Second))
 
 	r.Get("/pocket-ask.js", s.core.AskWidget("travel"))
 	r.Get("/healthz", s.handleHealth)

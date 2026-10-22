@@ -14,10 +14,15 @@ import (
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/store"
 )
 
-// aiClient uses the caller's own OpenAI key; nobody spends anyone else's.
+// aiClient follows the caller's provider choice and personal Core link or key.
 func (s *Server) aiClient(ctx context.Context) *ai.Client {
 	st, _ := s.store.GetSettings(ctx, actorID(ctx))
-	return ai.New(st.OpenAIBaseURL, st.OpenAIKey, st.OpenAIModel, 90*time.Second)
+	c := ai.New(st.OpenAIBaseURL, st.OpenAIKey, st.OpenAIModel, 150*time.Second)
+	c.Pocket, _ = s.inferenceFor(ctx, actorID(ctx), st.AIProvider, st.OpenAIKey != "")
+	if c.Pocket != nil {
+		c.Model = "pocket-ai"
+	}
+	return c
 }
 
 // tripBrief is the context every prompt starts with.
@@ -74,7 +79,7 @@ func placesList(places []store.Place) string {
 func (s *Server) aiOrFail(w http.ResponseWriter, r *http.Request) *ai.Client {
 	c := s.aiClient(r.Context())
 	if !c.Configured() {
-		writeErr(w, http.StatusBadRequest, "add an OpenAI API key under Settings → Integrations first")
+		writeErr(w, http.StatusBadRequest, "connect Pocket AI or add an OpenAI key under Settings → Integrations")
 		return nil
 	}
 	return c

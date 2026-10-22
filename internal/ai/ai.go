@@ -1,7 +1,5 @@
-// Package ai talks to an OpenAI-compatible chat completions endpoint. It is
-// the optional "ask for ideas" layer: suggest places, plan the days, describe
-// a place, draft a packing list, write a recap. Nothing in the app depends on
-// it; without a key every button simply stays hidden.
+// Package ai generates text through Pocket AI or a personal OpenAI-compatible
+// endpoint. Direct OpenAI clients also provide models and audio transcription.
 package ai
 
 import (
@@ -10,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	core "github.com/abjelosevic88/pocket-homelab-core/sdk"
 	"io"
 	"net/http"
 	"strings"
@@ -18,6 +17,7 @@ import (
 
 // Client holds the endpoint and key.
 type Client struct {
+	Pocket  *core.InferenceClient
 	BaseURL string
 	Key     string
 	Model   string
@@ -39,7 +39,7 @@ func New(baseURL, key, model string, timeout time.Duration) *Client {
 }
 
 // Configured reports whether a key is set.
-func (c *Client) Configured() bool { return c != nil && c.Key != "" }
+func (c *Client) Configured() bool { return c != nil && (c.Pocket != nil || c.Key != "") }
 
 type message struct {
 	Role    string `json:"role"`
@@ -49,6 +49,11 @@ type message struct {
 // Complete sends a system + user prompt and returns the assistant text.
 // With jsonMode the model is asked for a single JSON object.
 func (c *Client) Complete(ctx context.Context, system, user string, jsonMode bool) (string, error) {
+	if c.Pocket != nil {
+		out, err := c.Pocket.Complete(ctx, system, user, jsonMode)
+		return out.Text, err
+	}
+
 	if !c.Configured() {
 		return "", errors.New("AI is not configured")
 	}

@@ -35,6 +35,12 @@ func newIsoHarness(t *testing.T) *isoHarness {
 	t.Helper()
 	// A fake Pocket Core that vouches for the member's paired phone.
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/links/status" && r.URL.Query().Get("app") == "ai" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`[]`))
+			return
+		}
+
 		switch r.URL.Path {
 		case "/api/v1/auth/introspect":
 			var in struct {
