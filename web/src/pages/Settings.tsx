@@ -1,3 +1,4 @@
+import { PocketModelSelect } from '../components/PocketModelSelect'
 import { AskButton } from '../components/AskButton'
 import React, { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -202,7 +203,8 @@ function Integrations() {
         sub={<>Optional. Adds five buttons: <b>Suggest places</b> (popular, well-rated places for the destination, located with OpenStreetMap), <b>Plan my days</b> (assigns ideas to days and times), <b>Describe</b> a place with practical tips, a <b>packing list</b> tailored to the trip and weather, and a <b>recap</b> written from your journal, visited places and spending. Trip details are sent to the provider when you use them; nothing runs automatically.</>}>
         <div className="grid" style={{ gap: 12 }}>
           <Field group label="Text generation" help="Automatic prefers your enabled Pocket AI connection. Without one, it uses your saved OpenAI settings."><Select ariaLabel="Text generation provider" value={f.ai_provider || 'auto'} onChange={v => setF({ ...f, ai_provider: v })} options={[{ value: 'auto', label: 'Automatic — prefer Pocket AI' }, { value: 'pocket', label: 'Pocket AI' }, { value: 'openai', label: 'OpenAI / compatible API' }]} /></Field>
-          <p className="muted small" role="status">Saved selection: {f.ai_status?.detail}. Pocket AI uses your Claude account and model from Pocket AI settings.</p>
+          <p className="muted small" role="status">Saved selection: {f.ai_status?.detail}. Pocket AI uses your connected Claude account.</p>
+          {f.ai_provider !== 'openai' && <PocketModelSelect value={f.ai_pocket_model || ''} onChange={v => setF({ ...f, ai_pocket_model: v })} />}
           {f.ai_provider === 'openai' && <>
           <Field label="OpenAI API key" help="platform.openai.com → API keys. Stored on the server; shown masked."><input value={f.openai_api_key} onChange={e => setF({ ...f, openai_api_key: e.target.value })} autoComplete="off" placeholder="sk-…" /></Field>
           <div className="two-col tight">

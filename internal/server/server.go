@@ -423,6 +423,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/money/tags", s.handleMoneyTags)
 			r.Get("/firefly/tags", s.handleMoneyTags) // before v0.6.0
 			r.Post("/integrations/test", s.handleIntegrationTest)
+			r.Get("/ai/models", s.handleInferenceModels)
 			r.Post("/import/adventurelog/collections", s.handleALCollections)
 			r.Post("/import/adventurelog", s.handleALImport)
 			r.Post("/import/trip", s.handleImportJSON)

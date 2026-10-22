@@ -279,13 +279,14 @@ type Activity struct {
 
 // Settings are preferences stored as key/value pairs, shared by everyone.
 type Settings struct {
-	AIProvider   string `json:"ai_provider"`
-	Title        string `json:"title"`
-	HomeCurrency string `json:"home_currency"`
-	DateFormat   string `json:"date_format"`
-	TimeFormat   string `json:"time_format"`
-	DistanceUnit string `json:"distance_unit"` // km | mi
-	FXAuto       bool   `json:"fx_auto"`
+	AIProvider    string `json:"ai_provider"`
+	AIPocketModel string `json:"ai_pocket_model"`
+	Title         string `json:"title"`
+	HomeCurrency  string `json:"home_currency"`
+	DateFormat    string `json:"date_format"`
+	TimeFormat    string `json:"time_format"`
+	DistanceUnit  string `json:"distance_unit"` // km | mi
+	FXAuto        bool   `json:"fx_auto"`
 	// Pocket Money (or Firefly III): how trip costs are read. MoneyMode is
 	// core | direct | off ("" = direct with a saved token, else core). The
 	// firefly_* keys hold the Direct connection: any Firefly-compatible API,

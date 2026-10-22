@@ -210,3 +210,5 @@ Core outages and Pocket AI generation failures are reported without silently
 retrying against OpenAI. Pocket AI runs a text-only, temporary Claude session
 without tools, filesystem access, MCP servers or saved conversation history.
 The model and Claude account come from the person's Pocket AI settings.
+
+Pocket AI model selection: AI settings offer the models discovered from your connected Claude account. “Use Pocket AI default” follows your current model in Pocket AI (Sonnet when no model is set). An explicit choice is saved per person in this app and never changes the Pocket AI default or your OpenAI model. Loading models does not create a chat or send a generation prompt. If a saved model is no longer offered, choose another model or return to the default; generation does not silently substitute a different model.

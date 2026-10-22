@@ -64,7 +64,7 @@ export interface Photo { id: string; type: 'IMAGE' | 'VIDEO'; file_name: string;
 export interface GeoResult { name: string; display: string; lat: number; lng: number; type: string; category: string; country: string; city: string; website?: string; phone?: string; hours?: string; source: string; osm_id?: string; suggest?: string }
 export type ConnMode = 'core' | 'direct' | 'off'
 export interface Settings {
-  ai_provider: string; ai_status: { provider: string; selected: string; ready: boolean; detail: string }
+  ai_provider: string; ai_pocket_model: string; ai_status: { provider: string; selected: string; ready: boolean; detail: string }
 
   title: string; home_currency: string; date_format: string; time_format: string; distance_unit: 'km' | 'mi'; fx_auto: boolean; fx_provider: string; map_tiles: string; auto_photos: boolean
   core_configured: boolean

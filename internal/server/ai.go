@@ -19,6 +19,7 @@ func (s *Server) aiClient(ctx context.Context) *ai.Client {
 	st, _ := s.store.GetSettings(ctx, actorID(ctx))
 	c := ai.New(st.OpenAIBaseURL, st.OpenAIKey, st.OpenAIModel, 150*time.Second)
 	c.Pocket, _ = s.inferenceFor(ctx, actorID(ctx), st.AIProvider, st.OpenAIKey != "")
+	c.Pocket = c.Pocket.WithModel(st.AIPocketModel)
 	if c.Pocket != nil {
 		c.Model = "pocket-ai"
 	}
