@@ -58,6 +58,10 @@ type Server struct {
 	resolved map[string]resolvedURL
 
 	modesKick chan struct{} // a connection-mode report is due (modes.go)
+
+	// whether Pocket Movement is open to a person through Core (location.go)
+	mvMu   sync.Mutex
+	mvSeen map[string]movementSeen
 }
 
 type resolvedURL struct {
@@ -74,7 +78,7 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger, webFS fs.FS) *Se
 		geo: geo.New(cfg.UserAgent, 25*time.Second), fx: fx.New(cfg.FXProvider, cfg.UserAgent, 8*time.Second), syncing: map[int64]bool{},
 		oidc:     &oidcProvider{issuerURL: cfg.OIDCIssuer},
 		core:     core.New(cfg.CoreURL, core.Options{DB: st.DB, TokenFile: cfg.DataDir + "/core.token", UserAgent: cfg.UserAgent}),
-		resolved: map[string]resolvedURL{}, modesKick: make(chan struct{}, 1)}
+		resolved: map[string]resolvedURL{}, modesKick: make(chan struct{}, 1), mvSeen: map[string]movementSeen{}}
 }
 
 // Bootstrap seeds the first admin (if configured), integration defaults and demo data.
@@ -220,7 +224,7 @@ func (s *Server) registerWithCore(ctx context.Context) error {
 		URL: s.cfg.CoreAppURL, PublicURL: s.cfg.BaseURL, HealthPath: "/healthz", EnvPrefix: "TRAVEL",
 		Publishes: []string{"travel.trip_created", "travel.trip_updated", "travel.expense_linked"},
 		Offers:    linkOffers,
-		Uses:      append(append([]core.Use{}, moneyUses...), core.InferenceUse()),
+		Uses:      append(append(append([]core.Use{}, moneyUses...), movementUses...), core.InferenceUse()),
 		Services:  serviceUses,
 	}
 	// Ask Core for a relying-party client so "Sign in with Pocket Core" needs no configuration.
@@ -403,8 +407,11 @@ func (s *Server) Router() http.Handler {
 				r.Delete("/documents/{id}", s.handleDeleteDocument)
 
 				r.Get("/weather", s.handleTripWeather)
-				r.Get("/dawarich/route", s.handleDawarichRoute)
-				r.Get("/dawarich/timeline", s.handleDawarichTimeline)
+				r.Get("/location/route", s.handleRoute)
+				r.Get("/location/timeline", s.handleTimeline)
+				// the old names, for scripts written before Pocket Movement
+				r.Get("/dawarich/route", s.handleRoute)
+				r.Get("/dawarich/timeline", s.handleTimeline)
 				r.Get("/photos", s.handleTripPhotos)
 				r.Get("/photos/{id}/thumb", s.handlePhotoThumb)
 				r.Post("/refresh", s.handleTripRefresh)

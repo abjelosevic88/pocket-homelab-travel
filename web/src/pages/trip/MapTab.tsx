@@ -83,7 +83,7 @@ export function MapTab() {
           </div>
         </Card>
       )}
-      {extErrors.dawarich && <div className="callout danger mb"><Icon name="alert" size={15} /><span>Dawarich: {extErrors.dawarich}</span></div>}
+      {extErrors.dawarich && <div className="callout danger mb"><Icon name="alert" size={15} /><span>Recorded route: {extErrors.dawarich}</span></div>}
       {routeDays.length > 0 && layers.route && (
         <div className="day-strip">
           <button type="button" className={`chip sm ${day === 'all' ? 'active' : ''}`} onClick={() => setDay('all')}>All days · {fmtKm(route!.distance_km, unit)}</button>

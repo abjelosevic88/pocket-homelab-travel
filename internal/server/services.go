@@ -204,14 +204,6 @@ func (s *Server) immichFor(ctx context.Context, userID int64) (*immich.Client, *
 	return immich.New(c.url, c.key, 30*time.Second), c, nil
 }
 
-// tripDawarich is the viewer's Dawarich for a trip that shows the route.
-func (s *Server) tripDawarich(ctx context.Context, t *store.Trip) (*dawarich.Client, *serviceConn, error) {
-	if !t.Dawarich {
-		return nil, nil, errors.New("the recorded route is off for this trip")
-	}
-	return s.dawarichFor(ctx, actorID(ctx))
-}
-
 // dawarichVia is serviceStatus's "does it work" part for userID's Dawarich.
 func (s *Server) dawarichVia(ctx context.Context, userID int64) string {
 	u, st := s.personSettings(ctx, userID)

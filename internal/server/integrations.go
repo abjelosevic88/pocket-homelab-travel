@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/url"
 	"regexp"
@@ -45,7 +46,13 @@ func (s *Server) publicSettings(ctx context.Context, st store.Settings, u *store
 	dwMode, dwVia, dwDetail, dwSource := s.serviceStatus(ctx, u, savedDawarich(st), true)
 	imMode, imVia, imDetail, imSource := s.serviceStatus(ctx, u, savedImmich(st), true)
 	_, aiStatus := s.inferenceFor(ctx, u.ID, st.AIProvider, st.OpenAIKey != "")
+	locSrc, locWhy := s.locationChoice(ctx, u, st, true)
+	mvOn, _ := s.movementState(ctx, u, false) // just asked above (or no Core)
 	return map[string]any{
+		// core_ready: connected and registered; choices that only work
+		// through Pocket Core are offered only then.
+		"core_ready":      s.coreReady(),
+		"location_source": st.LocationSource, "location_effective": locSrc, "location_detail": locWhy, "movement_available": mvOn,
 		"ai_provider": aiStatus.Provider, "ai_pocket_model": st.AIPocketModel, "ai_status": aiStatus, "ai_configured": aiStatus.Ready,
 		"core_configured": s.core.Configured(),
 		"money_mode":      moneyMode, "money_via": moneyVia, "money_detail": moneyDetail,
@@ -130,6 +137,15 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			*dst = strings.TrimSpace(v)
 		}
 	}
+	if keys["location_source"] {
+		switch in.LocationSource {
+		case "", srcMovement, srcDawarich:
+			cur.LocationSource = in.LocationSource
+		default:
+			writeErr(w, http.StatusBadRequest, "choose Pocket Movement or Dawarich")
+			return
+		}
+	}
 	for k, m := range map[string][2]*string{"money_mode": {&cur.MoneyMode, &in.MoneyMode}, "dawarich_mode": {&cur.DawarichMode, &in.DawarichMode}, "immich_mode": {&cur.ImmichMode, &in.ImmichMode}} {
 		if keys[k] {
 			switch v := *m[1]; v {
@@ -186,7 +202,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	// Only this person's route/photo caches depend on their credentials.
 	_ = s.store.CacheDeleteLike(r.Context(), "trip:%:u"+strconv.FormatInt(u.ID, 10)+":%")
-	for _, k := range []string{"money_mode", "dawarich_mode", "immich_mode", "firefly_token", "dawarich_api_key", "immich_api_key"} {
+	for _, k := range []string{"money_mode", "dawarich_mode", "immich_mode", "firefly_token", "dawarich_api_key", "immich_api_key", "location_source"} {
 		if keys[k] {
 			s.modesChanged() // a mode changed or a connection was removed: tell Core's map
 			break
@@ -268,6 +284,22 @@ func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 				msg += ", points in the last 30 days"
 			}
 			msg += ", " + how
+		}
+	case "movement":
+		// Always live: a fresh link token from Core.
+		u := userFrom(r.Context())
+		if !s.core.Configured() {
+			err = errors.New("Pocket Movement needs Pocket Core: there is no Pocket Core on this box")
+			break
+		}
+		var lc *locConn
+		if lc, err = s.openMovement(ctx, u); err == nil {
+			var pts []dawarich.Point
+			pts, err = lc.dw.Points(ctx, time.Now().AddDate(0, 0, -30), time.Now(), 1)
+			msg = "Pocket Movement reachable through Pocket Core"
+			if err == nil && len(pts) > 0 {
+				msg += ", points in the last 30 days"
+			}
 		}
 	case "openai":
 		key := in.Key
@@ -425,11 +457,12 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	// Totals that live in the integration caches: recorded km and photo counts.
 	var recordedKm float64
 	photosN := 0
+	locSrc, _ := s.locationStatus(ctx, u.ID)
 	for i := range trips {
 		if trips[i].Archived {
 			continue
 		}
-		if v, _, ok := s.store.CacheGet(ctx, userCacheKey(trips[i].ID, u.ID, "dawarich-route")); ok {
+		if v, _, ok := s.store.CacheGet(ctx, userCacheKey(trips[i].ID, u.ID, locCacheName(locSrc, "route"))); ok {
 			var rr RouteResponse
 			if json.Unmarshal([]byte(v), &rr) == nil {
 				recordedKm += rr.DistanceKm
@@ -768,6 +801,15 @@ type RouteResponse struct {
 	Days       map[string]float64 `json:"days_km"`
 	ByDay      []RouteDay         `json:"days"`             // what the map draws
 	Bounds     *[4]float64        `json:"bounds,omitempty"` // minLat, minLng, maxLat, maxLng
+	Source     string             `json:"source,omitempty"` // movement | dawarich
+	// Countries you were in (Pocket Movement only), in order of entry.
+	Countries []RouteCountry `json:"countries,omitempty"`
+}
+
+// RouteCountry is a country visited during the trip and on how many days.
+type RouteCountry struct {
+	Code string `json:"code"` // ISO 3166-1 alpha-2
+	Days int    `json:"days"`
 }
 
 // RouteDay is one day's track as separate segments: a segment ends where
@@ -779,12 +821,15 @@ type RouteDay struct {
 	Segments [][][2]float64 `json:"segments"`
 	Start    string         `json:"start,omitempty"`
 	End      string         `json:"end,omitempty"`
+	// Countries that day (Pocket Movement only).
+	Countries []string `json:"countries,omitempty"`
 }
 
-func (s *Server) fetchRoute(ctx context.Context, dw *dawarich.Client, t *store.Trip) (*RouteResponse, error) {
+func (s *Server) fetchRoute(ctx context.Context, lc *locConn, t *store.Trip) (*RouteResponse, error) {
+	dw := lc.dw
 	from, to, ok := tripWindow(t)
 	if !ok {
-		return &RouteResponse{Points: [][3]float64{}, Days: map[string]float64{}}, nil
+		return &RouteResponse{Points: [][3]float64{}, Days: map[string]float64{}, Source: lc.src}, nil
 	}
 	pts, err := dw.Points(ctx, from, to, 400000)
 	if err != nil {
@@ -807,18 +852,46 @@ func (s *Server) fetchRoute(ctx context.Context, dw *dawarich.Client, t *store.T
 		day := time.Unix(raw[i].TS, 0).In(loc).Format("2006-01-02")
 		days[day] += d / 1000
 	}
+	// Movement's day summaries know the journeys (and the countries); a
+	// longer distance there wins over the raw points, as with Dawarich's
+	// timeline below.
+	dayCountries := map[string][]string{}
+	var countries []RouteCountry
+	if lc.mv != nil {
+		if md, err := lc.mv.Days(ctx, t.StartDate, t.EndDate); err == nil {
+			seen := map[string]int{}
+			for _, d := range md {
+				if km := d.Distance / 1000; km > days[d.Date] {
+					days[d.Date] = km
+				}
+				dayCountries[d.Date] = d.Countries
+				for _, c := range d.Countries {
+					if i, ok := seen[c]; ok {
+						countries[i].Days++
+						continue
+					}
+					seen[c] = len(countries)
+					countries = append(countries, RouteCountry{Code: c, Days: 1})
+				}
+			}
+		} else {
+			s.log.Debug("pocket movement: day summaries failed", "trip", t.ID, "err", err)
+		}
+	}
 	// Dawarich's timeline knows about tracks and gaps the raw points miss (a
 	// phone that slept through a motorway); prefer its per-day distances.
-	if tl, err := dw.Timeline(ctx, from, to); err == nil && len(tl) > 0 {
-		tlDays := map[string]float64{}
-		for _, d := range tl {
-			if d.Summary.TotalDistance > 0 {
-				tlDays[d.Date] = d.Summary.TotalDistance
+	if lc.mv == nil {
+		if tl, err := dw.Timeline(ctx, from, to); err == nil && len(tl) > 0 {
+			tlDays := map[string]float64{}
+			for _, d := range tl {
+				if d.Summary.TotalDistance > 0 {
+					tlDays[d.Date] = d.Summary.TotalDistance
+				}
 			}
-		}
-		for k, v := range tlDays {
-			if v > days[k] {
-				days[k] = v
+			for k, v := range tlDays {
+				if v > days[k] {
+					days[k] = v
+				}
 			}
 		}
 	}
@@ -853,7 +926,7 @@ func (s *Server) fetchRoute(ctx context.Context, dw *dawarich.Client, t *store.T
 	}
 	byDay := map[string]*RouteDay{}
 	var order []string
-	out := &RouteResponse{RawCount: len(raw), DistanceKm: total, Days: days, Points: [][3]float64{}, ByDay: []RouteDay{}}
+	out := &RouteResponse{RawCount: len(raw), DistanceKm: total, Days: days, Points: [][3]float64{}, ByDay: []RouteDay{}, Source: lc.src, Countries: countries}
 	for _, sg := range segs {
 		simp := geo.Simplify(sg, tol)
 		if len(simp) < 2 {
@@ -862,7 +935,7 @@ func (s *Server) fetchRoute(ctx context.Context, dw *dawarich.Client, t *store.T
 		day := time.Unix(simp[0].TS, 0).In(loc).Format("2006-01-02")
 		rd := byDay[day]
 		if rd == nil {
-			rd = &RouteDay{Date: day, Km: days[day]}
+			rd = &RouteDay{Date: day, Km: days[day], Countries: dayCountries[day]}
 			byDay[day] = rd
 			order = append(order, day)
 		}
@@ -902,36 +975,39 @@ func (s *Server) fetchRoute(ctx context.Context, dw *dawarich.Client, t *store.T
 	return out, nil
 }
 
-func (s *Server) handleDawarichRoute(w http.ResponseWriter, r *http.Request) {
+// handleRoute is the viewer's recorded route for the trip, from their own
+// Pocket Movement or Dawarich (a trip shared with them shows their route).
+func (s *Server) handleRoute(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	// the viewer's own Dawarich (a trip shared with them shows their route)
-	dw, _, err := s.tripDawarich(r.Context(), t)
+	lc, err := s.tripLocation(r.Context(), t)
 	if err != nil {
 		writeJSON(w, http.StatusOK, RouteResponse{Points: [][3]float64{}, Days: map[string]float64{}, ByDay: []RouteDay{}})
 		return
 	}
-	b, err := s.cached(r, t, "dawarich-route", func() (any, error) { return s.fetchRoute(r.Context(), dw, t) })
+	b, err := s.cached(r, t, lc.cacheName("route"), func() (any, error) { return s.fetchRoute(r.Context(), lc, t) })
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "dawarich: "+err.Error())
+		writeErr(w, http.StatusBadGateway, strings.ToLower(lc.label())+": "+err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_, _ = w.Write(b)
 }
 
-func (s *Server) handleDawarichTimeline(w http.ResponseWriter, r *http.Request) {
+// handleTimeline is the day-by-day timeline (journeys and stops) in
+// Dawarich's shape, which Pocket Movement answers too (with named visits).
+func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	t := tripFrom(r.Context()).trip
-	dw, _, err := s.tripDawarich(r.Context(), t)
+	lc, err := s.tripLocation(r.Context(), t)
 	if err != nil {
 		writeJSON(w, http.StatusOK, []any{})
 		return
 	}
-	b, err := s.cached(r, t, "dawarich-timeline", func() (any, error) {
+	b, err := s.cached(r, t, lc.cacheName("timeline"), func() (any, error) {
 		from, to, ok := tripWindow(t)
 		if !ok {
 			return []any{}, nil
 		}
-		days, err := dw.Timeline(r.Context(), from, to)
+		days, err := lc.dw.Timeline(r.Context(), from, to)
 		if err != nil {
 			return nil, err
 		}
@@ -941,7 +1017,7 @@ func (s *Server) handleDawarichTimeline(w http.ResponseWriter, r *http.Request) 
 		return days, nil
 	})
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "dawarich: "+err.Error())
+		writeErr(w, http.StatusBadGateway, strings.ToLower(lc.label())+": "+err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -1061,8 +1137,8 @@ func (s *Server) handleExportGPX(w http.ResponseWriter, r *http.Request) {
 	lodging, _ := s.store.ListLodging(ctx, t.ID)
 	var route []export.RoutePoint
 	if queryBool(r, "route") {
-		if dw, _, err := s.tripDawarich(ctx, t); err == nil {
-			if b, err := s.cached(r, t, "dawarich-route", func() (any, error) { return s.fetchRoute(ctx, dw, t) }); err == nil {
+		if lc, err := s.tripLocation(ctx, t); err == nil {
+			if b, err := s.cached(r, t, lc.cacheName("route"), func() (any, error) { return s.fetchRoute(ctx, lc, t) }); err == nil {
 				var rr RouteResponse
 				if json.Unmarshal(b, &rr) == nil {
 					for _, p := range rr.Points {

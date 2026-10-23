@@ -17,7 +17,7 @@ type TabId = 'general' | 'integrations' | 'import' | 'profile' | 'users' | 'api'
 
 const TABS: { id: TabId; label: string; icon: string; sub: string }[] = [
   { id: 'general', label: 'General', icon: 'settings', sub: 'Currency, distances, maps, date and time formats, and the app title.' },
-  { id: 'integrations', label: 'Integrations', icon: 'layers', sub: 'Pocket Money, Dawarich, Immich and OpenAI — your own accounts, through Pocket Core or directly.' },
+  { id: 'integrations', label: 'Integrations', icon: 'layers', sub: 'Pocket Money, Pocket Movement or Dawarich, Immich and OpenAI — your own accounts, through Pocket Core or directly.' },
   { id: 'import', label: 'Import', icon: 'download', sub: 'Bring collections over from AdventureLog, or restore a trip from a JSON backup.' },
   { id: 'profile', label: 'Profile', icon: 'user', sub: 'Your name, email and password.' },
   { id: 'users', label: 'People', icon: 'users', sub: 'Everyone who has an account on this box.' },
@@ -153,7 +153,7 @@ function General() {
           <div><dt>Trips</dt><dd className="muted">Dates, a home currency and a budget. Everything else hangs off a trip.</dd></div>
           <div><dt>Places</dt><dd className="muted">Ideas until you drag them onto a day. Tick them off as you go.</dd></div>
           <div><dt>Budget</dt><dd className="muted">Stays and transport add their price as planned cost; Pocket Money brings the real spending in.</dd></div>
-          <div><dt>Recorded</dt><dd className="muted">Dawarich draws where you actually went; Immich shows what you photographed.</dd></div>
+          <div><dt>Recorded</dt><dd className="muted">Pocket Movement (or Dawarich) draws where you actually went; Immich shows what you photographed.</dd></div>
           <div><dt>Outside</dt><dd className="muted">Places search and discover use OpenStreetMap; the weather is Open-Meteo. No keys needed.</dd></div>
         </dl>
       </Section>
@@ -165,15 +165,17 @@ function Integrations() {
   const { f, setF, save, busy } = useSettingsForm()
   const [test, setTest] = useState<Record<string, string>>({})
   if (!f) return <Loading />
-  const run = async (which: 'money' | 'dawarich' | 'immich' | 'openai', url: string, key: string) => {
+  const run = async (which: 'money' | 'movement' | 'dawarich' | 'immich' | 'openai', url: string, key: string) => {
     setTest(t => ({ ...t, [which]: 'testing…' }))
     try { const r = await api.post<{ ok: boolean; message?: string; error?: string }>(`${V1}/integrations/test`, { which, url, key }); setTest(t => ({ ...t, [which]: r.ok ? `✓ ${r.message}` : `✕ ${r.error}` })) } catch (e) { setTest(t => ({ ...t, [which]: `✕ ${(e as Error).message}` })) }
   }
+  // Pocket AI only comes through Pocket Core: without one a saved "pocket" shows as what is in effect.
+  const aiShown = !f.core_ready && f.ai_provider === 'pocket' ? 'openai' : (f.ai_provider || 'auto')
   const status = (which: string) => <span className={`small ${test[which]?.startsWith('✓') ? 'ok' : test[which]?.startsWith('✕') ? 'bad' : 'muted'}`}>{test[which]}</span>
   // Dawarich and Immich: Pocket Core (address + your own key from Core), Direct (URL + API key) or Off.
   const block = (which: 'dawarich' | 'immich', title: string, icon: string, app: string, urlKey: 'dawarich_url' | 'immich_url', keyKey: 'dawarich_api_key' | 'immich_api_key', what: string, help: string) => (
-    <Section title={title} icon={icon} actions={connBadge(f[`${which}_mode`], f[`${which}_via`])} sub={what}>
-      <Connection app={app} service source={f[`${which}_source`]} mode={f[`${which}_mode`]} via={f[`${which}_via`]} detail={f[`${which}_detail`]} core={f.core_configured} hasToken={!!f[keyKey]}
+    <Section title={title} icon={icon} actions={connBadge(shownMode(f[`${which}_mode`], f.core_ready), f[`${which}_via`])} sub={what}>
+      <Connection app={app} service source={f[`${which}_source`]} mode={f[`${which}_mode`]} via={f[`${which}_via`]} detail={f[`${which}_detail`]} core={f.core_ready} hasToken={!!f[keyKey]}
         onMode={m => save({ [`${which}_mode`]: m })} onDisconnect={() => save(which === 'immich' ? { immich_url: '', immich_api_key: '', immich_public_url: '' } : { dawarich_url: '', dawarich_api_key: '' })}
         test={<><button type="button" className="btn sm" onClick={() => run(which, f[urlKey], f[keyKey])}>Test connection</button>{status(which)}</>}
         direct={<div className="grid" style={{ gap: 12 }}>
@@ -187,9 +189,9 @@ function Integrations() {
   )
   return (
     <div className="stack loose">
-      <div className="callout info"><Icon name="info" size={15} /><span>These are your own accounts. Each person connects their own Pocket Money, Dawarich, Immich and OpenAI (through Pocket Core, with your own key there, or directly); nobody else on this box uses yours. On a trip shared with you, the route and photos come from your accounts and the spending from the trip owner's Pocket Money.</span></div>
-      <Section title="Pocket Money" icon="wallet" actions={connBadge(f.money_mode, f.money_via)} sub={<>What the trip really cost. Tag the expenses in Pocket Money (e.g. "lisbon 2027") and set the same Money tag on the trip; they appear as spent, in their own currency, converted at the day's rate. Synced every 30 minutes while a trip is running or upcoming, and on demand.</>}>
-        <Connection app="Pocket Money" mode={f.money_mode} via={f.money_via} detail={f.money_detail} core={f.core_configured} hasToken={!!f.firefly_token}
+      <div className="callout info"><Icon name="info" size={15} /><span>These are your own accounts. Each person connects their own Pocket Money, Pocket Movement or Dawarich, Immich and OpenAI (through Pocket Core, with your own key there, or directly); nobody else on this box uses yours. On a trip shared with you, the route and photos come from your accounts and the spending from the trip owner's Pocket Money.</span></div>
+      <Section title="Pocket Money" icon="wallet" actions={connBadge(shownMode(f.money_mode, f.core_ready), f.money_via)} sub={<>What the trip really cost. Tag the expenses in Pocket Money (e.g. "lisbon 2027") and set the same Money tag on the trip; they appear as spent, in their own currency, converted at the day's rate. Synced every 30 minutes while a trip is running or upcoming, and on demand.</>}>
+        <Connection app="Pocket Money" mode={f.money_mode} via={f.money_via} detail={f.money_detail} core={f.core_ready} hasToken={!!f.firefly_token}
           onMode={m => save({ money_mode: m })} onDisconnect={() => save({ firefly_url: '', firefly_token: '' })}
           test={<><button type="button" className="btn sm" onClick={() => run('money', f.firefly_url, f.firefly_token)}>Test connection</button>{status('money')}</>}
           direct={<div className="two-col tight">
@@ -197,15 +199,17 @@ function Integrations() {
             <Field label="Token" help="Pocket Money → Settings → API tokens, or a Firefly personal access token. Stored on the server; shown masked."><input value={f.firefly_token} onChange={e => setF({ ...f, firefly_token: e.target.value })} autoComplete="off" /></Field>
           </div>} />
       </Section>
-      {block('dawarich', 'Dawarich', 'route', 'Dawarich', 'dawarich_url', 'dawarich_api_key', 'Where you actually went. The recorded route is drawn on the map, each day shows the distance and the detected stops, and the GPX export can include the track.', 'Dawarich → Account → API key. Behind HTTPS use the public name; plain http works too.')}
+      <LocationSource f={f} save={save} test={<><button type="button" className="btn sm" onClick={() => run('movement', '', '')}>Test Pocket Movement</button>{status('movement')}</>} />
+      {block('dawarich', 'Dawarich', 'route', 'Dawarich', 'dawarich_url', 'dawarich_api_key', 'The alternative to Pocket Movement for where you actually went: the recorded route on the map, each day\'s distance and detected stops, the track in the GPX export.', 'Dawarich → Account → API key. Behind HTTPS use the public name; plain http works too.')}
       {block('immich', 'Immich', 'camera', 'Immich', 'immich_url', 'immich_api_key', 'Every photo and video taken between the trip dates, grouped by day; the geotagged ones land on the map. Thumbnails are proxied so the browser never sees the key.', 'Immich → Account settings → API keys.')}
       <Section title="AI provider" icon="sparkles" actions={<span className={`badge ${f.ai_configured ? 'ok' : ''}`}>{f.ai_configured ? 'connected' : 'not set'}</span>}
         sub={<>Optional. Adds five buttons: <b>Suggest places</b> (popular, well-rated places for the destination, located with OpenStreetMap), <b>Plan my days</b> (assigns ideas to days and times), <b>Describe</b> a place with practical tips, a <b>packing list</b> tailored to the trip and weather, and a <b>recap</b> written from your journal, visited places and spending. Trip details are sent to the provider when you use them; nothing runs automatically.</>}>
         <div className="grid" style={{ gap: 12 }}>
-          <Field group label="Text generation" help="Automatic prefers your enabled Pocket AI connection. Without one, it uses your saved OpenAI settings."><Select ariaLabel="Text generation provider" value={f.ai_provider || 'auto'} onChange={v => setF({ ...f, ai_provider: v })} options={[{ value: 'auto', label: 'Automatic — prefer Pocket AI' }, { value: 'pocket', label: 'Pocket AI' }, { value: 'openai', label: 'OpenAI / compatible API' }]} /></Field>
-          <p className="muted small" role="status">Saved selection: {f.ai_status?.detail}. Pocket AI uses your connected Claude account.</p>
-          {f.ai_provider !== 'openai' && <PocketModelSelect value={f.ai_pocket_model || ''} onChange={v => setF({ ...f, ai_pocket_model: v })} />}
-          {f.ai_provider === 'openai' && <>
+          <Field group label="Text generation" help="Automatic prefers your enabled Pocket AI connection. Without one, it uses your saved OpenAI settings."><Select ariaLabel="Text generation provider" value={aiShown} onChange={v => setF({ ...f, ai_provider: v })} options={[{ value: 'auto', label: f.core_ready ? 'Automatic — prefer Pocket AI' : 'Automatic' }, { value: 'pocket', label: 'Pocket AI', disabled: !f.core_ready, hint: f.core_ready ? undefined : 'needs Pocket Core' }, { value: 'openai', label: 'OpenAI / compatible API' }]} /></Field>
+          {!f.core_ready && <NeedsCore what="Pocket AI" />}
+          <p className="muted small" role="status">Saved selection: {f.ai_status?.detail}.{f.core_ready && ' Pocket AI uses your connected Claude account.'}</p>
+          {f.core_ready && aiShown !== 'openai' && <PocketModelSelect value={f.ai_pocket_model || ''} onChange={v => setF({ ...f, ai_pocket_model: v })} />}
+          {(aiShown === 'openai' || (!f.core_ready && aiShown === 'auto')) && <>
           <Field label="OpenAI API key" help="platform.openai.com → API keys. Stored on the server; shown masked."><input value={f.openai_api_key} onChange={e => setF({ ...f, openai_api_key: e.target.value })} autoComplete="off" placeholder="sk-…" /></Field>
           <div className="two-col tight">
             <Field label="Model" help="Default gpt-4o-mini (cheap, good enough). gpt-4o or gpt-4.1 give better suggestions."><input value={f.openai_model} onChange={e => setF({ ...f, openai_model: e.target.value })} placeholder="gpt-4o-mini" /></Field>
@@ -220,6 +224,16 @@ function Integrations() {
   )
 }
 
+/** A choice that only works through Pocket Core, on a box without one: what it needs, next to the control. */
+function NeedsCore({ what }: { what?: string }) {
+  return (
+    <p className="needs-core">{what ? `${what} needs Pocket Core.` : 'Needs Pocket Core.'} Pocket Core connects your Pocket apps to each other and to your services: one sign-in for everyone, each person's own accounts, nothing to copy or paste. Set CORE_URL to connect this app. <a href="https://github.com/abjelosevic88/pocket-homelab-core" target="_blank" rel="noreferrer">Learn more</a></p>
+  )
+}
+
+/** The mode in effect as Settings shows it: a saved "core" without Pocket Core is Direct (the only way in then). */
+const shownMode = (mode: ConnMode, core: boolean): ConnMode => mode === 'core' && !core ? 'direct' : mode
+
 /**
  * One connection — a Pocket app, or a third-party service (`service`, e.g.
  * Dawarich, Immich) whose address and key come from Pocket Core — as Pocket
@@ -227,12 +241,14 @@ function Integrations() {
  * now. The mode saves at once; Disconnect removes the saved URL and token.
  * With Pocket Core on the box the switch is Pocket Core | Off and Direct is
  * an advanced option behind a link (always shown while it is the mode in
- * use); without Core, Direct is the only way in and shows as usual.
+ * use); without Core (`core` = connected and registered), Pocket Core shows
+ * greyed out with what it needs and Direct is the way in.
  */
-function Connection({ app, mode, via, detail, core, onMode, onDisconnect, hasToken, test, direct, service, source }: {
+function Connection({ app, mode: saved, via, detail, core, onMode, onDisconnect, hasToken, test, direct, service, source }: {
   app: string; mode: ConnMode; via: string; detail: string; core: boolean; onMode: (m: ConnMode) => void; onDisconnect: () => void
   hasToken: boolean; test: React.ReactNode; direct: React.ReactNode; service?: boolean; source?: string
 }) {
+  const mode = shownMode(saved, core)
   const ok = via !== ''
   const [advanced, setAdvanced] = useState(false)
   const showDirect = !core || mode === 'direct' || advanced
@@ -242,17 +258,18 @@ function Connection({ app, mode, via, detail, core, onMode, onDisconnect, hasTok
     : `Connected through Pocket Core, as you. Nothing to fill in; switch it off for yourself in Pocket Core → Settings → Apps acting for me.`
   const line = mode === 'off' ? `Off: Travel does not read ${app}.`
     : mode === 'core' ? (ok ? coreOk : `Not connected: ${detail}.`)
-    : (ok ? `Direct connection with your own URL and ${secret}; use Test connection to check it.` : `Not connected: ${detail || `add the URL and ${service ? 'an API key' : 'a token'}`}.`)
+    : (ok ? `Direct connection with your own URL and ${secret}; use Test connection to check it.` : `Not connected: ${(saved !== 'core' && detail) || `add the URL and ${service ? 'an API key' : 'a token'}`}.`)
   return (
     <div className="conn-block">
       <div className="conn-mode">
         <Segmented size="sm" value={mode} onChange={m => onMode(m as ConnMode)} options={[
-          { value: 'core', label: 'Pocket Core', title: core ? 'Through Pocket Core: per person, nothing to paste' : 'There is no Pocket Core on this box' },
+          { value: 'core', label: 'Pocket Core', disabled: !core, title: core ? 'Through Pocket Core: per person, nothing to paste' : 'Needs Pocket Core' },
           ...(showDirect ? [{ value: 'direct', label: 'Direct', title: service ? 'Your own URL and API key' : 'Your own URL and API token' }] : []),
           { value: 'off', label: 'Off' },
         ]} />
         {!showDirect && <button type="button" className="conn-advanced" onClick={() => setAdvanced(true)}>Advanced: connect directly with a URL and key</button>}
       </div>
+      {!core && <NeedsCore what={`${app} through Pocket Core`} />}
       <div className={`conn-status ${mode === 'off' ? '' : ok ? 'ok' : 'bad'}`}><span className="dot" />{line}</div>
       {mode === 'direct' && <>
         {direct}
@@ -266,6 +283,41 @@ function Connection({ app, mode, via, detail, core, onMode, onDisconnect, hasTok
 const connBadge = (mode: ConnMode, via: string) => mode === 'off' ? <span className="badge">off</span>
   : via ? <span className="badge ok">{via === 'core' ? 'Pocket Core' : 'direct'}</span>
   : <span className="badge warn">not connected</span>
+
+/**
+ * Where the recorded route, timeline, distances and countries come from:
+ * Pocket Movement (only through Pocket Core; the default there) or Dawarich
+ * (set up in its own card). Saves at once; Movement unavailable falls back
+ * to Dawarich and says why.
+ */
+function LocationSource({ f, save, test }: { f: SettingsT; save: (p: Partial<SettingsT>) => void; test: React.ReactNode }) {
+  const core = f.core_ready
+  // without Core only Dawarich is in effect, whatever was saved
+  const value = core ? (f.location_source || 'movement') : 'dawarich'
+  const using = f.location_effective
+  const line = using === 'movement'
+    ? 'Pocket Movement, through Pocket Core as you: your own location history, with named stops, how you travelled and the countries you were in. Nothing to fill in.'
+    : value === 'movement'
+      ? `Pocket Movement is not available: ${f.location_detail || 'Pocket Core did not answer'}. Using Dawarich meanwhile.`
+      : `Dawarich, as set up below.${core && f.movement_available ? ' Pocket Movement is available too.' : ''}`
+  const ok = using === 'movement' || (using === 'dawarich' && value === 'dawarich' && f.dawarich_via !== '')
+  return (
+    <Section title="Where you went" icon="route" actions={<span className={`badge ${ok ? 'ok' : 'warn'}`}>{using === 'movement' ? 'Pocket Movement' : 'Dawarich'}</span>}
+      sub="The recorded route on the map, the day-by-day timeline with your stops, distances and countries. Yours alone; on a trip shared with you it shows your own history.">
+      <div className="conn-block">
+        <div className="conn-mode">
+          <Segmented size="sm" label="Location source" value={value} onChange={v => save({ location_source: v })} options={[
+            { value: 'movement', label: 'Pocket Movement', disabled: !core, title: core ? 'Your own Pocket Movement, through Pocket Core' : 'Needs Pocket Core' },
+            { value: 'dawarich', label: 'Dawarich', title: 'Your Dawarich, set up below' },
+          ]} />
+        </div>
+        {!core && <NeedsCore what="Pocket Movement" />}
+        <div className={`conn-status ${ok ? 'ok' : 'bad'}`}><span className="dot" />{line}</div>
+        {core && value === 'movement' && <div className="row wrap">{test}</div>}
+      </div>
+    </Section>
+  )
+}
 
 function Import() {
   const { toast } = useToast()

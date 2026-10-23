@@ -53,6 +53,7 @@ func TestConnectionModesReportedToCore(t *testing.T) {
 	want := map[string]string{
 		"owner@example.com money": "direct", "owner@example.com service:dawarich": "core", "owner@example.com service:immich": "core",
 		"member@example.com money": "core", "member@example.com service:dawarich": "core", "member@example.com service:immich": "core",
+		"owner@example.com movement": "core", "member@example.com movement": "core",
 	}
 	got := h.waitModes(1)
 	if len(got) != len(want) {

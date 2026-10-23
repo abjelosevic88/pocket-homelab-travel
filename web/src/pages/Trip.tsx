@@ -50,8 +50,8 @@ export default function TripPage() {
     const errs: Record<string, string> = {}
     await Promise.all([
       api.get<DayWeather[]>(`${base}/weather${q}`).then(setWeather).catch(e => { errs.weather = (e as Error).message }),
-      api.get<Route>(`${base}/dawarich/route${q}`).then(setRoute).catch(e => { errs.dawarich = (e as Error).message }),
-      api.get<TimelineDay[]>(`${base}/dawarich/timeline${q}`).then(setTimeline).catch(e => { errs.dawarich = (e as Error).message }),
+      api.get<Route>(`${base}/location/route${q}`).then(setRoute).catch(e => { errs.dawarich = (e as Error).message }),
+      api.get<TimelineDay[]>(`${base}/location/timeline${q}`).then(setTimeline).catch(e => { errs.dawarich = (e as Error).message }),
       api.get<Photo[]>(`${base}/photos${q}`).then(setPhotos).catch(e => { errs.immich = (e as Error).message }),
     ])
     setExtErrors(errs)

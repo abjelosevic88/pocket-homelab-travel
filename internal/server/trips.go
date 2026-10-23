@@ -507,7 +507,7 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 	if aiStatus.Selected == "pocket" {
 		aiModel = "pocket-ai"
 	}
-	dwOK := s.dawarichVia(ctx, actorID(ctx)) != ""
+	locSrc, locOK := s.locationStatus(ctx, actorID(ctx))
 	imURL := ""
 	_, imConn, imErr := s.immichFor(ctx, actorID(ctx))
 	if imErr == nil {
@@ -520,8 +520,9 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 		"trip": t, "places": places, "lodging": lodging, "transport": transport, "expenses": expenses,
 		"checklists": lists, "journal": journal, "documents": docs, "budget": budget,
 		"integrations": map[string]any{
-			"firefly":  map[string]any{"configured": moneyVia != "", "via": moneyVia, "tag": t.FireflyTag, "synced_at": syncedAt},
-			"dawarich": map[string]any{"configured": dwOK, "enabled": t.Dawarich},
+			"firefly": map[string]any{"configured": moneyVia != "", "via": moneyVia, "tag": t.FireflyTag, "synced_at": syncedAt},
+			// "dawarich" is the recorded route, from Pocket Movement or Dawarich (source)
+			"dawarich": map[string]any{"configured": locOK, "enabled": t.Dawarich, "source": locSrc},
 			"immich":   map[string]any{"configured": imErr == nil, "enabled": t.Immich, "url": imURL},
 			"ai":       map[string]any{"configured": aiStatus.Ready, "model": aiModel, "provider": aiStatus.Selected},
 		},

@@ -52,22 +52,27 @@ export interface Budget {
 export interface Overview {
   trip: Trip; places: Place[]; lodging: Lodging[]; transport: Transport[]; expenses: Expense[]; checklists: Checklist[]
   journal: JournalEntry[]; documents: Doc[]; budget: Budget
-  integrations: { firefly: { configured: boolean; via: '' | 'core' | 'direct'; tag: string; synced_at: string }; dawarich: { configured: boolean; enabled: boolean }; immich: { configured: boolean; enabled: boolean; url: string }; ai: { configured: boolean; model: string } }
+  integrations: { firefly: { configured: boolean; via: '' | 'core' | 'direct'; tag: string; synced_at: string }; dawarich: { configured: boolean; enabled: boolean; source?: LocationSource }; immich: { configured: boolean; enabled: boolean; url: string }; ai: { configured: boolean; model: string } }
 }
 export interface DayWeather { date: string; code: number; label: string; tmax: number; tmin: number; precip_mm: number; wind_kmh: number; sunrise?: string; sunset?: string; source: 'forecast' | 'archive' }
-export interface RouteDay { date: string; km: number; segments: [number, number][][]; start?: string; end?: string }
-export interface Route { points: [number, number, number][]; raw_count: number; distance_km: number; days_km: Record<string, number>; days: RouteDay[]; bounds?: [number, number, number, number] }
+export interface RouteDay { date: string; km: number; segments: [number, number][][]; start?: string; end?: string; countries?: string[] }
+export interface Route { points: [number, number, number][]; raw_count: number; distance_km: number; days_km: Record<string, number>; days: RouteDay[]; bounds?: [number, number, number, number]; source?: LocationSource; countries?: { code: string; days: number }[] }
 export const DAY_COLORS = ['#0ea5e9', '#f97316', '#22c55e', '#a855f7', '#ef4444', '#eab308', '#14b8a6', '#ec4899', '#6366f1', '#84cc16', '#f43f5e', '#06b6d4', '#d946ef', '#10b981']
 export interface TimelineEntry { type: 'journey' | 'visit'; track_id?: number; visit_id?: number; name?: string; status?: string; started_at: string; ended_at: string; duration: number; distance: number; dominant_mode?: string; avg_speed?: number; elevation_gain?: number; latitude?: number; longitude?: number; point_count?: number }
 export interface TimelineDay { date: string; summary: { total_distance: number; distance_unit: string; places_visited: number; time_moving_minutes: number; time_stationary_minutes: number; mode_distances: Record<string, number> }; entries: TimelineEntry[] }
 export interface Photo { id: string; type: 'IMAGE' | 'VIDEO'; file_name: string; taken_at: string; lat: number | null; lng: number | null; city: string; country: string; thumbhash: string; favorite: boolean; duration?: string }
 export interface GeoResult { name: string; display: string; lat: number; lng: number; type: string; category: string; country: string; city: string; website?: string; phone?: string; hours?: string; source: string; osm_id?: string; suggest?: string }
 export type ConnMode = 'core' | 'direct' | 'off'
+/** Where the recorded route comes from: Pocket Movement (through Pocket Core only) or Dawarich. */
+export type LocationSource = 'movement' | 'dawarich'
 export interface Settings {
   ai_provider: string; ai_pocket_model: string; ai_status: { provider: string; selected: string; ready: boolean; detail: string }
 
   title: string; home_currency: string; date_format: string; time_format: string; distance_unit: 'km' | 'mi'; fx_auto: boolean; fx_provider: string; map_tiles: string; auto_photos: boolean
   core_configured: boolean
+  /** connected to Pocket Core and registered: Core-only choices are offered only then */
+  core_ready: boolean
+  location_source: '' | LocationSource; location_effective: LocationSource; location_detail: string; movement_available: boolean
   money_mode: ConnMode; money_via: '' | 'core' | 'direct'; money_detail: string
   dawarich_mode: ConnMode; dawarich_via: '' | 'core' | 'direct'; dawarich_detail: string; dawarich_source: '' | 'personal' | 'box'
   immich_mode: ConnMode; immich_via: '' | 'core' | 'direct'; immich_detail: string; immich_source: '' | 'personal' | 'box'

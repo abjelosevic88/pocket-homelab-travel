@@ -15,11 +15,17 @@ import (
 	"time"
 )
 
-// Client talks to one Dawarich instance.
+// Client talks to one Dawarich instance, or anything that speaks its API
+// (Pocket Movement does, with a Pocket Core link token as the key).
 type Client struct {
 	BaseURL string
 	APIKey  string
 	HTTP    *http.Client
+	// Name is how errors call the server ("dawarich" when empty).
+	Name string
+	// DistanceUnit, when set, is asked of the timeline (Pocket Movement
+	// otherwise answers in the person's own unit).
+	DistanceUnit string
 }
 
 // New creates a client.
@@ -30,9 +36,22 @@ func New(baseURL, key string, timeout time.Duration) *Client {
 // Configured reports whether URL and key are set.
 func (c *Client) Configured() bool { return c != nil && c.BaseURL != "" && c.APIKey != "" }
 
+func (c *Client) name() string {
+	if c != nil && c.Name != "" {
+		return c.Name
+	}
+	return "dawarich"
+}
+
+// GetJSON is a GET on any endpoint of the server, with the key.
+func (c *Client) GetJSON(ctx context.Context, path string, q url.Values, v any) error {
+	_, err := c.get(ctx, path, q, v)
+	return err
+}
+
 func (c *Client) get(ctx context.Context, path string, q url.Values, v any) (http.Header, error) {
 	if !c.Configured() {
-		return nil, errors.New("dawarich is not configured")
+		return nil, errors.New(c.name() + " is not configured")
 	}
 	if q == nil {
 		q = url.Values{}
@@ -51,10 +70,10 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, v any) (htt
 	}
 	defer res.Body.Close()
 	if res.StatusCode == http.StatusUnauthorized {
-		return nil, errors.New("dawarich rejected the API key (401)")
+		return nil, errors.New(c.name() + " rejected the API key (401)")
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("dawarich HTTP %d", res.StatusCode)
+		return nil, fmt.Errorf("%s HTTP %d", c.name(), res.StatusCode)
 	}
 	return res.Header, json.NewDecoder(res.Body).Decode(v)
 }
@@ -138,16 +157,33 @@ type Entry struct {
 	PointCount   int      `json:"point_count,omitempty"`
 }
 
-// Timeline returns the day-by-day summary for a date range.
+// Timeline returns the day-by-day summary for a date range, asked in
+// windows of up to 31 days (the most either server answers at once).
 func (c *Client) Timeline(ctx context.Context, from, to time.Time) ([]Day, error) {
-	var out struct {
-		Days []Day `json:"days"`
+	var all []Day
+	for a := from; a.Before(to); {
+		b := a.AddDate(0, 0, 31)
+		if b.After(to) {
+			b = to
+		}
+		var out struct {
+			Days []Day `json:"days"`
+		}
+		end := b
+		if b.Before(to) {
+			end = b.Add(-time.Second) // the next window starts at b
+		}
+		q := url.Values{"start_at": {a.UTC().Format(time.RFC3339)}, "end_at": {end.UTC().Format(time.RFC3339)}}
+		if c.DistanceUnit != "" {
+			q.Set("distance_unit", c.DistanceUnit)
+		}
+		if _, err := c.get(ctx, "/api/v1/timeline", q, &out); err != nil {
+			return nil, err
+		}
+		all = append(all, out.Days...)
+		a = b
 	}
-	q := url.Values{"start_at": {from.UTC().Format(time.RFC3339)}, "end_at": {to.UTC().Format(time.RFC3339)}}
-	if _, err := c.get(ctx, "/api/v1/timeline", q, &out); err != nil {
-		return nil, err
-	}
-	return out.Days, nil
+	return all, nil
 }
 
 // Visit is a stop Dawarich detected.

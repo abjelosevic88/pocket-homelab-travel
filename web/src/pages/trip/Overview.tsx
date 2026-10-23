@@ -11,6 +11,10 @@ import { useTrip } from './ctx'
 import { RecapModal } from './ai'
 import { useState } from 'react'
 
+const regionNames = typeof Intl !== 'undefined' && 'DisplayNames' in Intl ? new Intl.DisplayNames(undefined, { type: 'region' }) : null
+/** A country's name from its ISO code, in the browser's language. */
+const countryName = (code: string) => { try { return regionNames?.of(code) || code } catch { return code } }
+
 export function OverviewTab() {
   const { ov, trip, weather, route, timeline, photos, extErrors, refreshExternal, canEdit, edit, go } = useTrip()
   const { settings } = useApp()
@@ -74,7 +78,7 @@ export function OverviewTab() {
         <div className="wx-strip">{wx.map(w => <div key={w.date} className={`wx-day ${w.date === today ? 'today' : ''}`} title={`${w.label}${w.precip_mm ? ` · ${w.precip_mm.toFixed(1)} mm` : ''} · wind ${Math.round(w.wind_kmh)} km/h`}><div className="muted">{weekday(w.date)} {fmtDate(w.date, false)}</div><div className="big">{WX_ICON(w.code)}</div><div><b>{Math.round(w.tmax)}°</b> <span className="muted">{Math.round(w.tmin)}°</span></div>{w.precip_mm >= 1 && <div className="muted row" style={{ justifyContent: 'center', gap: 2 }}><Icon name="droplet" size={11} />{w.precip_mm.toFixed(0)}</div>}</div>)}</div>
         <p className="muted small mt-sm" style={{ margin: '6px 0 0' }}>Open-Meteo · {wx.some(w => w.source === 'archive') ? 'recorded weather for past days, ' : ''}forecast up to 16 days ahead.</p>
       </Card>}
-      {(integ.dawarich.configured && trip.dawarich) && <Card title="Recorded by Dawarich" actions={<button type="button" className="btn ghost sm" onClick={refreshExternal}><Icon name="refresh" size={14} />Refresh</button>}>
+      {(integ.dawarich.configured && trip.dawarich) && <Card title={`Recorded by ${(route?.source || integ.dawarich.source) === 'movement' ? 'Pocket Movement' : 'Dawarich'}`} actions={<button type="button" className="btn ghost sm" onClick={refreshExternal}><Icon name="refresh" size={14} />Refresh</button>}>
         {extErrors.dawarich ? <p className="bad small">{extErrors.dawarich}</p> : !route ? <p className="muted">Loading…</p> : route.raw_count === 0 ? <p className="muted">No location points in this date range{!past && !running ? ' yet' : ''}.</p> : (
           <>
             <div className="stats" style={{ marginBottom: 8 }}>
@@ -82,6 +86,7 @@ export function OverviewTab() {
               <div className="stat"><div className="n">{Object.keys(route.days_km).length}</div><div className="l">days tracked</div></div>
               <div className="stat"><div className="n">{timeline.reduce((n, d) => n + d.entries.filter(e => e.type === 'visit').length, 0)}</div><div className="l">stops detected</div></div>
             </div>
+            {route.countries && route.countries.length > 0 && <p className="small" style={{ margin: '0 0 8px' }}><span className="muted">Countries </span>{route.countries.map(c => `${countryName(c.code)}${route.countries!.length > 1 ? ` (${c.days} d)` : ''}`).join(' · ')}</p>}
             <div className="timeline-mini">{timeline.slice(-5).reverse().map(d => <div key={d.date} className="row"><span className="muted" style={{ width: 60 }}>{fmtDate(d.date, false)}</span><span>{fmtKm(d.summary.total_distance, unit)}</span><span className="muted">{Object.entries(d.summary.mode_distances || {}).filter(([, v]) => v >= 0.5).map(([m, v]) => `${m} ${fmtKm(v, unit)}`).join(' · ')}</span></div>)}</div>
             <button type="button" className="btn ghost sm mt-sm" onClick={() => go('map')}>See the route on the map</button>
           </>
@@ -102,7 +107,7 @@ export function OverviewTab() {
       </Card>}
       {trip.description && <Card title="About this trip" className="span2"><p style={{ whiteSpace: 'pre-wrap' }}>{trip.description}</p>{trip.link && <a href={trip.link} target="_blank" rel="noreferrer">{trip.link}</a>}</Card>}
       {trip.notes && <Card title="Notes" className="span2"><p style={{ whiteSpace: 'pre-wrap' }}>{trip.notes}</p></Card>}
-      {!integ.firefly.configured && !integ.dawarich.configured && !integ.immich.configured && <Card title="Connect your other apps" className="span2"><p className="muted">Connect <b>Pocket Money</b> to see what the trip really cost, <b>Dawarich</b> for the route you actually took, and <b>Immich</b> for the photos — all under <Link to="/settings/integrations">Settings → Integrations</Link>.</p></Card>}
+      {!integ.firefly.configured && !integ.dawarich.configured && !integ.immich.configured && <Card title="Connect your other apps" className="span2"><p className="muted">Connect <b>Pocket Money</b> to see what the trip really cost, <b>Pocket Movement</b> (through Pocket Core) or <b>Dawarich</b> for the route you actually took, and <b>Immich</b> for the photos — all under <Link to="/settings/integrations">Settings → Integrations</Link>.</p></Card>}
     </div>
   )
 }

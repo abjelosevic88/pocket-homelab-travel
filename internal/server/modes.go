@@ -26,13 +26,14 @@ func (s *Server) connModes(ctx context.Context) []core.ConnMode {
 		s.log.Warn("pocket core: modes not reported, no users", "err", err)
 		return nil
 	}
-	out := make([]core.ConnMode, 0, 3*len(users))
+	out := make([]core.ConnMode, 0, 4*len(users))
 	for _, u := range users {
 		st, _ := s.store.GetSettings(ctx, u.ID)
 		out = append(out,
 			core.ConnMode{User: u.Email, Target: "money", Mode: connMode(st.MoneyMode, st.FireflyToken)},
 			core.ConnMode{User: u.Email, Target: "service:dawarich", Mode: s.serviceMode(st.DawarichMode, st.DawarichAPIKey)},
 			core.ConnMode{User: u.Email, Target: "service:immich", Mode: s.serviceMode(st.ImmichMode, st.ImmichAPIKey)},
+			core.ConnMode{User: u.Email, Target: "movement", Mode: locationMode(st)},
 		)
 	}
 	return out

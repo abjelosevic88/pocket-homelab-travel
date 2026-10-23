@@ -89,7 +89,7 @@ export default function Home() {
         <div className="stat"><div className="n">{stats.days}</div><div className="l">days away</div></div>
         <div className="stat"><div className="n">{stats.visited}<span className="muted" style={{ fontSize: 14 }}> / {stats.places}</span></div><div className="l">places visited</div></div>
         <div className="stat"><div className="n">{stats.destinations.length}</div><div className="l">destinations</div></div>
-        {data.recorded_km > 0 && <div className="stat"><div className="n">{fmtKm(data.recorded_km, unit)}</div><div className="l">recorded by Dawarich</div></div>}
+        {data.recorded_km > 0 && <div className="stat"><div className="n">{fmtKm(data.recorded_km, unit)}</div><div className="l">recorded</div></div>}
         {data.photos > 0 && <div className="stat"><div className="n">{data.photos.toLocaleString()}</div><div className="l">photos in Immich</div></div>}
       </div>
 
