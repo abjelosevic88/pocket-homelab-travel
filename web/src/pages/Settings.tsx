@@ -173,8 +173,7 @@ function Integrations() {
   const aiShown = !f.core_ready && f.ai_provider === 'pocket' ? 'openai' : (f.ai_provider || 'auto')
   const status = (which: string) => <span className={`small ${test[which]?.startsWith('✓') ? 'ok' : test[which]?.startsWith('✕') ? 'bad' : 'muted'}`}>{test[which]}</span>
   // Dawarich and Immich: Pocket Core (address + your own key from Core), Direct (URL + API key) or Off.
-  const block = (which: 'dawarich' | 'immich', title: string, icon: string, app: string, urlKey: 'dawarich_url' | 'immich_url', keyKey: 'dawarich_api_key' | 'immich_api_key', what: string, help: string) => (
-    <Section title={title} icon={icon} actions={connBadge(shownMode(f[`${which}_mode`], f.core_ready), f[`${which}_via`])} sub={what}>
+  const conn = (which: 'dawarich' | 'immich', app: string, urlKey: 'dawarich_url' | 'immich_url', keyKey: 'dawarich_api_key' | 'immich_api_key', help: string) => (
       <Connection app={app} service source={f[`${which}_source`]} mode={f[`${which}_mode`]} via={f[`${which}_via`]} detail={f[`${which}_detail`]} core={f.core_ready} hasToken={!!f[keyKey]}
         onMode={m => save({ [`${which}_mode`]: m })} onDisconnect={() => save(which === 'immich' ? { immich_url: '', immich_api_key: '', immich_public_url: '' } : { dawarich_url: '', dawarich_api_key: '' })}
         test={<><button type="button" className="btn sm" onClick={() => run(which, f[urlKey], f[keyKey])}>Test connection</button>{status(which)}</>}
@@ -185,6 +184,10 @@ function Integrations() {
           </div>
           {which === 'immich' && <Field label="Public URL (optional)" help="What the browser opens for “Open in Immich” when the API URL above is internal (e.g. host.docker.internal)."><input value={f.immich_public_url} onChange={e => setF({ ...f, immich_public_url: e.target.value })} placeholder="https://photos.example.com" /></Field>}
         </div>} />
+  )
+  const block = (which: 'dawarich' | 'immich', title: string, icon: string, app: string, urlKey: 'dawarich_url' | 'immich_url', keyKey: 'dawarich_api_key' | 'immich_api_key', what: string, help: string) => (
+    <Section title={title} icon={icon} actions={connBadge(shownMode(f[`${which}_mode`], f.core_ready), f[`${which}_via`])} sub={what}>
+      {conn(which, app, urlKey, keyKey, help)}
     </Section>
   )
   return (
@@ -199,8 +202,8 @@ function Integrations() {
             <Field label="Token" help="Pocket Money → Settings → API tokens, or a Firefly personal access token. Stored on the server; shown masked."><input value={f.firefly_token} onChange={e => setF({ ...f, firefly_token: e.target.value })} autoComplete="off" /></Field>
           </div>} />
       </Section>
-      <LocationSource f={f} save={save} test={<><button type="button" className="btn sm" onClick={() => run('movement', '', '')}>Test Pocket Movement</button>{status('movement')}</>} />
-      {block('dawarich', 'Dawarich', 'route', 'Dawarich', 'dawarich_url', 'dawarich_api_key', 'The alternative to Pocket Movement for where you actually went: the recorded route on the map, each day\'s distance and detected stops, the track in the GPX export.', 'Dawarich → Account → API key. Behind HTTPS use the public name; plain http works too.')}
+      <LocationSource f={f} save={save} test={<><button type="button" className="btn sm" onClick={() => run('movement', '', '')}>Test Pocket Movement</button>{status('movement')}</>}
+        dawarich={conn('dawarich', 'Dawarich', 'dawarich_url', 'dawarich_api_key', 'Dawarich → Account → API key. Behind HTTPS use the public name; plain http works too.')} />
       {block('immich', 'Immich', 'camera', 'Immich', 'immich_url', 'immich_api_key', 'Every photo and video taken between the trip dates, grouped by day; the geotagged ones land on the map. Thumbnails are proxied so the browser never sees the key.', 'Immich → Account settings → API keys.')}
       <Section title="AI provider" icon="sparkles" actions={<span className={`badge ${f.ai_configured ? 'ok' : ''}`}>{f.ai_configured ? 'connected' : 'not set'}</span>}
         sub={<>Optional. Adds five buttons: <b>Suggest places</b> (popular, well-rated places for the destination, located with OpenStreetMap), <b>Plan my days</b> (assigns ideas to days and times), <b>Describe</b> a place with practical tips, a <b>packing list</b> tailored to the trip and weather, and a <b>recap</b> written from your journal, visited places and spending. Trip details are sent to the provider when you use them; nothing runs automatically.</>}>
@@ -287,10 +290,10 @@ const connBadge = (mode: ConnMode, via: string) => mode === 'off' ? <span classN
 /**
  * Where the recorded route, timeline, distances and countries come from:
  * Pocket Movement (only through Pocket Core; the default there) or Dawarich
- * (set up in its own card). Saves at once; Movement unavailable falls back
+ * (its connection shows in the same card while it is in use). Saves at once; Movement unavailable falls back
  * to Dawarich and says why.
  */
-function LocationSource({ f, save, test }: { f: SettingsT; save: (p: Partial<SettingsT>) => void; test: React.ReactNode }) {
+function LocationSource({ f, save, test, dawarich }: { f: SettingsT; save: (p: Partial<SettingsT>) => void; test: React.ReactNode; dawarich: React.ReactNode }) {
   const core = f.core_ready
   // without Core only Dawarich is in effect, whatever was saved
   const value = core ? (f.location_source || 'movement') : 'dawarich'
@@ -299,7 +302,7 @@ function LocationSource({ f, save, test }: { f: SettingsT; save: (p: Partial<Set
     ? 'Pocket Movement, through Pocket Core as you: your own location history, with named stops, how you travelled and the countries you were in. Nothing to fill in.'
     : value === 'movement'
       ? `Pocket Movement is not available: ${f.location_detail || 'Pocket Core did not answer'}. Using Dawarich meanwhile.`
-      : `Dawarich, as set up below.${core && f.movement_available ? ' Pocket Movement is available too.' : ''}`
+      : `Dawarich, connected as below.${core && f.movement_available ? ' Pocket Movement is available too.' : ''}`
   const ok = using === 'movement' || (using === 'dawarich' && value === 'dawarich' && f.dawarich_via !== '')
   return (
     <Section title="Where you went" icon="route" actions={<span className={`badge ${ok ? 'ok' : 'warn'}`}>{using === 'movement' ? 'Pocket Movement' : 'Dawarich'}</span>}
@@ -308,13 +311,18 @@ function LocationSource({ f, save, test }: { f: SettingsT; save: (p: Partial<Set
         <div className="conn-mode">
           <Segmented size="sm" label="Location source" value={value} onChange={v => save({ location_source: v })} options={[
             { value: 'movement', label: 'Pocket Movement', disabled: !core, title: core ? 'Your own Pocket Movement, through Pocket Core' : 'Needs Pocket Core' },
-            { value: 'dawarich', label: 'Dawarich', title: 'Your Dawarich, set up below' },
+            { value: 'dawarich', label: 'Dawarich', title: 'Your Dawarich' },
           ]} />
         </div>
         {!core && <NeedsCore what="Pocket Movement" />}
         <div className={`conn-status ${ok ? 'ok' : 'bad'}`}><span className="dot" />{line}</div>
         {core && value === 'movement' && <div className="row wrap">{test}</div>}
       </div>
+      {/* One source, one card: Dawarich's connection shows here while it is the one in use (picked, or filling in for Movement). */}
+      {using !== 'movement' && <div className="loc-dawarich">
+        <div className="loc-dawarich-h">Dawarich connection</div>
+        {dawarich}
+      </div>}
     </Section>
   )
 }
