@@ -207,3 +207,40 @@ func TestUnevenSplit(t *testing.T) {
 		t.Fatalf("restored = %+v", s)
 	}
 }
+
+func TestBreakdownSettleThroughAndDayCosts(t *testing.T) {
+	p := func(id int64) *int64 { return &id }
+	people := []store.TripPerson{{ID: 1, Name: "Darko", Weight: 1}, {ID: 2, Name: "Ana", Weight: 1}, {ID: 3, Name: "Marko", Weight: 1}}
+	bills := []store.Expense{
+		{Kind: "actual", AmountHome: 20000, PayerID: p(2), Owers: []int64{1}, Category: store.ReimbursementKey}, // Ana gives me 200 up front
+		{Kind: "actual", AmountHome: 30000, PayerID: p(1), Owers: []int64{1, 2, 3}, Category: "lodging"},        // I pay the flat
+	}
+	bal := balances(people, bills)
+	me, ana, marko := bal[0], bal[1], bal[2]
+	if me.Paid != 30000 || me.Received != 20000 || me.Spent != 10000 || me.Balance != 0 || ana.Sent != 20000 || ana.Balance != 10000 || marko.Balance != -10000 {
+		t.Fatalf("breakdown = %+v", bal)
+	}
+	// everyone settles with Marko… or through me
+	tr := settleThrough(bal, 1)
+	if len(tr) != 2 || tr[0].From != 1 || tr[0].To != 2 || tr[0].Amount != 10000 || tr[1].From != 3 || tr[1].To != 1 || tr[1].Amount != 10000 {
+		t.Fatalf("through me = %+v", tr)
+	}
+	// a 3-night stay is spread over its nights, a flight on its day, an early booking before the trip
+	trip := &store.Trip{StartDate: "2025-07-01", EndDate: "2025-07-04"}
+	stays := []store.Lodging{{ID: 7, CheckIn: "2025-07-01T15:00", CheckOut: "2025-07-04"}}
+	ex := []store.Expense{
+		{Kind: "actual", AmountHome: 30001, Category: "lodging", LinkKind: "lodging", LinkID: 7, Date: "2025-07-01"},
+		{Kind: "planned", AmountHome: 9000, Category: "transport", Date: "2025-07-04"},
+		{Kind: "actual", AmountHome: 500, Category: "food", Date: "2025-06-20"},
+		{Kind: "actual", AmountHome: 999, Category: store.ReimbursementKey, Date: "2025-07-02"},
+	}
+	dc := dayCosts(trip, ex, stays)
+	got := map[string]DayCost{}
+	for _, d := range dc {
+		got[d.Date] = d
+	}
+	if len(dc) != 5 || dc[0].Date != "before" || got["before"].Actual["food"] != 500 || got["2025-07-01"].Actual["lodging"] != 10001 || got["2025-07-03"].Actual["lodging"] != 10000 ||
+		got["2025-07-04"].Actual["lodging"] != 0 || got["2025-07-04"].Planned["transport"] != 9000 || len(got["2025-07-02"].Actual) != 1 {
+		t.Fatalf("day costs = %+v", dc)
+	}
+}

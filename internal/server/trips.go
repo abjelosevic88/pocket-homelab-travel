@@ -555,6 +555,7 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 		"countries": countryDays(t, lodging, places),
 		"people":    tripPeople,
 		"split":     split,
+		"day_costs": dayCosts(t, expenses, lodging),
 		"integrations": map[string]any{
 			"firefly": map[string]any{"configured": moneyVia != "", "via": moneyVia, "tag": t.FireflyTag, "synced_at": syncedAt},
 			// "dawarich" is the recorded route, from Pocket Movement or Dawarich (source)

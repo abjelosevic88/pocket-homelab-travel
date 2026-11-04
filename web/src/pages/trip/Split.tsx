@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import { api, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
-import type { Expense, TripCategory, TripPaymentMode } from '../../lib/types'
+import type { Expense, SplitInfo, TripCategory, TripPaymentMode } from '../../lib/types'
 import { fmtDate, groupBills, plural } from '../../lib/format'
-import { Card, Confirm, Empty, Modal, useAsync, useToast } from '../../components/ui'
+import { Card, Confirm, Empty, Field, Modal, useAsync, useToast } from '../../components/ui'
 import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
-import { Money } from '../../components/Money'
+import { AmountInput, Money } from '../../components/Money'
 import { PersonDot } from '../../components/WithPeople'
 import { useTrip } from './ctx'
 import { CospendLinkCard } from './CospendLink'
@@ -14,100 +14,125 @@ import { PeopleStrip } from './TripPeople'
 import { CospendImport } from '../../components/CospendImport'
 
 /**
- * The trip's shared money, as in Nextcloud Cospend: every spent cost is a bill
- * someone paid for some of the people here. Balances say who is up or down,
- * the plan says who pays whom, and the trash keeps deleted bills a while.
+ * The trip's money between people, as in Nextcloud Cospend: every spent cost
+ * is a bill someone paid for some of the people here; money handed over
+ * (an advance, paying someone back) counts too. Balances say who is up or
+ * down, the plan says who pays whom, and clicking someone shows what they
+ * paid and what their share of everything was.
  */
 export function Split() {
   const { ov, trip, canEdit, edit, reload } = useTrip()
   const { user } = useApp()
-  const { toast } = useToast()
   const split = ov.split
   const [who, setWho] = useState('')
   const [cat, setCat] = useState('')
-  const [settling, setSettling] = useState(false)
   const [lists, setLists] = useState(false)
+  const [focus, setFocus] = useState<number | null>(null)
+  const [center, setCenter] = useState('')
+  const [transfer, setTransfer] = useState<{ from?: number; to?: number; amount?: number } | null>(null)
+  const { data: centered } = useAsync(() => center ? api.get<SplitInfo>(`${V1}/trips/${trip.id}/split?center=${center}`) : Promise.resolve(null), [center, ov.split])
   if (!split) return <Card><Empty icon="wallet" title="Nothing to split yet" /></Card>
   const people = split.people
   const name = (id: number | null) => people.find(p => p.id === id)?.name || '—'
   const person = (id: number | null) => people.find(p => p.id === id)
   const cats = new Map(split.categories.map(c => [c.key, c]))
   const modes = new Map(split.payment_modes.map(m => [m.id, m]))
-  const bills = groupBills(ov.expenses.filter(e => e.kind === 'actual')).filter(e => (!who || e.payer_id === Number(who) || e.owers.includes(Number(who)) || e.parts.some(p => p.owers.includes(Number(who)))) && (!cat || e.category === cat))
+  const all = groupBills(ov.expenses.filter(e => e.kind === 'actual'))
+  const bills = all.filter(e => (!who || e.payer_id === Number(who) || e.owers.includes(Number(who)) || e.parts.some(p => p.owers.includes(Number(who)))) && (!cat || e.category === cat))
   const me = people.find(p => p.user_id === user?.id)
   const myBalance = me ? split.balances.find(b => b.member_id === me.id) : undefined
   const maxAbs = Math.max(1, ...split.balances.map(b => Math.abs(b.balance)))
   const cur = split.currency
-  const settle = async () => {
-    try { await api.post(`${V1}/trips/${trip.id}/split/settle`); toast('Recorded — everyone is square'); await reload() } catch (e) { toast((e as Error).message, 'err') } finally { setSettling(false) }
-  }
+  const plan = center && centered ? centered.settlement : split.settlement
+  // bills by day, newest first
+  const days = new Map<string, typeof bills>()
+  for (const b of bills) days.set(b.date, [...(days.get(b.date) || []), b])
+  const addBill = () => edit('expense', null, { kind: 'actual', date: new Date().toISOString().slice(0, 10) })
   return (
     <>
       <PeopleStrip title="Splitting between" />
-      <div className="stats">
-        <div className="stat"><div className="n"><Money minor={split.total} code={cur} /></div><div className="l">spent together · {plural(split.bills, 'bill')}</div></div>
-        {myBalance && <div className="stat"><div className={`n ${myBalance.balance > 0 ? 'good' : myBalance.balance < 0 ? 'bad' : ''}`}><Money minor={Math.abs(myBalance.balance)} code={cur} /></div><div className="l">{myBalance.balance > 0 ? 'you get back' : myBalance.balance < 0 ? 'you owe' : 'you are square'}</div></div>}
-        {myBalance && <div className="stat"><div className="n"><Money minor={myBalance.spent} code={cur} /></div><div className="l">your share</div></div>}
-        <div className="stat"><div className="n">{people.length}</div><div className="l">people</div></div>
+      <div className="split-head">
+        <div className="stats grow" style={{ marginBottom: 0 }}>
+          <div className="stat"><div className="n"><Money minor={split.total} code={cur} /></div><div className="l">spent together · {plural(split.bills, 'bill')}</div></div>
+          {myBalance && <div className="stat clickable" onClick={() => setFocus(myBalance.member_id)}><div className={`n ${myBalance.balance > 0 ? 'good' : myBalance.balance < 0 ? 'bad' : ''}`}><Money minor={Math.abs(myBalance.balance)} code={cur} /></div><div className="l">{myBalance.balance > 0 ? 'you get back' : myBalance.balance < 0 ? 'you owe' : 'you are square'}</div></div>}
+          {myBalance && <div className="stat clickable" onClick={() => setFocus(myBalance.member_id)}><div className="n"><Money minor={myBalance.spent} code={cur} /></div><div className="l">your share</div></div>}
+        </div>
+        {canEdit && (
+          <div className="split-actions">
+            <button type="button" className="btn primary big-btn" onClick={addBill}><Icon name="plus" size={18} />Add a bill</button>
+            {people.length > 1 && <button type="button" className="btn big-btn" onClick={() => setTransfer({})} title="An advance, or paying someone back — all or part"><Icon name="wallet" size={16} />Money given</button>}
+          </div>
+        )}
       </div>
 
       <div className="two-col">
-        <Card title="Balances" actions={<span className="muted small">paid − share</span>}>
-          {people.length < 2 ? <p className="muted">Add the people you travel with (trip Settings → People) to split bills with them.</p> : (
+        <Card title="Balances" actions={<span className="muted small">click someone for the details</span>}>
+          {people.length < 2 ? <p className="muted">Add the people you travel with above to split bills with them.</p> : (
             <div className="balances" role="list">
               {split.balances.map(b => {
                 const p = person(b.member_id)
                 const w = Math.abs(b.balance) / maxAbs * 50
                 return (
-                  <div key={b.member_id} className="bal-row" role="listitem" title={`${b.name}: paid ${(b.paid / 100).toFixed(2)}, share ${(b.spent / 100).toFixed(2)}`}>
-                    <span className="bal-name"><PersonDot name={b.name} color={p?.color} size={22} />{b.name}</span>
+                  <button type="button" key={b.member_id} className={`bal-row ${focus === b.member_id ? 'sel' : ''}`} onClick={() => setFocus(focus === b.member_id ? null : b.member_id)}>
+                    <span className="bal-name"><PersonDot name={b.name} color={p?.color} size={22} /><span><span className="block">{b.name}</span><span className="muted small block">paid <Money minor={b.paid} code={cur} compact /> · share <Money minor={b.spent} code={cur} compact />{(b.sent > 0 || b.received > 0) && <> · {b.sent > 0 && <>gave <Money minor={b.sent} code={cur} compact /></>}{b.sent > 0 && b.received > 0 && ', '}{b.received > 0 && <>got <Money minor={b.received} code={cur} compact /></>}</>}</span></span></span>
                     <span className="bal-track"><i className="bal-mid" />{b.balance !== 0 && <span className={`bal-bar ${b.balance > 0 ? 'pos' : 'neg'}`} style={b.balance > 0 ? { left: '50%', width: `${w}%` } : { right: '50%', width: `${w}%` }} />}</span>
                     <span className={`bal-val ${b.balance > 0 ? 'good' : b.balance < 0 ? 'bad' : 'muted'}`}>{b.balance > 0 ? '+' : b.balance < 0 ? '−' : ''}<Money minor={Math.abs(b.balance)} code={cur} /></span>
-                  </div>
+                  </button>
                 )
               })}
             </div>
           )}
         </Card>
-        <Card title="Who pays whom" actions={canEdit && split.settlement.length > 0 && <button type="button" className="btn sm" onClick={() => setSettling(true)}><Icon name="check" size={14} />Mark as paid</button>}>
-          {split.settlement.length === 0 ? <p className="muted">{split.bills ? 'Everyone is square.' : 'No bills yet.'}</p> : (
+        <Card title="Who pays whom" actions={people.length > 2 && <Select value={center} onChange={setCenter} options={people.map(p => ({ value: String(p.id), label: `Through ${p.name}` }))} placeholder="Fewest payments" clearLabel="Fewest payments" ariaLabel="How to settle" />}>
+          {plan.length === 0 ? <p className="muted">{split.bills ? 'Everyone is square.' : 'No bills yet.'}</p> : (
             <div className="day-items">
-              {split.settlement.map((t, i) => (
+              {plan.map((t, i) => (
                 <div key={i} className="item settle-row">
                   <PersonDot name={name(t.from)} color={person(t.from)?.color} size={24} />
-                  <span className="txt"><span className="title">{name(t.from)} <span className="muted">pays</span> {name(t.to)}</span></span>
+                  <span className="txt"><span className="title">{name(t.from)} <span className="muted">→</span> {name(t.to)}</span></span>
                   <b><Money minor={t.amount} code={cur} /></b>
+                  {canEdit && <button type="button" className="btn sm" onClick={() => setTransfer(t)} title="Record it — all of it or a part">Paid…</button>}
                 </div>
               ))}
             </div>
           )}
-          <p className="muted small mt-sm">The fewest payments that square everyone up. “Mark as paid” records them as reimbursements.</p>
+          <p className="muted small mt-sm">{center ? `Everyone settles with ${name(Number(center))}.` : 'The fewest payments that square everyone up.'} “Paid…” records a payment — the whole amount or a part.</p>
         </Card>
       </div>
+
+      {focus != null && person(focus) && <PersonMoney member={focus} onPick={setFocus} />}
 
       <Card title={`Bills · ${bills.length}`} className="mb" actions={
         <div className="row" style={{ gap: 6 }}>
           {people.length > 1 && <Select value={who} onChange={setWho} options={people.map(p => ({ value: String(p.id), label: p.name }))} placeholder="Anyone" clearLabel="Anyone" ariaLabel="Filter by person" />}
           <Select value={cat} onChange={setCat} options={split.categories.map(c => ({ value: c.key, label: `${c.icon} ${c.name}` }))} placeholder="Any category" clearLabel="Any category" ariaLabel="Filter by category" />
-          {canEdit && <button type="button" className="btn primary sm" onClick={() => edit('expense', null, { kind: 'actual', date: new Date().toISOString().slice(0, 10) })}><Icon name="plus" size={14} />Bill</button>}
         </div>}>
-        {bills.length === 0 ? <Empty icon="wallet" title={ov.expenses.some(e => e.kind === 'actual') ? 'Nothing matches' : 'No bills yet'}>Add what you spend — who paid and for whom — and the balances follow. Paid stays and transport, and costs synced from Pocket Money, show up here too.</Empty> : (
-          <table className="table compact bills">
-            <thead><tr><th>When</th><th>What</th><th>Paid by</th><th>For</th><th className="num">Amount</th></tr></thead>
-            <tbody>{bills.map(b => {
-              const c = cats.get(b.category)
-              const m = modes.get(b.payment_mode_id)
-              return (
-                <tr key={b.id} className="clickable" onClick={() => edit('expense', b)}>
-                  <td className="muted nowrap">{fmtDate(b.date, false)}{b.bill_time && <span className="small"> {b.bill_time}</span>}</td>
-                  <td><span title={c?.name}>{c?.icon || '📌'}</span> <b>{b.name}</b>{b.parts.length > 0 && <span className="badge" title={b.parts.map(p => `${name(p.owers[0])} +${(p.amount / 100).toFixed(2)}`).join(', ')}>uneven</span>}{b.source !== 'manual' && <span className="badge">{b.source === 'item' ? b.link_kind : b.source === 'money' ? 'Pocket Money' : b.source}</span>}{m && <span className="muted small"> · {m.icon} {m.name}</span>}</td>
-                  <td className="nowrap"><PersonDot name={name(b.payer_id)} color={person(b.payer_id)?.color} size={18} /> {name(b.payer_id)}</td>
-                  <td><span className="ower-dots" title={b.owers.map(name).join(', ')}>{b.owers.length === people.length && people.length > 1 ? <span className="muted small">everyone</span> : b.owers.map(id => <PersonDot key={id} name={name(id)} color={person(id)?.color} size={18} />)}{b.parts.length > 0 && <span className="muted small"> + {b.parts.map(p => name(p.owers[0]).split(' ')[0]).join(', ')}</span>}</span></td>
-                  <td className="num nowrap"><Money minor={b.total} code={b.currency} />{b.currency !== cur && <div className="muted small"><Money minor={b.total_home} code={cur} /></div>}</td>
-                </tr>
-              )
-            })}</tbody>
-          </table>
+        {bills.length === 0 ? <Empty icon="wallet" title={all.length ? 'Nothing matches' : 'No bills yet'}>{canEdit && !all.length && <button type="button" className="btn primary big-btn mt-sm" onClick={addBill}><Icon name="plus" size={18} />Add the first bill</button>}</Empty> : (
+          <div className="bill-days">
+            {[...days.entries()].map(([day, list]) => (
+              <div key={day} className="bill-day">
+                <div className="bill-day-head"><b>{day ? fmtDate(day) : 'No date'}</b><span className="muted small">{plural(list.length, 'bill')}</span><span className="spacer" /><Money minor={list.filter(b => b.category !== 'reimbursement').reduce((n, b) => n + b.total_home, 0)} code={cur} /></div>
+                {list.map(b => {
+                  const c = cats.get(b.category)
+                  const m = modes.get(b.payment_mode_id)
+                  const reimb = b.category === 'reimbursement'
+                  return (
+                    <div key={b.id} className={`bill-row ${reimb ? 'reimb' : ''}`} role="button" tabIndex={0} onClick={() => edit('expense', b)} onKeyDown={e => e.key === 'Enter' && edit('expense', b)}>
+                      <span className="bill-ico" title={c?.name}>{c?.icon || '📌'}</span>
+                      <span className="grow" style={{ minWidth: 0 }}>
+                        <span className="bill-what">{b.name}{b.parts.length > 0 && <span className="badge" title={b.parts.map(p => `${name(p.owers[0])} +${(p.amount / 100).toFixed(2)}`).join(', ')}>uneven</span>}{b.source !== 'manual' && b.source !== 'cospend' && <span className="badge">{b.source === 'item' ? b.link_kind : b.source === 'money' ? 'Pocket Money' : b.source}</span>}</span>
+                        <span className="muted small bill-meta">
+                          {reimb ? <>{name(b.payer_id)} gave {b.owers.map(name).join(', ')}</> : <><PersonDot name={name(b.payer_id)} color={person(b.payer_id)?.color} size={14} /> {name(b.payer_id)} paid · for {b.owers.length === people.length && people.length > 1 ? 'everyone' : b.owers.map(id => name(id).split(' ')[0]).join(', ')}{b.parts.length > 0 && ` + ${b.parts.map(p => name(p.owers[0]).split(' ')[0]).join(', ')}`}</>}
+                          {b.bill_time && ` · ${b.bill_time}`}{m && ` · ${m.icon} ${m.name}`}{b.notes && ` · ${b.notes}`}
+                        </span>
+                      </span>
+                      <span className="num nowrap"><b><Money minor={b.total} code={b.currency} /></b>{b.currency !== cur && <div className="muted small"><Money minor={b.total_home} code={cur} /></div>}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
         )}
       </Card>
 
@@ -120,9 +145,119 @@ export function Split() {
       </div>
       {split.trash > 0 && <Trash />}
       {canEdit && <Card title="Import from Nextcloud Cospend" className="mb"><p className="muted small">Bring an existing Cospend project's bills and people into this trip. Run it again later and it updates instead of doubling.</p><CospendImport tripId={trip.id} onDone={() => reload()} /></Card>}
-      {settling && <Confirm title="Mark the plan as paid?" message={`${plural(split.settlement.length, 'reimbursement')} will be added so everyone is square.`} onCancel={() => setSettling(false)} onConfirm={settle} />}
       {lists && <ListsModal categories={split.categories} modes={split.payment_modes} onClose={() => { setLists(false); reload() }} />}
+      {transfer && <TransferModal initial={transfer} onClose={() => setTransfer(null)} onSaved={() => { setTransfer(null); reload() }} />}
     </>
+  )
+}
+
+/**
+ * One person's money on the trip: the bills they paid, and their share of
+ * every bill (theirs and everyone else's), with the money they gave or got.
+ * Chips switch between people.
+ */
+function PersonMoney({ member, onPick }: { member: number; onPick: (id: number | null) => void }) {
+  const { ov, edit } = useTrip()
+  const split = ov.split!
+  const people = split.people
+  const cur = split.currency
+  const [view, setView] = useState<'share' | 'paid'>('share')
+  const name = (id: number | null) => people.find(p => p.id === id)?.name || '—'
+  const weight = (id: number) => { const w = people.find(p => p.id === id)?.weight || 1; return w === 0 ? 1 : w }
+  const bills = groupBills(ov.expenses.filter(e => e.kind === 'actual'))
+  // their part of a bill: a weighted share of the main bill plus their own extra part
+  const shareOf = (b: (typeof bills)[number]) => {
+    const total = b.owers.reduce((n, id) => n + weight(id), 0)
+    const main = b.owers.includes(member) && total > 0 ? b.amount_home * weight(member) / total : 0
+    return Math.round(main + b.parts.filter(p => p.owers[0] === member).reduce((n, p) => n + p.amount_home, 0))
+  }
+  const bal = split.balances.find(b => b.member_id === member)
+  const paid = bills.filter(b => b.payer_id === member && b.category !== 'reimbursement')
+  const mine = bills.map(b => ({ b, share: shareOf(b) })).filter(x => x.share > 0 && x.b.category !== 'reimbursement')
+  const money = bills.filter(b => b.category === 'reimbursement' && (b.payer_id === member || b.owers.includes(member)))
+  const p = people.find(x => x.id === member)
+  return (
+    <Card className="mb person-money" title={<span className="row" style={{ gap: 8 }}><PersonDot name={name(member)} color={p?.color} size={24} />{name(member)}</span>}
+      actions={<span className="row" style={{ gap: 6 }}>
+        <span className="pm-chips">{people.map(x => <button type="button" key={x.id} className={`chip sm ${x.id === member ? 'active' : ''}`} onClick={() => onPick(x.id)}>{x.name.split(' ')[0]}</button>)}</span>
+        <button type="button" className="icon-btn" aria-label="Close" onClick={() => onPick(null)}><Icon name="x" size={15} /></button>
+      </span>}>
+      {bal && <div className="pm-sum">
+        <span>paid <b><Money minor={bal.paid} code={cur} /></b></span>
+        <span>share <b><Money minor={bal.spent} code={cur} /></b></span>
+        {bal.sent > 0 && <span>gave <b><Money minor={bal.sent} code={cur} /></b></span>}
+        {bal.received > 0 && <span>got <b><Money minor={bal.received} code={cur} /></b></span>}
+        <span className={bal.balance > 0 ? 'good' : bal.balance < 0 ? 'bad' : 'muted'}>{bal.balance > 0 ? 'gets back' : bal.balance < 0 ? 'owes' : 'square'} <b><Money minor={Math.abs(bal.balance)} code={cur} /></b></span>
+      </div>}
+      <div className="row mt-sm" style={{ gap: 8 }}>
+        <div className="tabs sub" style={{ margin: 0 }}>
+          <button type="button" className={view === 'share' ? 'active' : ''} onClick={() => setView('share')}>What they spent · {mine.length}</button>
+          <button type="button" className={view === 'paid' ? 'active' : ''} onClick={() => setView('paid')}>What they paid · {paid.length}</button>
+        </div>
+      </div>
+      <table className="table compact mt-sm">
+        <tbody>
+          {view === 'share' ? mine.map(({ b, share }) => (
+            <tr key={b.id} className="clickable" onClick={() => edit('expense', b)}>
+              <td className="muted nowrap small">{fmtDate(b.date, false)}</td>
+              <td><b>{b.name}</b><div className="muted small">{b.payer_id === member ? 'they paid' : `${name(b.payer_id)} paid`} <Money minor={b.total_home} code={cur} /></div></td>
+              <td className="num nowrap"><b><Money minor={share} code={cur} /></b></td>
+            </tr>
+          )) : paid.map(b => (
+            <tr key={b.id} className="clickable" onClick={() => edit('expense', b)}>
+              <td className="muted nowrap small">{fmtDate(b.date, false)}</td>
+              <td><b>{b.name}</b><div className="muted small">for {b.owers.length === people.length ? 'everyone' : b.owers.map(id => name(id).split(' ')[0]).join(', ')}{b.parts.length > 0 && ` + ${b.parts.map(x => name(x.owers[0]).split(' ')[0]).join(', ')}`}</div></td>
+              <td className="num nowrap"><b><Money minor={b.total_home} code={cur} /></b></td>
+            </tr>
+          ))}
+          {money.map(b => (
+            <tr key={b.id} className="clickable reimb" onClick={() => edit('expense', b)}>
+              <td className="muted nowrap small">{fmtDate(b.date, false)}</td>
+              <td>💰 {b.payer_id === member ? <>gave {b.owers.map(name).join(', ')}</> : <>got from {name(b.payer_id)}</>}{b.name && !b.name.includes('→') && <span className="muted small"> · {b.name}</span>}</td>
+              <td className="num nowrap"><Money minor={b.total_home} code={cur} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  )
+}
+
+/** Money handed from one person to another: an advance, or paying someone back (all or part). */
+function TransferModal({ initial, onClose, onSaved }: { initial: { from?: number; to?: number; amount?: number }; onClose: () => void; onSaved: () => void }) {
+  const { ov, trip } = useTrip()
+  const { toast } = useToast()
+  const people = ov.split?.people || []
+  const owner = people.find(p => p.role === 'owner') || people[0]
+  const [f, setF] = useState({ from: initial.from ?? people.find(p => p.id !== owner?.id)?.id ?? 0, to: initial.to ?? owner?.id ?? 0, amount: initial.amount ?? 0, currency: trip.currency, date: new Date().toISOString().slice(0, 10), note: '' })
+  const [busy, setBusy] = useState(false)
+  const name = (id: number) => people.find(p => p.id === id)?.name || ''
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!f.amount || f.from === f.to) { toast('Pick two people and an amount', 'err'); return }
+    setBusy(true)
+    try {
+      await api.post(`${V1}/trips/${trip.id}/expenses`, { name: f.note || `${name(f.from)} → ${name(f.to)}`, category: 'reimbursement', kind: 'actual', amount: f.amount, currency: f.currency, date: f.date, payer_id: f.from, owers: [f.to] })
+      toast('Recorded'); onSaved()
+    } catch (err) { toast((err as Error).message, 'err') } finally { setBusy(false) }
+  }
+  const opts = people.map(p => ({ value: String(p.id), label: p.name }))
+  return (
+    <Modal title="Money given" onClose={onClose}>
+      <form onSubmit={save} className="grid" style={{ gap: 14 }}>
+        <p className="muted small" style={{ margin: 0 }}>Cash handed over or a bank transfer: someone gave you 200 at the start, or pays you back — all of it or a part. It moves the balances; it is not spending.</p>
+        <div className="two-col tight">
+          <Field label="From"><Select value={String(f.from)} onChange={v => setF({ ...f, from: Number(v) })} options={opts} /></Field>
+          <Field label="To"><Select value={String(f.to)} onChange={v => setF({ ...f, to: Number(v) })} options={opts} /></Field>
+        </div>
+        <div className="two-col tight">
+          <Field label="Amount"><AmountInput amount={f.amount || null} currency={f.currency} onAmount={m => setF({ ...f, amount: m || 0 })} onCurrency={c => setF({ ...f, currency: c })} autoFocus /></Field>
+          <Field label="Date"><input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></Field>
+        </div>
+        <Field label="Note"><input value={f.note} onChange={e => setF({ ...f, note: e.target.value })} placeholder="Advance at the airport" /></Field>
+        <div className="form-actions"><span className="spacer" /><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>Record</button></div>
+      </form>
+    </Modal>
   )
 }
 

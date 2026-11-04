@@ -12,7 +12,7 @@ import { AmountInput, Money, MoneyInput } from '../../components/Money'
 import { useTrip } from './ctx'
 
 export function BudgetTab() {
-  const { ov, trip, canEdit, edit, reload } = useTrip()
+  const { ov, trip, canEdit, edit, reload, go } = useTrip()
   const { currencies } = useApp()
   const { toast } = useToast()
   const [show, setShow] = useState<'all' | 'actual' | 'planned'>('all')
@@ -23,7 +23,16 @@ export function BudgetTab() {
     setSyncing(true)
     try { const r = await api.post<{ synced: number }>(`${V1}/trips/${trip.id}/money/sync`); toast(`Synced ${r.synced} transactions from Pocket Money`); await reload() } catch (e) { toast((e as Error).message, 'err') } finally { setSyncing(false) }
   }
-  const list = groupBills(ov.expenses.filter(e => show === 'all' || e.kind === show))
+  // money handed between people is not a cost: it lives on the Split tab
+  const list = groupBills(ov.expenses.filter(e => e.category !== 'reimbursement' && (show === 'all' || e.kind === show)))
+  // a planned cost that has been paid becomes a bill: a stay or leg is marked paid, anything else opens as a bill to say who paid
+  const markPaid = async (e: Expense) => {
+    if (e.source === 'item' && (e.link_kind === 'lodging' || e.link_kind === 'transport')) {
+      try { await api.put(`${V1}/trips/${trip.id}/${e.link_kind}/${e.link_id}`, { paid: true }); toast(`Marked paid — it's a bill now, paid by you for everyone (change it on the Split tab)`); await reload() } catch (err) { toast((err as Error).message, 'err') }
+      return
+    }
+    edit('expense', { ...e, kind: 'actual', date: e.date || todayISO() })
+  }
   const max = Math.max(1, ...b.by_category.map(c => Math.max(c.planned, c.actual)))
   const maxDay = Math.max(1, ...b.by_day.map(d => d.actual))
   const today = todayISO()
@@ -41,14 +50,27 @@ export function BudgetTab() {
           {b.by_category.length === 0 ? <p className="muted">Nothing yet.</p> : <div className="cat-rows">{b.by_category.map(c => <div key={c.category} className="cat-row"><span>{EXPENSE_ICONS[c.category] || '•'} {cap(c.category)}</span><span className="bars"><span className="bar" title="spent"><span className="fill" style={{ width: `${c.actual / max * 100}%` }} /></span><span className="bar p" title="planned"><span className="fill" style={{ width: `${c.planned / max * 100}%` }} /></span></span><span className="right small"><Money minor={c.actual} code={b.currency} compact />{c.planned > 0 && <span className="muted"> / <Money minor={c.planned} code={b.currency} compact /></span>}</span></div>)}</div>}
           <div className="legend"><span style={{ '--d': 'var(--accent)' } as React.CSSProperties}>spent</span><span style={{ '--d': 'var(--accent-soft)' } as React.CSSProperties}>planned</span></div>
         </Card>
-        <Card title="By day">
-          {b.by_day.length === 0 ? <p className="muted">Spending by day appears once there are actual expenses with dates.</p> : <>
-            <div className="spark">{b.by_day.map(d => <div key={d.date} className={`col ${d.date === today ? 'today' : ''}`} style={{ height: `${Math.max(3, d.actual / maxDay * 100)}%` }} data-l={`${fmtDate(d.date, false)}: ${fmtMoney(d.actual, b.currency, dec)} (${d.count})`} />)}</div>
-            <div className="row small muted mt-sm"><span>{fmtDate(b.by_day[0].date, false)}</span><span className="spacer" /><span>{fmtDate(b.by_day[b.by_day.length - 1].date, false)}</span></div>
-          </>}
-          {Object.keys(b.by_currency).length > 1 && <p className="muted small mt-sm">Paid in {Object.entries(b.by_currency).map(([c, v]) => fmtMoney(v, c, currencies.find(x => x.code === c)?.decimals ?? 2)).join(', ')} — converted at the day's rate.</p>}
+        <Card title="Paid vs still planned" actions={<button type="button" className="btn ghost sm" onClick={() => go('split')}>Who paid what →</button>}>
+          {(() => {
+            const open = b.planned // planned costs not paid yet (a paid one is a bill)
+            const scale = Math.max(1, trip.budget, b.actual + open)
+            return (
+              <div className="pvp">
+                <div className="pvp-bar" title="paid · still planned"><span className="paid" style={{ width: `${b.actual / scale * 100}%` }} /><span className="open" style={{ width: `${open / scale * 100}%` }} /></div>
+                <dl className="pvp-rows">
+                  <dt>Paid (bills)</dt><dd><Money minor={b.actual} code={b.currency} /></dd>
+                  <dt>Still planned</dt><dd><Money minor={open} code={b.currency} /></dd>
+                  <dt>Expected in all</dt><dd><Money minor={b.actual + open} code={b.currency} /></dd>
+                  {trip.budget > 0 && <><dt>Budget</dt><dd className={b.actual + open > trip.budget ? 'bad' : ''}><Money minor={trip.budget} code={b.currency} /></dd></>}
+                </dl>
+                <p className="muted small" style={{ margin: 0 }}>A planned cost turns into a bill with “Paid” — then it counts as paid here and in the split. Money handed between people is not a cost and stays on the Split tab.</p>
+                {Object.keys(b.by_currency).length > 1 && <p className="muted small" style={{ margin: 0 }}>Paid in {Object.entries(b.by_currency).map(([c, v]) => fmtMoney(v, c, currencies.find(x => x.code === c)?.decimals ?? 2)).join(', ')} — converted at the day's rate.</p>}
+              </div>
+            )
+          })()}
         </Card>
       </div>
+      <DayByDay />
       <Card className="mt" title="Expenses" actions={<span className="row">
         <Segmented value={show} onChange={setShow} options={[{ value: 'all', label: 'All' }, { value: 'actual', label: 'Spent' }, { value: 'planned', label: 'Planned' }]} size="sm" />
         {integ.configured && trip.firefly_tag && canEdit && <button type="button" className="btn sm" onClick={sync} disabled={syncing}><Icon name="refresh" size={13} />{syncing ? 'Syncing…' : 'Sync Pocket Money'}</button>}
@@ -63,7 +85,7 @@ export function BudgetTab() {
               <td className="muted small">{e.date ? fmtDate(e.date, false) : '—'}</td>
               <td><b>{e.name}</b> {e.source === 'money' && <span className="src-pill money">money</span>}{e.source === 'firefly' && <span className="src-pill firefly">firefly</span>}{e.source === 'item' && <span className="src-pill">{e.link_kind}</span>}{e.kind === 'planned' && <span className="src-pill">planned</span>}{e.notes && <div className="small muted">{e.notes}</div>}</td>
               <td className="muted">{EXPENSE_ICONS[e.category] || ''} {cap(e.category)}</td>
-              <td className="num"><Money minor={e.total} code={e.currency} />{e.parts.length > 0 && <div className="small muted">uneven split</div>}</td>
+              <td className="num"><Money minor={e.total} code={e.currency} />{e.parts.length > 0 && <div className="small muted">uneven split</div>}{e.kind === 'planned' && canEdit && <div><button type="button" className="btn ghost sm paid-btn" onClick={ev => { ev.stopPropagation(); markPaid(e) }} title="It's paid — make it a bill (who paid, for whom)"><Icon name="check" size={12} />Paid</button></div>}</td>
               <td className="num">{e.currency !== b.currency ? <Money minor={e.total_home} code={b.currency} /> : ''}</td>
             </tr>)}</tbody>
           </table>
@@ -121,7 +143,7 @@ export function ExpenseModal({ trip, item: picked, defaults = {}, onClose, onSav
     <Modal title={item ? (bill ? 'Edit bill' : 'Edit cost') : bill ? 'Add a bill' : 'Add a cost'} onClose={onClose} size={bill && people.length > 1 ? 'lg' : undefined}>
       <form onSubmit={save} className="grid" style={{ gap: 14 }}>
         {synced && <div className="callout">This comes from {item?.source === 'money' ? 'Pocket Money' : 'Firefly III'} (#{item?.external_id}). Change the amount or date there; here you can re-categorise it and say who it was for.</div>}
-        {item?.source === 'item' && <div className="callout">This is the price of a {item.link_kind}. Edit the amount on the {item.link_kind} itself{bill ? '; who paid and for whom are set here.' : '.'}</div>}
+        {item?.source === 'item' && <div className="callout">This is the price of a {item.link_kind}. Edit the amount on the {item.link_kind} itself{bill ? '; who paid and for whom are set here.' : '.'}{!bill && (item.link_kind === 'lodging' || item.link_kind === 'transport') && <> <button type="button" className="btn sm" style={{ marginLeft: 6 }} onClick={async () => { try { await api.put(`${V1}/trips/${trip.id}/${item.link_kind}/${item.link_id}`, { paid: true }); toast('Paid — it is a bill now'); onSaved() } catch (e) { toast((e as Error).message, 'err') } }}><Icon name="check" size={13} />It's paid</button></>}</div>}
         <Field label="What"><input value={f.name || ''} onChange={e => set('name', e.target.value)} required autoFocus={!item} disabled={locked} /></Field>
         {!locked && <Field group label="Kind"><Segmented value={f.kind || 'planned'} onChange={v => set('kind', v as 'planned' | 'actual')} options={[{ value: 'planned', label: 'Planned (estimate)' }, { value: 'actual', label: 'Spent (a bill)' }]} size="sm" /></Field>}
         <div className="two-col tight">
@@ -168,5 +190,49 @@ export function ExpenseModal({ trip, item: picked, defaults = {}, onClose, onSav
       </form>
       {del && <Confirm title={bill ? 'Move this bill to the trash?' : 'Delete this cost?'} message={bill ? 'It stops counting; you can restore it from the trash on the Split tab.' : 'It is removed from the budget.'} onCancel={() => setDel(false)} onConfirm={remove} />}
     </Modal>
+  )
+}
+
+/**
+ * What each day costs: paid (solid, by category) and still planned (hatched).
+ * A stay is spread over its nights, a flight sits on the day it leaves,
+ * dinner on the evening it was eaten; costs dated before or after the trip
+ * get their own column.
+ */
+function DayByDay() {
+  const { ov, trip } = useTrip()
+  const days = ov.day_costs || []
+  const cats = new Map((ov.split?.categories || []).map(c => [c.key, c]))
+  const [hover, setHover] = useState<string | null>(null)
+  if (!days.some(d => Object.keys(d.actual).length || Object.keys(d.planned).length)) return null
+  const sum = (m: Record<string, number>) => Object.values(m).reduce((n, v) => n + v, 0)
+  const max = Math.max(1, ...days.map(d => sum(d.actual) + sum(d.planned)))
+  const used = Array.from(new Set(days.flatMap(d => [...Object.keys(d.actual), ...Object.keys(d.planned)]))).sort((a, b) => (cats.get(a)?.order ?? 99) - (cats.get(b)?.order ?? 99))
+  const color = (k: string) => cats.get(k)?.color || '#94a3b8'
+  const label = (d: string) => d === 'before' ? 'before' : d === 'after' ? 'after' : fmtDate(d, false)
+  const paidDays = days.filter(d => d.date !== 'before' && d.date !== 'after' && sum(d.actual) > 0)
+  const avg = paidDays.length ? Math.round(paidDays.reduce((n, d) => n + sum(d.actual), 0) / paidDays.length) : 0
+  const h = days.find(d => d.date === hover)
+  return (
+    <Card title="Day by day" className="mt" actions={avg > 0 && <span className="muted small">⌀ <Money minor={avg} code={trip.currency} /> on a day with spending</span>}>
+      <div className="dbd" onMouseLeave={() => setHover(null)}>
+        {days.map((d, i) => {
+          const a = sum(d.actual), p = sum(d.planned)
+          return (
+            <div key={d.date} className={`dbd-col ${hover === d.date ? 'hi' : ''} ${d.date === 'before' || d.date === 'after' ? 'edge' : ''}`} onMouseEnter={() => setHover(d.date)} tabIndex={0} onFocus={() => setHover(d.date)} aria-label={`${label(d.date)}: ${(a / 100).toFixed(2)} paid, ${(p / 100).toFixed(2)} planned`}>
+              <div className="dbd-bar">
+                {p > 0 && <div className="dbd-planned" style={{ height: `${p / max * 100}%` }} />}
+                {used.filter(k => d.actual[k]).reverse().map(k => <div key={k} className="dbd-seg" style={{ height: `${d.actual[k] / max * 100}%`, background: color(k) }} />)}
+              </div>
+              <div className="dbd-x">{d.date === 'before' ? '←' : d.date === 'after' ? '→' : (days.length > 20 && i % 2 ? '' : d.date.slice(8, 10))}</div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="dbd-info">
+        {h ? <><b>{label(h.date)}</b>{used.filter(k => h.actual[k] || h.planned[k]).map(k => <span key={k}>{cats.get(k)?.icon} {cats.get(k)?.name || k} <b><Money minor={(h.actual[k] || 0) + (h.planned[k] || 0)} code={trip.currency} /></b>{h.planned[k] ? <span className="muted"> planned</span> : null}</span>)}{!Object.keys(h.actual).length && !Object.keys(h.planned).length && <span className="muted">nothing</span>}</>
+          : <span className="legend" style={{ margin: 0 }}>{used.map(k => <span key={k} className="key"><i className="sw" style={{ background: color(k) }} />{cats.get(k)?.name || k}</span>)}<span className="key"><i className="sw planned" />planned</span></span>}
+      </div>
+    </Card>
   )
 }

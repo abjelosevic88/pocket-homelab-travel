@@ -69,9 +69,11 @@ func (s *Server) billDefaults(ctx context.Context, t *store.Trip, e *store.Expen
 type Balance struct {
 	MemberID int64  `json:"member_id"`
 	Name     string `json:"name"`
-	Paid     int64  `json:"paid"`    // what they paid for everyone
-	Spent    int64  `json:"spent"`   // their share of what was bought (reimbursements left out)
-	Balance  int64  `json:"balance"` // paid - owed: > 0 they get money back, < 0 they owe
+	Paid     int64  `json:"paid"`     // bills they paid (for anyone)
+	Spent    int64  `json:"spent"`    // their share of all bills
+	Sent     int64  `json:"sent"`     // money they gave others (reimbursements, advances)
+	Received int64  `json:"received"` // money others gave them
+	Balance  int64  `json:"balance"`  // paid + sent − spent − received: > 0 they get money back, < 0 they owe
 }
 
 // Transfer is one payment of the settlement.
@@ -92,6 +94,8 @@ func balances(people []store.TripPerson, bills []store.Expense) []Balance {
 	paid := make([]float64, len(people))
 	owed := make([]float64, len(people))
 	spent := make([]float64, len(people))
+	sent := make([]float64, len(people))
+	received := make([]float64, len(people))
 	for i, p := range people {
 		w := p.Weight
 		if w == 0 {
@@ -105,8 +109,13 @@ func balances(people []store.TripPerson, bills []store.Expense) []Balance {
 			continue
 		}
 		amount := float64(b.AmountHome)
+		reimb := b.Category == store.ReimbursementKey
 		if i, ok := idx[*b.PayerID]; ok {
-			paid[i] += amount
+			if reimb {
+				sent[i] += amount
+			} else {
+				paid[i] += amount
+			}
 		}
 		var total float64
 		for _, m := range b.Owers {
@@ -122,7 +131,9 @@ func balances(people []store.TripPerson, bills []store.Expense) []Balance {
 			}
 			share := amount / total * weight[m]
 			owed[i] += share
-			if b.Category != store.ReimbursementKey {
+			if reimb {
+				received[i] += share
+			} else {
 				spent[i] += share
 			}
 		}
@@ -130,7 +141,9 @@ func balances(people []store.TripPerson, bills []store.Expense) []Balance {
 	for i := range out {
 		out[i].Paid = int64(math.Round(paid[i]))
 		out[i].Spent = int64(math.Round(spent[i]))
-		out[i].Balance = int64(math.Round(paid[i] - owed[i]))
+		out[i].Sent = int64(math.Round(sent[i]))
+		out[i].Received = int64(math.Round(received[i]))
+		out[i].Balance = int64(math.Round(paid[i] + sent[i] - owed[i]))
 	}
 	return out
 }
@@ -178,12 +191,30 @@ func settle(bal []Balance) []Transfer {
 	return out
 }
 
+// settleThrough settles everyone with one person (Cospend's "centred on"):
+// whoever owes pays them, whoever is owed gets paid by them.
+func settleThrough(bal []Balance, center int64) []Transfer {
+	out := []Transfer{}
+	for _, b := range bal {
+		if b.MemberID == center || b.Balance == 0 {
+			continue
+		}
+		if b.Balance > 0 {
+			out = append(out, Transfer{From: center, To: b.MemberID, Amount: b.Balance})
+		} else {
+			out = append(out, Transfer{From: b.MemberID, To: center, Amount: -b.Balance})
+		}
+	}
+	return out
+}
+
 // SplitInfo is everything about the trip's shared expenses.
 type SplitInfo struct {
 	Currency     string                  `json:"currency"`
 	People       []store.TripPerson      `json:"people"`
 	Balances     []Balance               `json:"balances"`
 	Settlement   []Transfer              `json:"settlement"`
+	Center       int64                   `json:"center,omitempty"` // settlement through this person (?center=)
 	Categories   []store.TripCategory    `json:"categories"`
 	PaymentModes []store.TripPaymentMode `json:"payment_modes"`
 	Currencies   []store.TripCurrency    `json:"currencies"`
@@ -245,6 +276,13 @@ func (s *Server) handleSplit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, err, "split")
 		return
+	}
+	if c := idParamQuery(r, "center"); c > 0 {
+		for _, b := range info.Balances {
+			if b.MemberID == c {
+				info.Settlement, info.Center = settleThrough(info.Balances, c), c
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, info)
 }
@@ -599,4 +637,104 @@ func (s *Server) writeBillParts(ctx context.Context, t *store.Trip, main *store.
 		}
 	}
 	return nil
+}
+
+func idParamQuery(r *http.Request, k string) int64 {
+	var id int64
+	fmt.Sscan(r.URL.Query().Get(k), &id)
+	return id
+}
+
+// DayCost is what a day of the trip cost, by category (trip currency).
+type DayCost struct {
+	Date    string           `json:"date"` // YYYY-MM-DD, or "before" / "after" the trip
+	Actual  map[string]int64 `json:"actual"`
+	Planned map[string]int64 `json:"planned"`
+}
+
+// dayCosts spreads a trip's costs over its days: a stay over its nights,
+// everything else on its own date (a flight on the day it leaves, dinner on
+// the evening it was eaten). Costs dated outside the trip land in "before"
+// or "after"; reimbursements are not costs.
+func dayCosts(t *store.Trip, expenses []store.Expense, stays []store.Lodging) []DayCost {
+	byID := map[int64]store.Lodging{}
+	for _, l := range stays {
+		byID[l.ID] = l
+	}
+	days := map[string]*DayCost{}
+	add := func(date, cat string, amount int64, actual bool) {
+		key := date
+		switch {
+		case date == "" || (t.StartDate != "" && date < t.StartDate):
+			key = "before"
+			if date == "" {
+				key = t.StartDate
+				if key == "" {
+					key = "before"
+				}
+			}
+		case t.EndDate != "" && date > t.EndDate:
+			key = "after"
+		}
+		d := days[key]
+		if d == nil {
+			d = &DayCost{Date: key, Actual: map[string]int64{}, Planned: map[string]int64{}}
+			days[key] = d
+		}
+		if actual {
+			d.Actual[cat] += amount
+		} else {
+			d.Planned[cat] += amount
+		}
+	}
+	for _, e := range expenses {
+		if e.Deleted || e.Category == store.ReimbursementKey {
+			continue
+		}
+		actual := e.IsBill()
+		if e.LinkKind == "lodging" {
+			if l, ok := byID[e.LinkID]; ok {
+				in, out := dateOnly(l.CheckIn), dateOnly(l.CheckOut)
+				if nights := store.DaysBetween(in, out) - 1; nights >= 1 {
+					start, _ := store.ParseDate(in)
+					per, rest := e.AmountHome/int64(nights), e.AmountHome%int64(nights)
+					for n := 0; n < nights; n++ {
+						amt := per
+						if n == 0 {
+							amt += rest
+						}
+						add(start.AddDate(0, 0, n).Format("2006-01-02"), e.Category, amt, actual)
+					}
+					continue
+				}
+			}
+		}
+		add(e.Date, e.Category, e.AmountHome, actual)
+	}
+	// every day of the trip, even the free ones
+	if s, err := store.ParseDate(t.StartDate); err == nil {
+		if e, err := store.ParseDate(t.EndDate); err == nil && !e.Before(s) {
+			for d := s; !d.After(e); d = d.AddDate(0, 0, 1) {
+				k := d.Format("2006-01-02")
+				if days[k] == nil {
+					days[k] = &DayCost{Date: k, Actual: map[string]int64{}, Planned: map[string]int64{}}
+				}
+			}
+		}
+	}
+	out := make([]DayCost, 0, len(days))
+	for _, d := range days {
+		out = append(out, *d)
+	}
+	rank := func(k string) string {
+		switch k {
+		case "before":
+			return "0"
+		case "after":
+			return "9"
+		}
+		return "5" + k
+	}
+	sort.Slice(out, func(i, j int) bool { return rank(out[i].Date) < rank(out[j].Date) })
+	return out
 }
