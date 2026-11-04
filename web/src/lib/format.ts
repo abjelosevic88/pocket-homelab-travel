@@ -202,3 +202,17 @@ export function withClock(day?: string, time?: string): string {
 export function stayTime(v: string, which: 'in' | 'out', s?: { checkin_time?: string; checkout_time?: string } | null): string {
   return stayClock(v) || (which === 'in' ? s?.checkin_time || '15:00' : s?.checkout_time || '11:00')
 }
+
+/** A bill with the extra parts of its uneven split folded in. */
+export type GroupedBill<E> = E & { total: number; total_home: number; parts: E[] }
+
+/** Folds the extra parts of uneven splits into their bills (parts whose bill is not in the list stay on their own). */
+export function groupBills<E extends { id: number; parent_id: number | null; amount: number; amount_home: number }>(list: E[]): GroupedBill<E>[] {
+  const ids = new Set(list.map(e => e.id))
+  const parts = new Map<number, E[]>()
+  for (const e of list) if (e.parent_id != null && ids.has(e.parent_id)) parts.set(e.parent_id, [...(parts.get(e.parent_id) || []), e])
+  return list.filter(e => e.parent_id == null || !ids.has(e.parent_id)).map(e => {
+    const p = parts.get(e.id) || []
+    return { ...e, parts: p, total: e.amount + p.reduce((n, x) => n + x.amount, 0), total_home: e.amount_home + p.reduce((n, x) => n + x.amount_home, 0) }
+  })
+}

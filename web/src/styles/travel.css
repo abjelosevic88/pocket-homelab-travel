@@ -550,3 +550,8 @@ button.tl-year:hover, button.tl-year.open { color: var(--accent); }
 .cospend-link .qr { border-radius: 8px; background: #fff; padding: 4px; }
 .link-box { padding: 6px 8px; background: var(--surface-2); border-radius: 6px; overflow-x: auto; white-space: nowrap; }
 @media (max-width: 640px) { .cospend-link { grid-template-columns: 1fr; } .bal-row { grid-template-columns: 90px 1fr 80px; } }
+.ower { justify-content: space-between; }
+.owers.uneven { grid-template-columns: 1fr; }
+.extra-in { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
+.extra-in input { width: 90px; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

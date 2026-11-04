@@ -4,11 +4,11 @@ import { useApp } from '../../lib/app-context'
 import { PersonDot } from '../../components/WithPeople'
 import type { Expense, Trip } from '../../lib/types'
 import { EXPENSE_ICONS } from '../../lib/types'
-import { ago, cap, fmtDate, fmtMoney, todayISO } from '../../lib/format'
+import { ago, cap, fmtDate, fmtMoney, todayISO, groupBills } from '../../lib/format'
 import { Card, Confirm, Empty, Field, Modal, Segmented, useToast } from '../../components/ui'
 import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
-import { AmountInput, Money } from '../../components/Money'
+import { AmountInput, Money, MoneyInput } from '../../components/Money'
 import { useTrip } from './ctx'
 
 export function BudgetTab() {
@@ -23,7 +23,7 @@ export function BudgetTab() {
     setSyncing(true)
     try { const r = await api.post<{ synced: number }>(`${V1}/trips/${trip.id}/money/sync`); toast(`Synced ${r.synced} transactions from Pocket Money`); await reload() } catch (e) { toast((e as Error).message, 'err') } finally { setSyncing(false) }
   }
-  const list = ov.expenses.filter(e => show === 'all' || e.kind === show)
+  const list = groupBills(ov.expenses.filter(e => show === 'all' || e.kind === show))
   const max = Math.max(1, ...b.by_category.map(c => Math.max(c.planned, c.actual)))
   const maxDay = Math.max(1, ...b.by_day.map(d => d.actual))
   const today = todayISO()
@@ -63,8 +63,8 @@ export function BudgetTab() {
               <td className="muted small">{e.date ? fmtDate(e.date, false) : '—'}</td>
               <td><b>{e.name}</b> {e.source === 'money' && <span className="src-pill money">money</span>}{e.source === 'firefly' && <span className="src-pill firefly">firefly</span>}{e.source === 'item' && <span className="src-pill">{e.link_kind}</span>}{e.kind === 'planned' && <span className="src-pill">planned</span>}{e.notes && <div className="small muted">{e.notes}</div>}</td>
               <td className="muted">{EXPENSE_ICONS[e.category] || ''} {cap(e.category)}</td>
-              <td className="num"><Money minor={e.amount} code={e.currency} /></td>
-              <td className="num">{e.currency !== b.currency ? <Money minor={e.amount_home} code={b.currency} /> : ''}</td>
+              <td className="num"><Money minor={e.total} code={e.currency} />{e.parts.length > 0 && <div className="small muted">uneven split</div>}</td>
+              <td className="num">{e.currency !== b.currency ? <Money minor={e.total_home} code={b.currency} /> : ''}</td>
             </tr>)}</tbody>
           </table>
         )}
@@ -73,13 +73,18 @@ export function BudgetTab() {
   )
 }
 
-export function ExpenseModal({ trip, item, defaults = {}, onClose, onSaved }: { trip: Trip; item: Expense | null; defaults?: Record<string, unknown>; onClose: () => void; onSaved: () => void }) {
+export function ExpenseModal({ trip, item: picked, defaults = {}, onClose, onSaved }: { trip: Trip; item: Expense | null; defaults?: Record<string, unknown>; onClose: () => void; onSaved: () => void }) {
   const { meta } = useApp()
   const { ov } = useTrip()
   const { toast } = useToast()
   const people = ov.people || []
   const split = ov.split
-  const [f, setF] = useState<Partial<Expense>>(item ? { ...item } : { name: '', category: 'other', amount: 0, currency: trip.currency, date: todayISO(), kind: 'planned', notes: '', payer_id: null, owers: [], payment_mode_id: 0, bill_time: '', repeat: 'n', repeat_until: '', repeat_freq: 1, ...defaults })
+  // an extra part of an uneven split opens its whole bill
+  const item = picked?.parent_id ? ov.expenses.find(x => x.id === picked.parent_id) || picked : picked
+  const parts = item ? ov.expenses.filter(x => x.parent_id === item.id) : []
+  const [extras, setExtras] = useState<Record<number, number>>(() => Object.fromEntries(parts.map(p => [p.owers[0], p.amount])))
+  const [uneven, setUneven] = useState(parts.length > 0)
+  const [f, setF] = useState<Partial<Expense>>(item ? { ...item, amount: item.amount + parts.reduce((n, p) => n + p.amount, 0) } : { name: '', category: 'other', amount: 0, currency: trip.currency, date: todayISO(), kind: 'planned', notes: '', payer_id: null, owers: [], payment_mode_id: 0, bill_time: '', repeat: 'n', repeat_until: '', repeat_freq: 1, ...defaults })
   const [busy, setBusy] = useState(false)
   const [del, setDel] = useState(false)
   const set = <K extends keyof Expense>(k: K, v: Expense[K]) => setF(x => ({ ...x, [k]: v }))
@@ -93,10 +98,16 @@ export function ExpenseModal({ trip, item, defaults = {}, onClose, onSaved }: { 
   const owers = f.owers && f.owers.length ? f.owers : people.filter(p => p.active).map(p => p.id)
   const toggleOwer = (id: number) => set('owers', owers.includes(id) ? owers.filter(x => x !== id) : [...owers, id])
   const totalWeight = owers.reduce((n, id) => n + (people.find(p => p.id === id)?.weight || 1), 0)
+  // uneven: each extra is owed on top; the rest is shared equally (by weight) by everyone ticked
+  const extraSum = uneven ? Object.values(extras).reduce((n, v) => n + (v || 0), 0) : 0
+  const rest = (f.amount || 0) - extraSum
+  const shareOf = (id: number) => (owers.includes(id) && totalWeight > 0 ? Math.round(rest * (people.find(p => p.id === id)?.weight || 1) / totalWeight) : 0) + (uneven ? extras[id] || 0 : 0)
+  const canUneven = bill && !locked && people.length > 1
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true)
     try {
-      const billPart = bill ? { payer_id: payer, owers, payment_mode_id: f.payment_mode_id || 0, bill_time: f.bill_time || '', repeat: f.repeat || 'n', repeat_until: f.repeat_until || '', repeat_freq: f.repeat_freq || 1, repeat_all_active: !!f.repeat_all_active } : {}
+      if (uneven && rest < 0) { toast('The extra parts add up to more than the bill', 'err'); setBusy(false); return }
+      const billPart = bill ? { payer_id: payer, owers, payment_mode_id: f.payment_mode_id || 0, bill_time: f.bill_time || '', ...(locked ? {} : { extras: uneven ? Object.entries(extras).filter(([, v]) => v > 0).map(([id, v]) => ({ member_id: Number(id), amount: v })) : [] }) } : {}
       const body: Record<string, unknown> = locked ? { category: f.category, notes: f.notes, ...billPart } : { ...f, ...billPart }
       if (item) await api.put(`${base}/${item.id}`, body); else await api.post(base, body)
       toast('Saved'); onSaved()
@@ -126,18 +137,22 @@ export function ExpenseModal({ trip, item, defaults = {}, onClose, onSaved }: { 
             <Field label="Paid with"><Select value={f.payment_mode_id ? String(f.payment_mode_id) : ''} onChange={v => set('payment_mode_id', Number(v) || 0)} options={(split?.payment_modes || []).map(m => ({ value: String(m.id), label: `${m.icon} ${m.name}` }))} placeholder="—" clearLabel="Not said" /></Field>
           </div>
           {people.length > 1 && (
-            <Field group label={<span className="row">For whom <span className="spacer" /><button type="button" className="btn ghost sm" onClick={() => set('owers', people.map(p => p.id))}>Everyone</button><button type="button" className="btn ghost sm" onClick={() => payer && set('owers', [payer])}>Just the payer</button></span>}>
-              <div className="owers">
+            <Field group label={<span className="row">For whom <span className="spacer" />{canUneven && <Segmented value={uneven ? 'uneven' : 'even'} onChange={v => setUneven(v === 'uneven')} options={[{ value: 'even', label: 'Equally' }, { value: 'uneven', label: 'Uneven' }]} size="sm" label="How to split" />}<button type="button" className="btn ghost sm" onClick={() => set('owers', people.map(p => p.id))}>Everyone</button><button type="button" className="btn ghost sm" onClick={() => payer && set('owers', [payer])}>Just the payer</button></span>}>
+              {uneven && <p className="small muted" style={{ margin: '0 0 6px' }}>Put what someone had on top (their wine, a dessert) as their extra. What is left — <b><Money minor={Math.max(0, rest)} code={f.currency || trip.currency} /></b> — is shared equally by everyone ticked. Give everyone an extra and untick all for exact amounts.{rest < 0 && <span className="bad"> The extras are more than the bill.</span>}</p>}
+              <div className={`owers ${uneven ? 'uneven' : ''}`}>
                 {people.map(p => {
                   const on = owers.includes(p.id)
-                  const share = on && totalWeight > 0 && f.amount ? Math.round((f.amount || 0) * (p.weight || 1) / totalWeight) : 0
+                  const share = shareOf(p.id)
                   return (
-                    <label key={p.id} className={`ower ${on ? 'on' : ''}`}>
-                      <input type="checkbox" checked={on} onChange={() => toggleOwer(p.id)} />
-                      <PersonDot name={p.name} color={p.color} size={20} />
-                      <span className="grow">{p.name}{p.weight !== 1 && <span className="muted small"> ×{p.weight}</span>}</span>
-                      {on && share > 0 && <span className="small muted"><Money minor={share} code={f.currency || trip.currency} /></span>}
-                    </label>
+                    <div key={p.id} className={`ower ${on || (uneven && extras[p.id]) ? 'on' : ''}`}>
+                      <label className="row grow" style={{ gap: 8, minWidth: 0, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={on} onChange={() => toggleOwer(p.id)} title={uneven ? 'Shares what is left' : undefined} />
+                        <PersonDot name={p.name} color={p.color} size={20} />
+                        <span className="grow ellipsis">{p.name}{p.weight !== 1 && <span className="muted small"> ×{p.weight}</span>}</span>
+                      </label>
+                      {uneven && <span className="extra-in" title={`${p.name}'s extra, on top of an equal share`}>+<MoneyInput value={extras[p.id] || null} code={f.currency || trip.currency} onChange={m => setExtras(x => ({ ...x, [p.id]: m || 0 }))} ariaLabel={`${p.name}'s extra`} /></span>}
+                      {share > 0 && <span className="small muted nowrap"><Money minor={share} code={f.currency || trip.currency} /></span>}
+                    </div>
                   )
                 })}
               </div>
@@ -145,12 +160,6 @@ export function ExpenseModal({ trip, item, defaults = {}, onClose, onSaved }: { 
           )}
         </>}
         <Field label="Category"><Select value={f.category || 'other'} onChange={v => set('category', v)} options={catOptions} /></Field>
-        {bill && !locked && (
-          <div className="two-col tight">
-            <Field label="Repeats"><Select value={f.repeat || 'n'} onChange={v => set('repeat', v as Expense['repeat'])} options={[{ value: 'n', label: 'No' }, { value: 'd', label: 'Daily' }, { value: 'w', label: 'Weekly' }, { value: 'b', label: 'Every two weeks' }, { value: 's', label: 'Twice a month' }, { value: 'm', label: 'Monthly' }, { value: 'y', label: 'Yearly' }]} /></Field>
-            {f.repeat && f.repeat !== 'n' && <Field label="Until" help="Empty: until you stop it."><input type="date" value={f.repeat_until || ''} onChange={e => set('repeat_until', e.target.value)} /></Field>}
-          </div>
-        )}
         <Field label="Notes"><input value={f.notes || ''} onChange={e => set('notes', e.target.value)} /></Field>
         <div className="form-actions">
           {item && !locked && <button type="button" className="btn ghost danger-text" onClick={() => setDel(true)}>Delete</button>}

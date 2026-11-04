@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { api, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
 import type { Expense, TripCategory, TripPaymentMode } from '../../lib/types'
-import { fmtDate, plural } from '../../lib/format'
+import { fmtDate, groupBills, plural } from '../../lib/format'
 import { Card, Confirm, Empty, Modal, useAsync, useToast } from '../../components/ui'
 import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
@@ -32,7 +32,7 @@ export function Split() {
   const person = (id: number | null) => people.find(p => p.id === id)
   const cats = new Map(split.categories.map(c => [c.key, c]))
   const modes = new Map(split.payment_modes.map(m => [m.id, m]))
-  const bills = ov.expenses.filter(e => e.kind === 'actual' && (!who || e.payer_id === Number(who) || e.owers.includes(Number(who))) && (!cat || e.category === cat))
+  const bills = groupBills(ov.expenses.filter(e => e.kind === 'actual')).filter(e => (!who || e.payer_id === Number(who) || e.owers.includes(Number(who)) || e.parts.some(p => p.owers.includes(Number(who)))) && (!cat || e.category === cat))
   const me = people.find(p => p.user_id === user?.id)
   const myBalance = me ? split.balances.find(b => b.member_id === me.id) : undefined
   const maxAbs = Math.max(1, ...split.balances.map(b => Math.abs(b.balance)))
@@ -98,10 +98,10 @@ export function Split() {
               return (
                 <tr key={b.id} className="clickable" onClick={() => edit('expense', b)}>
                   <td className="muted nowrap">{fmtDate(b.date, false)}{b.bill_time && <span className="small"> {b.bill_time}</span>}</td>
-                  <td><span title={c?.name}>{c?.icon || '📌'}</span> <b>{b.name}</b>{b.repeat !== 'n' && <span className="badge" title="Repeats">↻</span>}{b.source !== 'manual' && <span className="badge">{b.source === 'item' ? b.link_kind : b.source === 'money' ? 'Pocket Money' : b.source}</span>}{m && <span className="muted small"> · {m.icon} {m.name}</span>}</td>
+                  <td><span title={c?.name}>{c?.icon || '📌'}</span> <b>{b.name}</b>{b.parts.length > 0 && <span className="badge" title={b.parts.map(p => `${name(p.owers[0])} +${(p.amount / 100).toFixed(2)}`).join(', ')}>uneven</span>}{b.source !== 'manual' && <span className="badge">{b.source === 'item' ? b.link_kind : b.source === 'money' ? 'Pocket Money' : b.source}</span>}{m && <span className="muted small"> · {m.icon} {m.name}</span>}</td>
                   <td className="nowrap"><PersonDot name={name(b.payer_id)} color={person(b.payer_id)?.color} size={18} /> {name(b.payer_id)}</td>
-                  <td><span className="ower-dots" title={b.owers.map(name).join(', ')}>{b.owers.length === people.length && people.length > 1 ? <span className="muted small">everyone</span> : b.owers.map(id => <PersonDot key={id} name={name(id)} color={person(id)?.color} size={18} />)}</span></td>
-                  <td className="num nowrap"><Money minor={b.amount} code={b.currency} />{b.currency !== cur && <div className="muted small"><Money minor={b.amount_home} code={cur} /></div>}</td>
+                  <td><span className="ower-dots" title={b.owers.map(name).join(', ')}>{b.owers.length === people.length && people.length > 1 ? <span className="muted small">everyone</span> : b.owers.map(id => <PersonDot key={id} name={name(id)} color={person(id)?.color} size={18} />)}{b.parts.length > 0 && <span className="muted small"> + {b.parts.map(p => name(p.owers[0]).split(' ')[0]).join(', ')}</span>}</span></td>
+                  <td className="num nowrap"><Money minor={b.total} code={b.currency} />{b.currency !== cur && <div className="muted small"><Money minor={b.total_home} code={cur} /></div>}</td>
                 </tr>
               )
             })}</tbody>
@@ -134,10 +134,10 @@ function Trash() {
   const purge = async () => { try { await api.del(`${V1}/trips/${trip.id}/split/trash`); toast('Trash emptied'); await reload() } catch (err) { toast((err as Error).message, 'err') } finally { setEmpty(false) } }
   return (
     <Card title={`Trash · ${data?.length ?? ov.split?.trash ?? 0}`} className="mb" actions={canEdit && <button type="button" className="btn ghost sm danger-text" onClick={() => setEmpty(true)}>Empty trash</button>}>
-      <div className="day-items">{(data || []).map(e => (
+      <div className="day-items">{groupBills(data || []).map(e => (
         <div key={e.id} className="item">
           <span className="txt"><span className="title">{e.name}</span><span className="sub">{fmtDate(e.date, false)}</span></span>
-          <Money minor={e.amount} code={e.currency} />
+          <Money minor={e.total} code={e.currency} />
           {canEdit && <button type="button" className="btn ghost sm" onClick={() => restore(e)}>Restore</button>}
         </div>
       ))}</div>

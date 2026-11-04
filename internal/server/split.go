@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"database/sql"
+
 	"fmt"
+	"github.com/abjelosevic88/pocket-homelab-travel/internal/currency"
 	"math"
 	"net/http"
 	"sort"
@@ -508,4 +510,93 @@ func (s *Server) repeatBills(ctx context.Context, today string) int {
 		}
 	}
 	return made
+}
+
+// splitExtras reads an uneven split: amount is the whole bill, each extra is
+// owed on top by one person, and the main bill keeps the rest, shared equally
+// (by weight). Returns nil when the request does not touch extras; an empty
+// list removes them.
+func (s *Server) splitExtras(ctx context.Context, t *store.Trip, e *store.Expense, in expenseInput, keys map[string]bool) ([]billExtra, string) {
+	if !keys["extras"] {
+		return nil, ""
+	}
+	out := []billExtra{}
+	if !e.IsBill() {
+		return out, ""
+	}
+	if e.Source == "item" || store.IsSynced(e.Source) {
+		for _, x := range in.Extras {
+			if x.Amount != 0 {
+				return nil, "the amount of this bill comes from elsewhere — it can only be split evenly"
+			}
+		}
+		return out, ""
+	}
+	people, err := s.store.ListTripPeople(ctx, t.ID)
+	if err != nil {
+		return nil, "could not load the trip's people"
+	}
+	on := map[int64]bool{}
+	for _, p := range people {
+		on[p.ID] = true
+	}
+	var sum int64
+	seen := map[int64]bool{}
+	for _, x := range in.Extras {
+		if x.Amount == 0 {
+			continue
+		}
+		if x.Amount < 0 {
+			return nil, "an extra part cannot be negative"
+		}
+		if !on[x.MemberID] {
+			return nil, "an extra part is for someone not on this trip"
+		}
+		if seen[x.MemberID] {
+			return nil, "one extra part per person"
+		}
+		seen[x.MemberID] = true
+		sum += x.Amount
+		out = append(out, x)
+	}
+	if sum > e.Amount {
+		return nil, "the extra parts add up to more than the bill"
+	}
+	// the main bill keeps what is shared
+	e.Amount -= sum
+	e.AmountHome = currency.Convert(e.Amount, e.Currency, t.Currency, e.FXRate)
+	return out, ""
+}
+
+// writeBillParts replaces the extra parts of a bill: one small bill per
+// person, paid by the same payer, for that person alone.
+func (s *Server) writeBillParts(ctx context.Context, t *store.Trip, main *store.Expense, extras []billExtra) error {
+	old, err := s.store.BillParts(ctx, t.ID, main.ID)
+	if err != nil {
+		return err
+	}
+	for _, p := range old {
+		if err := s.store.DeleteExpense(ctx, t.ID, p.ID); err != nil {
+			return err
+		}
+	}
+	if !main.IsBill() {
+		return nil
+	}
+	names := map[int64]string{}
+	if people, err := s.store.ListTripPeople(ctx, t.ID); err == nil {
+		for _, p := range people {
+			names[p.ID] = p.Name
+		}
+	}
+	for _, x := range extras {
+		member := x.MemberID
+		part := &store.Expense{TripID: t.ID, Name: main.Name + " · " + names[member], Category: main.Category, Amount: x.Amount, Currency: main.Currency,
+			FXRate: main.FXRate, AmountHome: currency.Convert(x.Amount, main.Currency, t.Currency, main.FXRate), Date: main.Date, BillTime: main.BillTime,
+			Kind: "actual", Source: "manual", PayerID: main.PayerID, Owers: []int64{member}, PaymentModeID: main.PaymentModeID, ParentID: &main.ID, Deleted: main.Deleted}
+		if err := s.store.CreateExpense(ctx, part); err != nil {
+			return err
+		}
+	}
+	return nil
 }

@@ -40,6 +40,8 @@ export interface Expense {
   // a spent cost is a bill: who paid, for whom (trip people ids), how; trash; Cospend sync
   payer_id: number | null; owers: number[]; payment_mode_id: number; bill_time: string; deleted: boolean; updated_ts: number
   repeat: 'n' | 'd' | 'w' | 'b' | 's' | 'm' | 'y'; repeat_all_active: boolean; repeat_until: string; repeat_freq: number
+  /** this bill is an extra part of another (uneven split) */
+  parent_id: number | null
 }
 export interface TripCategory { id: number; trip_id: number; key: string; name: string; icon: string; color: string; order: number }
 export interface TripPaymentMode { id: number; trip_id: number; name: string; icon: string; color: string; order: number; old_id: string }

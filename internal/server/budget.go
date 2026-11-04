@@ -134,6 +134,14 @@ type expenseInput struct {
 	RepeatAllActive *bool   `json:"repeat_all_active"`
 	RepeatUntil     *string `json:"repeat_until"`
 	RepeatFreq      *int    `json:"repeat_freq"`
+	// Extras: what someone owes on top of an equal share (uneven split), in
+	// the bill's currency; amount is then the whole bill
+	Extras []billExtra `json:"extras"`
+}
+
+type billExtra struct {
+	MemberID int64 `json:"member_id"`
+	Amount   int64 `json:"amount"`
 }
 
 // applyBill sets who paid, for whom, how and whether it repeats.
@@ -253,9 +261,20 @@ func (s *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, msg)
 		return
 	}
+	extras, msg := s.splitExtras(r.Context(), t, e, in, keys)
+	if msg != "" {
+		writeErr(w, http.StatusBadRequest, msg)
+		return
+	}
 	if err := s.store.CreateExpense(r.Context(), e); err != nil {
 		s.fail(w, err, "create expense")
 		return
+	}
+	if extras != nil {
+		if err := s.writeBillParts(r.Context(), t, e, extras); err != nil {
+			s.fail(w, err, "split")
+			return
+		}
 	}
 	s.store.LogActivity(r.Context(), t.ID, userFrom(r.Context()).ID, "added cost", e.Name)
 	writeJSON(w, http.StatusCreated, e)
@@ -311,9 +330,20 @@ func (s *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, msg)
 		return
 	}
+	extras, msg := s.splitExtras(r.Context(), t, e, in, keys)
+	if msg != "" {
+		writeErr(w, http.StatusBadRequest, msg)
+		return
+	}
 	if err := s.store.UpdateExpense(r.Context(), e); err != nil {
 		s.fail(w, err, "update expense")
 		return
+	}
+	if extras != nil || !e.IsBill() {
+		if err := s.writeBillParts(r.Context(), t, e, extras); err != nil {
+			s.fail(w, err, "split")
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, e)
 }

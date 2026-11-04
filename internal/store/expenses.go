@@ -9,18 +9,21 @@ import (
 	core "github.com/abjelosevic88/pocket-homelab-core/sdk"
 )
 
-const expenseCols = `id, trip_id, name, category, amount, currency, amount_home, fx_rate, date, kind, source, external_id, link_kind, link_id, notes, created_at, updated_at, payer_id, payment_mode_id, bill_time, deleted, updated_ts, repeat, repeat_all_active, repeat_until, repeat_freq`
+const expenseCols = `id, trip_id, name, category, amount, currency, amount_home, fx_rate, date, kind, source, external_id, link_kind, link_id, notes, created_at, updated_at, payer_id, payment_mode_id, bill_time, deleted, updated_ts, repeat, repeat_all_active, repeat_until, repeat_freq, parent_id`
 
 func scanExpense(row interface{ Scan(...any) error }) (*Expense, error) {
 	var e Expense
-	var payer sql.NullInt64
+	var payer, parent sql.NullInt64
 	var del, all int
 	if err := row.Scan(&e.ID, &e.TripID, &e.Name, &e.Category, &e.Amount, &e.Currency, &e.AmountHome, &e.FXRate, &e.Date, &e.Kind, &e.Source, &e.ExternalID, &e.LinkKind, &e.LinkID, &e.Notes, &e.CreatedAt, &e.UpdatedAt,
-		&payer, &e.PaymentModeID, &e.BillTime, &del, &e.UpdatedTS, &e.Repeat, &all, &e.RepeatUntil, &e.RepeatFreq); err != nil {
+		&payer, &e.PaymentModeID, &e.BillTime, &del, &e.UpdatedTS, &e.Repeat, &all, &e.RepeatUntil, &e.RepeatFreq, &parent); err != nil {
 		return nil, notFound(err)
 	}
 	if payer.Valid {
 		e.PayerID = &payer.Int64
+	}
+	if parent.Valid {
+		e.ParentID = &parent.Int64
 	}
 	e.Deleted, e.RepeatAllActive = del == 1, all == 1
 	e.Owers = []int64{}
@@ -184,10 +187,10 @@ func (s *Store) CreateExpense(ctx context.Context, e *Expense, after ...core.Com
 	defer tx.Rollback()
 	defaults(e)
 	res, err := tx.ExecContext(ctx, `INSERT INTO expenses (trip_id, name, category, amount, currency, amount_home, fx_rate, date, kind, source, external_id, link_kind, link_id, notes,
-		payer_id, payment_mode_id, bill_time, deleted, updated_ts, repeat, repeat_all_active, repeat_until, repeat_freq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		payer_id, payment_mode_id, bill_time, deleted, updated_ts, repeat, repeat_all_active, repeat_until, repeat_freq, parent_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.TripID, e.Name, e.Category, e.Amount, e.Currency, e.AmountHome, e.FXRate, e.Date, e.Kind, e.Source, e.ExternalID, e.LinkKind, e.LinkID, e.Notes,
-		e.PayerID, e.PaymentModeID, e.BillTime, boolInt(e.Deleted), e.UpdatedTS, e.Repeat, boolInt(e.RepeatAllActive), e.RepeatUntil, e.RepeatFreq)
+		e.PayerID, e.PaymentModeID, e.BillTime, boolInt(e.Deleted), e.UpdatedTS, e.Repeat, boolInt(e.RepeatAllActive), e.RepeatUntil, e.RepeatFreq, e.ParentID)
 	if err != nil {
 		return conflict(err)
 	}
@@ -225,7 +228,8 @@ func (s *Store) UpdateExpense(ctx context.Context, e *Expense) error {
 
 // TrashExpense moves a bill to the trash (or back out of it).
 func (s *Store) TrashExpense(ctx context.Context, tripID, id int64, deleted bool) error {
-	res, err := s.DB.ExecContext(ctx, `UPDATE expenses SET deleted = ?, updated_ts = ?, updated_at = ? WHERE id = ? AND trip_id = ?`, boolInt(deleted), time.Now().Unix(), Now(), id, tripID)
+	// the extra parts of an uneven split go (and come back) with their bill
+	res, err := s.DB.ExecContext(ctx, `UPDATE expenses SET deleted = ?, updated_ts = ?, updated_at = ? WHERE (id = ? OR parent_id = ?) AND trip_id = ?`, boolInt(deleted), time.Now().Unix(), Now(), id, id, tripID)
 	if err != nil {
 		return err
 	}
@@ -273,6 +277,21 @@ func (s *Store) RepeatingBills(ctx context.Context) ([]Expense, error) {
 		}
 	}
 	return out, rows.Err()
+}
+
+// BillParts returns the extra parts of an unevenly split bill.
+func (s *Store) BillParts(ctx context.Context, tripID, parentID int64) ([]Expense, error) {
+	all, err := s.ListExpensesWith(ctx, tripID, ExpenseFilter{Deleted: new(bool)})
+	if err != nil {
+		return nil, err
+	}
+	var out []Expense
+	for _, e := range all {
+		if e.ParentID != nil && *e.ParentID == parentID {
+			out = append(out, e)
+		}
+	}
+	return out, nil
 }
 
 // MoveMemberBills moves every bill of one trip member to another (merging people).

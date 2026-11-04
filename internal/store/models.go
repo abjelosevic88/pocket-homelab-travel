@@ -231,6 +231,8 @@ type Expense struct {
 	RepeatAllActive bool    `json:"repeat_all_active"`
 	RepeatUntil     string  `json:"repeat_until"`
 	RepeatFreq      int     `json:"repeat_freq"`
+	// ParentID: this bill is the extra part of another (uneven split)
+	ParentID *int64 `json:"parent_id"`
 }
 
 // IsBill reports whether an expense is a bill (spent, not just planned).

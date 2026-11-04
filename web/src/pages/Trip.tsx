@@ -91,7 +91,7 @@ export default function TripPage() {
     if (!openParam || !ov || String(ov.trip.id) !== id) return
     const next = new URLSearchParams(params); next.delete('open'); setParams(next, { replace: true })
     const [kind, raw] = openParam.split(':'), oid = Number(raw)
-    const item = kind === 'place' ? ov.places.find(p => p.id === oid) : kind === 'lodging' ? ov.lodging.find(l => l.id === oid) : kind === 'transport' ? ov.transport.find(x => x.id === oid) : undefined
+    const item = kind === 'place' ? ov.places.find(p => p.id === oid) : kind === 'lodging' ? ov.lodging.find(l => l.id === oid) : kind === 'transport' ? ov.transport.find(x => x.id === oid) : kind === 'expense' ? ov.expenses.find(x => x.id === oid) : undefined
     if (item) setEditing({ kind: kind as EditKind, item })
   }, [openParam, ov, id]) // eslint-disable-line react-hooks/exhaustive-deps
 

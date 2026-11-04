@@ -149,3 +149,61 @@ func TestRepeatBills(t *testing.T) {
 		t.Fatalf("bills = %s", b)
 	}
 }
+
+func TestUnevenSplit(t *testing.T) {
+	h := newIsoHarness(t)
+	tr := h.create(h.ownerTok, "/api/v1/trips", map[string]any{"name": "Gozo", "start_date": "2025-08-26", "end_date": "2025-09-02", "currency": "EUR"})
+	base := fmt.Sprintf("/api/v1/trips/%d", tr)
+	ana := h.create(h.ownerTok, base+"/people", map[string]any{"name": "Ana"})
+	marko := h.create(h.ownerTok, base+"/people", map[string]any{"name": "Marko"})
+	var people []store.TripPerson
+	_, b := h.do(h.ownerTok, http.MethodGet, base+"/people", nil)
+	_ = json.Unmarshal(b, &people)
+	me := people[0].ID
+	// dinner 100 paid by me: Ana had wine for 20, Marko a dessert for 5, the rest (75) shared by all three
+	id := h.create(h.ownerTok, base+"/expenses", map[string]any{"name": "Dinner", "amount": 10000, "kind": "actual", "date": "2025-08-27", "owers": []int64{me, ana, marko},
+		"extras": []map[string]any{{"member_id": ana, "amount": 2000}, {"member_id": marko, "amount": 500}}})
+	split := func() SplitInfo {
+		_, b := h.do(h.ownerTok, http.MethodGet, base+"/split", nil)
+		var s SplitInfo
+		_ = json.Unmarshal(b, &s)
+		return s
+	}
+	s := split()
+	owes := map[int64]int64{}
+	for _, tr := range s.Settlement {
+		owes[tr.From] = tr.Amount
+	}
+	if s.Total != 10000 || owes[ana] != 2000+2500 || owes[marko] != 500+2500 {
+		t.Fatalf("uneven = %+v", s)
+	}
+	// edit: no more extras → even again; parts are gone
+	h.do(h.ownerTok, http.MethodPut, fmt.Sprintf("%s/expenses/%d", base, id), map[string]any{"amount": 9000, "extras": []any{}})
+	s = split()
+	if s.Total != 9000 || s.Bills != 1 {
+		t.Fatalf("even again = %+v", s)
+	}
+	// fully uneven: everyone's exact part, nothing left to share
+	h.do(h.ownerTok, http.MethodPut, fmt.Sprintf("%s/expenses/%d", base, id), map[string]any{"amount": 9000, "extras": []map[string]any{{"member_id": me, "amount": 1000}, {"member_id": ana, "amount": 3000}, {"member_id": marko, "amount": 5000}}})
+	s = split()
+	owes = map[int64]int64{}
+	for _, tr := range s.Settlement {
+		owes[tr.From] = tr.Amount
+	}
+	if s.Total != 9000 || owes[ana] != 3000 || owes[marko] != 5000 {
+		t.Fatalf("exact parts = %+v", s)
+	}
+	// too much
+	if code, _ := h.do(h.ownerTok, http.MethodPut, fmt.Sprintf("%s/expenses/%d", base, id), map[string]any{"amount": 1000, "extras": []map[string]any{{"member_id": ana, "amount": 2000}}}); code != http.StatusBadRequest {
+		t.Fatalf("extras over the total accepted: %d", code)
+	}
+	// the trash takes the parts along, and gives them back
+	h.do(h.ownerTok, http.MethodDelete, fmt.Sprintf("%s/expenses/%d", base, id), nil)
+	if s := split(); s.Total != 0 || s.Trash != 4 {
+		t.Fatalf("trashed = %+v", s)
+	}
+	h.do(h.ownerTok, http.MethodPost, fmt.Sprintf("%s/expenses/%d/restore", base, id), nil)
+	if s := split(); s.Total != 9000 {
+		t.Fatalf("restored = %+v", s)
+	}
+}
