@@ -374,3 +374,8 @@ html, body { overflow-x: hidden; }
   input::-webkit-date-and-time-value { text-align: left; }
 }
 .hero .hero-body > .row { flex-wrap: wrap; }
+
+/* search: places and stays that made a trip match */
+.search-hits { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.search-hit { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft, var(--surface-2)); color: var(--text); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.search-hit:hover { background: var(--surface-2); text-decoration: underline; }

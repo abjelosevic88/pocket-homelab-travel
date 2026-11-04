@@ -83,6 +83,16 @@ export default function TripPage() {
     setEditing({ kind: addKind, item: null, defaults })
   }, [addKind, ov, id]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ?open=place:12 | lodging:3 | transport:4 (search results, links) opens that item's form
+  const openParam = params.get('open')
+  useEffect(() => {
+    if (!openParam || !ov || String(ov.trip.id) !== id) return
+    const next = new URLSearchParams(params); next.delete('open'); setParams(next, { replace: true })
+    const [kind, raw] = openParam.split(':'), oid = Number(raw)
+    const item = kind === 'place' ? ov.places.find(p => p.id === oid) : kind === 'lodging' ? ov.lodging.find(l => l.id === oid) : kind === 'transport' ? ov.transport.find(x => x.id === oid) : undefined
+    if (item) setEditing({ kind: kind as EditKind, item })
+  }, [openParam, ov, id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (err) return <div className="callout danger"><Icon name="alert" size={15} /><span>{err} — <Link to="/trips">back to trips</Link></span></div>
   if (!state || !ov) return <Loading />
   const t = ov.trip

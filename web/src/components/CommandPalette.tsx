@@ -5,6 +5,9 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../lib/app-context'
 import { Icon } from './icons'
 import { TripThumb, tripWhen } from './Sidebar'
+import { describeDates, fold, hitLink, useSearch } from '../lib/search'
+import { LODGING_ICONS, PLACE_ICONS } from '../lib/types'
+import { fmtDate, fmtRange } from '../lib/format'
 
 export interface PaletteCommand { id: string; label: string; icon: string; hint?: string; keywords?: string; run: () => void }
 
@@ -17,28 +20,37 @@ export function CommandPalette({ onClose, commands }: { onClose: () => void; com
   const [hi, setHi] = useState(0)
   const list = useRef<HTMLDivElement>(null)
 
+  const { result, busy } = useSearch(q)
   type Row = { key: string; group: string; icon: React.ReactNode; label: React.ReactNode; sub?: React.ReactNode; hint?: string; run: () => void }
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = []
-    const n = q.trim().toLowerCase()
-    const words = n.split(/\s+/).filter(Boolean)
-    const hit = (text: string) => words.every(w => text.toLowerCase().includes(w))
+    const n = q.trim()
+    const words = fold(n).split(/\s+/).filter(Boolean)
+    const hit = (text: string) => { const t = fold(text); return words.every(w => t.includes(w)) }
+    const found = result ? new Map(result.trips.map(t => [t.id, t])) : null
     for (const t of trips) {
       const text = `${t.name} ${t.destination} ${t.start_date.slice(0, 4)}`
-      if (n && !hit(text)) {
+      const srv = found?.get(t.id)
+      if (n && !srv && !hit(text)) {
         // "lisbon budget" → the Budget tab of the Lisbon trip
-        for (const [tab, label, icon] of TRIP_TABS) if (tab !== 'overview' && hit(`${text} ${label}`) && words.some(w => label.toLowerCase().includes(w)))
+        for (const [tab, label, icon] of TRIP_TABS) if (tab !== 'overview' && hit(`${text} ${label}`) && words.some(w => fold(label).includes(w)))
           out.push({ key: `t${t.id}-${tab}`, group: 'Trips', icon: <Icon name={icon} size={16} />, label: `${t.name} — ${label}`, run: () => navigate(`/trips/${t.id}/${tab}`) })
         continue
       }
-      out.push({ key: `t${t.id}`, group: 'Trips', icon: <TripThumb t={t} size={20} />, label: t.name, sub: [t.destination, tripWhen(t)].filter(Boolean).join(' · '), run: () => navigate(`/trips/${t.id}`) })
+      const via = srv && !srv.direct && srv.hits.length ? `has ${srv.hits.slice(0, 3).map(h => h.name).join(', ')}${srv.hits.length > 3 ? '…' : ''}` : ''
+      out.push({ key: `t${t.id}`, group: 'Trips', icon: <TripThumb t={t} size={20} />, label: t.name, sub: [t.destination, tripWhen(t), via].filter(Boolean).join(' · '), run: () => navigate(`/trips/${t.id}`) })
+    }
+    if (result) {
+      for (const h of result.places) out.push({ key: `p${h.id}`, group: 'Places', icon: <span>{PLACE_ICONS[h.category] || '📍'}</span>, label: h.name, sub: <>in <b>{h.trip_name}</b>{h.date ? ` · ${fmtDate(h.date, false)}` : h.trip_start ? ` · ${fmtRange(h.trip_start, h.trip_end)}` : ''}{h.address ? ` · ${h.address}` : ''}</>, run: () => navigate(hitLink(h)) })
+      for (const h of result.stays) out.push({ key: `l${h.id}`, group: 'Stays', icon: <span>{LODGING_ICONS[h.category] || '🛏'}</span>, label: h.name, sub: <>in <b>{h.trip_name}</b>{h.date ? ` · ${fmtRange(h.date, h.date_end)}` : ''}{h.address ? ` · ${h.address}` : ''}</>, run: () => navigate(hitLink(h)) })
     }
     for (const c of commands) {
       if (n && !hit(`${c.label} ${c.keywords || ''}`)) continue
       out.push({ key: c.id, group: 'Commands', icon: <Icon name={c.icon} size={16} />, label: c.label, hint: c.hint, run: c.run })
     }
     return out
-  }, [q, trips, commands, navigate])
+  }, [q, trips, commands, navigate, result])
+  const dates = describeDates(result)
   useEffect(() => setHi(0), [q])
   useEffect(() => { list.current?.querySelector(`[data-i="${hi}"]`)?.scrollIntoView({ block: 'nearest' }) }, [hi])
 
@@ -49,7 +61,7 @@ export function CommandPalette({ onClose, commands }: { onClose: () => void; com
       <div className="palette-box" role="dialog" aria-label="Search and commands">
         <div className="pal-input">
           <Icon name="search" size={18} />
-          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Jump to a trip, a tab, or run a command…" aria-label="Search"
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search trips, places, stays — or try “summer 2025”…" aria-label="Search"
             onKeyDown={e => {
               if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(rows.length - 1, h + 1)) }
               else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(0, h - 1)) }
@@ -59,7 +71,8 @@ export function CommandPalette({ onClose, commands }: { onClose: () => void; com
           <kbd>esc</kbd>
         </div>
         <div className="pal-list" ref={list} role="listbox">
-          {rows.length === 0 && <div className="pal-empty">Nothing matches.</div>}
+          {dates && <div className="pal-group">Dates: {dates}</div>}
+          {rows.length === 0 && <div className="pal-empty">{busy ? 'Searching…' : 'Nothing matches.'}</div>}
           {rows.map((r, i) => {
             const head = r.group !== last ? <div className="pal-group" key={'g' + r.group}>{r.group}</div> : null
             last = r.group

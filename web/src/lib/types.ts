@@ -99,3 +99,7 @@ export const EXPENSE_ICONS: Record<string, string> = { transport: '🚗', lodgin
 export const STATUS_LABEL: Record<string, string> = { planning: 'Planning', booked: 'Booked', active: 'On the road', completed: 'Completed', cancelled: 'Cancelled' }
 export const PLACE_STATUS_LABEL: Record<string, string> = { idea: 'Idea', planned: 'Planned', booked: 'Booked', visited: 'Visited', skipped: 'Skipped' }
 export const WX_ICON = (code: number) => code === 0 ? '☀️' : code <= 2 ? '🌤' : code === 3 ? '☁️' : code <= 49 ? '🌫' : code <= 59 ? '🌦' : code <= 69 ? '🌧' : code <= 79 ? '🌨' : code <= 84 ? '🌦' : code <= 94 ? '🌨' : '⛈'
+
+export interface SearchHit { kind: 'place' | 'lodging'; id: number; trip_id: number; trip_name: string; trip_start: string; trip_end: string; name: string; category: string; address: string; date: string; date_end: string; status: string }
+export interface SearchTrip extends Trip { direct: boolean; hits: SearchHit[] }
+export interface SearchResult { query: { words: string[] | null; years: number[] | null; months: number[] | null; seasons: string[] | null }; trips: SearchTrip[]; places: SearchHit[]; stays: SearchHit[] }
