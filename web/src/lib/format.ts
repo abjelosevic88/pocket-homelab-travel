@@ -175,3 +175,14 @@ export function cap(s: string): string { return s ? s[0].toUpperCase() + s.slice
 export function gmaps(lat: number, lng: number): string { return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}` }
 export function appleMaps(lat: number, lng: number): string { return `https://maps.apple.com/?daddr=${lat},${lng}` }
 export function osmLink(lat: number, lng: number): string { return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}` }
+
+/** Where a place sits within its day on the itinerary: timed places by their
+ * time, untimed ones after them in the order they were dragged into. */
+export function placeWhen(p: { start_time: string; sort_order: number }): string {
+  return p.start_time || '99:' + String(p.sort_order).padStart(3, '0')
+}
+
+/** Itinerary order: by day, then as the day lists them (see placeWhen). */
+export function itineraryOrder(a: { day_date: string; start_time: string; sort_order: number; id: number }, b: { day_date: string; start_time: string; sort_order: number; id: number }): number {
+  return a.day_date.localeCompare(b.day_date) || placeWhen(a).localeCompare(placeWhen(b)) || a.id - b.id
+}

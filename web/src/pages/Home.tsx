@@ -3,7 +3,7 @@ import { api, V1 } from '../lib/api'
 import { useApp } from '../lib/app-context'
 import type { HomeData } from '../lib/types'
 import { PLACE_ICONS, WX_ICON } from '../lib/types'
-import { daysBetween, fmtClock, fmtDate, fmtKm, fmtRange, plural, todayISO, weekday } from '../lib/format'
+import { daysBetween, fmtClock, fmtDate, fmtKm, fmtRange, itineraryOrder, plural, todayISO, weekday } from '../lib/format'
 import { Card, Empty, Loading, PageHeader, useAsync } from '../components/ui'
 import { Money } from '../components/Money'
 import { MapView, type Marker } from '../components/Map'
@@ -25,7 +25,8 @@ export default function Home() {
   const hero = current || next
   const until = next ? daysBetween(todayISO(), next.start_date) : 0
   const heroStyle = hero?.has_cover ? { backgroundImage: `url(${V1}/trips/${hero.id}/cover?v=${hero.updated_at})` } : { background: `linear-gradient(135deg, ${hero?.color || '#0284c7'} 0%, #0f172a 100%)` }
-  const markers: Marker[] = pins.map(p => ({ id: String(p.id), lat: p.lat, lng: p.lng, label: p.name, icon: p.status === 'completed' ? '✓' : p.status === 'active' ? '✈' : '🧳', kind: p.status === 'completed' ? 'visited' : p.status === 'planning' ? 'idea' : 'booked', popup: `<b>${esc(p.name)}</b><br>${fmtRange(p.start_date, p.end_date)}`, onClick: () => navigate(`/trips/${p.id}`) }))
+  const markers: Marker[] = pins.map(p => ({ id: p.stay_id ? `s${p.stay_id}` : `t${p.id}`, lat: p.lat, lng: p.lng, label: p.stay ? `${p.name} · ${p.stay}` : p.name, icon: p.stay ? '🛏' : p.status === 'completed' ? '✓' : p.status === 'active' ? '✈' : '🧳', kind: p.status === 'completed' ? 'visited' : p.status === 'planning' ? 'idea' : 'booked',
+    popup: p.stay ? `<b>${esc(p.name)}</b><br>🛏 ${esc(p.stay)}<br>${fmtRange(p.stay_from || p.start_date, p.stay_to || p.end_date)}` : `<b>${esc(p.name)}</b><br>${fmtRange(p.start_date, p.end_date)}`, onClick: () => navigate(`/trips/${p.id}`) }))
   const c = next?.counts
   return (
     <>
@@ -54,7 +55,7 @@ export default function Home() {
         <div className="overview-grid mb">
           <Card title="Today" actions={<Link className="btn ghost sm" to={`/trips/${current.id}/itinerary`}>Full day</Link>}>
             {today.places.length === 0 ? <p className="muted">Nothing scheduled — a free day, or drag some ideas onto it.</p> : (
-              <div className="day-items">{today.places.map(p => <Link key={p.id} className="item" to={`/trips/${current.id}/itinerary`} style={{ color: 'inherit' }}><span className="time">{fmtClock(p.start_time)}</span><span className={`ico ${p.status === 'visited' ? 'visited' : ''}`}>{PLACE_ICONS[p.category] || '📍'}</span><span className="txt"><span className="title">{p.name}</span><span className="sub">{p.address || p.notes}</span></span></Link>)}</div>
+              <div className="day-items">{[...today.places].sort(itineraryOrder).map(p => <Link key={p.id} className="item" to={`/trips/${current.id}/itinerary`} style={{ color: 'inherit' }}><span className="time">{fmtClock(p.start_time)}</span><span className={`ico ${p.status === 'visited' ? 'visited' : ''}`}>{PLACE_ICONS[p.category] || '📍'}</span><span className="txt"><span className="title">{p.name}</span><span className="sub">{p.address || p.notes}</span></span></Link>)}</div>
             )}
             {today.stay && <p className="muted small mt-sm">Sleeping at <b>{today.stay.name}</b>{today.stay.check_out && <> · check-out {fmtDate(today.stay.check_out, false)}</>}</p>}
           </Card>

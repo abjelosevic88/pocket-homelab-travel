@@ -476,7 +476,9 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	journal, _ := s.store.LatestJournal(ctx, u.ID, 6)
-	// Pins for the "where you've been" map: the trip's centre, else its first located place.
+	// Pins for the "where you've been" map: one per stay when the trip moved
+	// between several stays (a road trip shows each base), else one for the
+	// trip: its centre, else its first located stay or place.
 	type pin struct {
 		ID     int64   `json:"id"`
 		Name   string  `json:"name"`
@@ -486,11 +488,30 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		Lat    float64 `json:"lat"`
 		Lng    float64 `json:"lng"`
 		Cover  bool    `json:"has_cover"`
+		Stay   string  `json:"stay,omitempty"` // the stay this pin stands for
+		StayID int64   `json:"stay_id,omitempty"`
+		From   string  `json:"stay_from,omitempty"`
+		To     string  `json:"stay_to,omitempty"`
 	}
 	pins := []pin{}
 	for i := range trips {
 		t := &trips[i]
 		if t.Archived || t.Status == store.StatusCancelled {
+			continue
+		}
+		var located []store.Lodging
+		if stays, err := s.store.ListLodging(ctx, t.ID); err == nil {
+			for _, l := range stays {
+				if l.Lat != nil && l.Lng != nil {
+					located = append(located, l)
+				}
+			}
+		}
+		if len(located) > 1 {
+			for _, l := range located {
+				pins = append(pins, pin{ID: t.ID, Name: t.Name, Status: t.Status, Start: t.StartDate, End: t.EndDate, Lat: *l.Lat, Lng: *l.Lng, Cover: t.HasCover,
+					Stay: l.Name, StayID: l.ID, From: dateOnly(l.CheckIn), To: dateOnly(l.CheckOut)})
+			}
 			continue
 		}
 		if lat, lng, ok := s.tripCenter(ctx, t); ok {

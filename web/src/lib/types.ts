@@ -88,7 +88,7 @@ export interface HomeData {
   current: Trip | null; next: Trip | null; upcoming: Trip[]; recent: Trip[]
   today?: { date: string; day_number: number; places: Place[]; stay: Lodging | null; budget: Budget }
   recorded_km: number; photos: number; journal: (JournalEntry & { trip_name?: string })[]
-  pins: { id: number; name: string; status: TripStatus; start_date: string; end_date: string; lat: number; lng: number; has_cover: boolean }[]
+  pins: { id: number; name: string; status: TripStatus; start_date: string; end_date: string; lat: number; lng: number; has_cover: boolean; stay?: string; stay_id?: number; stay_from?: string; stay_to?: string }[]
   hero_weather: DayWeather | null
 }
 
