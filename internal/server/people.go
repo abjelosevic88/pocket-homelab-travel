@@ -200,7 +200,9 @@ func (s *Server) handleGetPerson(w http.ResponseWriter, r *http.Request) {
 	for k, n := range company {
 		often = append(often, kv{k, n})
 	}
-	sort.Slice(often, func(i, j int) bool { return often[i].N > often[j].N || (often[i].N == often[j].N && often[i].Key < often[j].Key) })
+	sort.Slice(often, func(i, j int) bool {
+		return often[i].N > often[j].N || (often[i].N == often[j].N && often[i].Key < often[j].Key)
+	})
 	cl := []store.CountryDays{}
 	for c, d := range countries {
 		cl = append(cl, store.CountryDays{Code: c, Days: d})

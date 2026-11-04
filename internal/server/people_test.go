@@ -94,7 +94,7 @@ func TestPeople(t *testing.T) {
 	// the person page
 	_, b = h.do(h.ownerTok, http.MethodGet, fmt.Sprintf("/api/v1/people/%d", anaID), nil)
 	var pp struct {
-		Trips  []PersonTrip    `json:"trips"`
+		Trips  []PersonTrip   `json:"trips"`
 		Totals map[string]int `json:"totals"`
 	}
 	_ = json.Unmarshal(b, &pp)
