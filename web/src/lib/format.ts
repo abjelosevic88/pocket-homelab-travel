@@ -186,3 +186,19 @@ export function placeWhen(p: { start_time: string; sort_order: number }): string
 export function itineraryOrder(a: { day_date: string; start_time: string; sort_order: number; id: number }, b: { day_date: string; start_time: string; sort_order: number; id: number }): number {
   return a.day_date.localeCompare(b.day_date) || placeWhen(a).localeCompare(placeWhen(b)) || a.id - b.id
 }
+
+/** The time part of a stay's check-in/out ("2026-07-05T15:00" → "15:00"), "" when only a day is stored. */
+export function stayClock(v?: string): string {
+  return v && v.length >= 16 && v[10] === 'T' ? v.slice(11, 16) : ''
+}
+
+/** A day plus an optional time, as stays store them: "2026-07-05" + "15:00" → "2026-07-05T15:00". */
+export function withClock(day?: string, time?: string): string {
+  const d = (day || '').slice(0, 10)
+  return d && time ? `${d}T${time}` : d
+}
+
+/** When a stay's check-in or check-out happens: its own time, else the person's default. */
+export function stayTime(v: string, which: 'in' | 'out', s?: { checkin_time?: string; checkout_time?: string } | null): string {
+  return stayClock(v) || (which === 'in' ? s?.checkin_time || '15:00' : s?.checkout_time || '11:00')
+}

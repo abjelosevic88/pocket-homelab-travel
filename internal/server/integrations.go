@@ -59,7 +59,7 @@ func (s *Server) publicSettings(ctx context.Context, st store.Settings, u *store
 		"dawarich_mode": dwMode, "dawarich_via": dwVia, "dawarich_detail": dwDetail, "dawarich_source": dwSource,
 		"immich_mode": imMode, "immich_via": imVia, "immich_detail": imDetail, "immich_source": imSource,
 		"title": st.Title, "home_currency": st.HomeCurrency, "date_format": st.DateFormat, "time_format": st.TimeFormat,
-		"distance_unit": st.DistanceUnit, "fx_auto": st.FXAuto, "fx_provider": s.cfg.FXProvider, "map_tiles": st.MapTiles, "auto_photos": st.AutoPhotos,
+		"distance_unit": st.DistanceUnit, "fx_auto": st.FXAuto, "fx_provider": s.cfg.FXProvider, "map_tiles": st.MapTiles, "auto_photos": st.AutoPhotos, "checkin_time": st.CheckInTime, "checkout_time": st.CheckOutTime,
 		"firefly_url": st.FireflyURL, "firefly_token": mask(st.FireflyToken), "firefly_configured": moneyVia != "",
 		"dawarich_url": st.DawarichURL, "dawarich_api_key": mask(st.DawarichAPIKey), "dawarich_configured": dwVia != "",
 		"immich_url": st.ImmichURL, "immich_public_url": st.ImmichPublicURL, "immich_api_key": mask(st.ImmichAPIKey), "immich_configured": imVia != "",
@@ -130,6 +130,17 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if keys["auto_photos"] {
 		cur.AutoPhotos = in.AutoPhotos
+	}
+	for k, dst := range map[string]*string{"checkin_time": &cur.CheckInTime, "checkout_time": &cur.CheckOutTime} {
+		if !keys[k] {
+			continue
+		}
+		v := strings.TrimSpace(map[string]string{"checkin_time": in.CheckInTime, "checkout_time": in.CheckOutTime}[k])
+		if !validClock(v) {
+			writeErr(w, http.StatusBadRequest, "times are HH:MM")
+			return
+		}
+		*dst = v
 	}
 	// Secrets: a masked value (contains ••) means "keep".
 	secret := func(k string, dst *string, v string) {

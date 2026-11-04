@@ -315,5 +315,7 @@ type Settings struct {
 	OpenAIBaseURL  string `json:"openai_base_url"` // any OpenAI-compatible endpoint
 	MapTiles       string `json:"map_tiles"`       // osm | carto | topo
 	AutoPhotos     bool   `json:"auto_photos"`     // look up Wikipedia/Commons pictures for new places
+	CheckInTime    string `json:"checkin_time"`    // HH:MM a new stay starts with (15:00)
+	CheckOutTime   string `json:"checkout_time"`   // HH:MM a new stay ends with (11:00)
 	SetupComplete  bool   `json:"setup_complete"`
 }

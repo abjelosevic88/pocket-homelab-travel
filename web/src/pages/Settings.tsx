@@ -137,6 +137,10 @@ function General() {
         <SettingRow title="Date format"><Select value={f.date_format} onChange={v => setF({ ...f, date_format: v as DateFormat })} options={DATE_FORMATS.map(d => ({ value: d.id, label: d.label }))} /></SettingRow>
         <SettingRow title="Time format"><Select value={f.time_format} onChange={v => setF({ ...f, time_format: v as TimeFormat })} options={TIME_FORMATS.map(d => ({ value: d.id, label: d.label }))} /></SettingRow>
       </Section>
+      <Section title="Stays" sub="What a new stay starts with; each stay can still have its own times.">
+        <SettingRow title="Default check-in" help="Also used for stays saved without a time."><input type="time" value={f.checkin_time || '15:00'} onChange={e => setF({ ...f, checkin_time: e.target.value })} style={{ width: 130 }} aria-label="Default check-in time" /></SettingRow>
+        <SettingRow title="Default check-out"><input type="time" value={f.checkout_time || '11:00'} onChange={e => setF({ ...f, checkout_time: e.target.value })} style={{ width: 130 }} aria-label="Default check-out time" /></SettingRow>
+      </Section>
       <Section title="Maps & places">
         <SettingRow title="Map tiles" help="All free and keyless. Satellite is Esri imagery with a labels layer on top."><Select value={f.map_tiles} onChange={v => setF({ ...f, map_tiles: v })} options={Object.entries(TILES).map(([v, t]) => ({ value: v, label: t.label }))} /></SettingRow>
         <SettingRow title="Find photos for new places" help="Wikipedia and Wikimedia Commons, with credits."><Switch checked={f.auto_photos} onChange={v => setF({ ...f, auto_photos: v })} label="Find photos for new places" /></SettingRow>

@@ -68,7 +68,7 @@ export type LocationSource = 'movement' | 'dawarich'
 export interface Settings {
   ai_provider: string; ai_pocket_model: string; ai_status: { provider: string; selected: string; ready: boolean; detail: string }
 
-  title: string; home_currency: string; date_format: string; time_format: string; distance_unit: 'km' | 'mi'; fx_auto: boolean; fx_provider: string; map_tiles: string; auto_photos: boolean
+  title: string; home_currency: string; date_format: string; time_format: string; distance_unit: 'km' | 'mi'; fx_auto: boolean; fx_provider: string; map_tiles: string; auto_photos: boolean; checkin_time: string; checkout_time: string
   core_configured: boolean
   /** connected to Pocket Core and registered: Core-only choices are offered only then */
   core_ready: boolean

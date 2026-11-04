@@ -3,7 +3,7 @@ import { api, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
 import type { Place } from '../../lib/types'
 import { LODGING_ICONS, PLACE_ICONS, TRANSPORT_ICONS, WX_ICON } from '../../lib/types'
-import { dateRange, fmtClock, fmtDate, fmtDateTime, fmtDuration, fmtKm, itineraryOrder, placeWhen, todayISO, weekday } from '../../lib/format'
+import { dateRange, fmtClock, fmtDate, fmtDateTime, fmtDuration, fmtKm, itineraryOrder, placeWhen, stayTime, todayISO, weekday } from '../../lib/format'
 import { Card, Empty, useToast } from '../../components/ui'
 import { Icon } from '../../components/icons'
 import { useTrip } from './ctx'
@@ -30,8 +30,8 @@ export function Itinerary() {
     for (const p of ov.places) if (p.day_date === d) rows.push({ key: `p${p.id}`, when: placeWhen(p), kind: 'place', icon: PLACE_ICONS[p.category] || '📍', title: p.name, sub: [p.duration_min ? fmtDuration(p.duration_min) : '', placeSub(p)].filter(Boolean).join(' · '), place: p, onClick: () => edit('place', p) })
     for (const t of ov.transport) if (t.depart_at.slice(0, 10) === d) rows.push({ key: `t${t.id}`, when: t.depart_at.slice(11, 16) || '00:00', kind: 'transport', icon: TRANSPORT_ICONS[t.type] || '➡️', title: t.name || `${t.from_name} → ${t.to_name}`, sub: [t.arrive_at && `arrives ${fmtDateTime(t.arrive_at, false)}`, transportSub(t)].filter(Boolean).join(' · '), onClick: () => edit('transport', t), cls: 'transport' })
     for (const l of ov.lodging) {
-      if (l.check_in.slice(0, 10) === d) rows.push({ key: `li${l.id}`, when: '15:00', kind: 'lodging-in', icon: LODGING_ICONS[l.type] || '🛏', title: `Check in · ${l.name}`, sub: lodgingSub(l), onClick: () => edit('lodging', l), cls: 'lodging' })
-      if (l.check_out.slice(0, 10) === d) rows.push({ key: `lo${l.id}`, when: '10:00', kind: 'lodging-out', icon: '🧳', title: `Check out · ${l.name}`, sub: l.address, onClick: () => edit('lodging', l), cls: 'lodging' })
+      if (l.check_in.slice(0, 10) === d) rows.push({ key: `li${l.id}`, when: stayTime(l.check_in, 'in', settings), kind: 'lodging-in', icon: LODGING_ICONS[l.type] || '🛏', title: `Check in · ${l.name}`, sub: lodgingSub(l), onClick: () => edit('lodging', l), cls: 'lodging' })
+      if (l.check_out.slice(0, 10) === d) rows.push({ key: `lo${l.id}`, when: stayTime(l.check_out, 'out', settings), kind: 'lodging-out', icon: '🧳', title: `Check out · ${l.name}`, sub: l.address, onClick: () => edit('lodging', l), cls: 'lodging' })
     }
     if (showRecorded) {
       const tl = timeline.find(x => x.date === d)

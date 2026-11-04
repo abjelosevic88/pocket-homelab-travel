@@ -91,3 +91,52 @@ func TestSearch(t *testing.T) {
 		t.Fatalf("winter = %+v", r.Trips)
 	}
 }
+
+func TestStayTimesAndCoordinates(t *testing.T) {
+	h := newIsoHarness(t)
+	tr := h.create(h.ownerTok, "/api/v1/trips", map[string]any{"name": "Azores", "start_date": "2025-07-01", "end_date": "2025-07-14", "currency": "EUR"})
+	base := fmt.Sprintf("/api/v1/trips/%d/lodging", tr)
+	// a rental with only GPS coordinates and times
+	code, b := h.do(h.ownerTok, http.MethodPost, base, map[string]any{"name": "Airbnb Sete Cidades", "lat": 37.8569, "lng": -25.7903, "check_in": "2025-07-05T16:30", "check_out": "2025-07-09T10:00"})
+	if code != http.StatusCreated && code != http.StatusOK {
+		t.Fatalf("create: %d %s", code, b)
+	}
+	var l struct {
+		CheckIn string   `json:"check_in"`
+		Lat     *float64 `json:"lat"`
+	}
+	_ = json.Unmarshal(b, &l)
+	if l.CheckIn != "2025-07-05T16:30" || l.Lat == nil {
+		t.Fatalf("stay = %s", b)
+	}
+	for _, bad := range []map[string]any{
+		{"name": "x", "check_in": "2025-07-05T25:00"},
+		{"name": "x", "check_in": "05/07/2025"},
+		{"name": "x", "check_in": "2025-07-05T15:00", "check_out": "2025-07-05T11:00"},
+	} {
+		if code, b := h.do(h.ownerTok, http.MethodPost, base, bad); code != http.StatusBadRequest {
+			t.Fatalf("%v: %d %s", bad, code, b)
+		}
+	}
+	// defaults are per person
+	if code, b := h.do(h.ownerTok, http.MethodPut, "/api/v1/settings", map[string]any{"checkin_time": "14:00", "checkout_time": "10:30"}); code != http.StatusOK {
+		t.Fatalf("settings: %d %s", code, b)
+	}
+	if code, _ := h.do(h.ownerTok, http.MethodPut, "/api/v1/settings", map[string]any{"checkin_time": "2pm"}); code != http.StatusBadRequest {
+		t.Fatalf("bad time accepted: %d", code)
+	}
+	_, b = h.do(h.ownerTok, http.MethodGet, "/api/v1/settings", nil)
+	var st struct {
+		CheckinTime  string `json:"checkin_time"`
+		CheckoutTime string `json:"checkout_time"`
+	}
+	_ = json.Unmarshal(b, &st)
+	if st.CheckinTime != "14:00" || st.CheckoutTime != "10:30" {
+		t.Fatalf("settings = %s", b)
+	}
+	_, b = h.do(h.memberTok, http.MethodGet, "/api/v1/settings", nil)
+	_ = json.Unmarshal(b, &st)
+	if st.CheckinTime != "15:00" {
+		t.Fatalf("member default = %s", st.CheckinTime)
+	}
+}

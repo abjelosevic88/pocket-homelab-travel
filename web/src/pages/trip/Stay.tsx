@@ -9,6 +9,8 @@ import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
 import { AmountInput, Money } from '../../components/Money'
 import { GeoSearch } from '../../components/GeoSearch'
+import { LocationPicker, type PickedLocation } from '../../components/LocationPicker'
+import { stayClock, stayTime, withClock } from '../../lib/format'
 import { useTrip } from './ctx'
 
 export function Stay() {
@@ -29,7 +31,7 @@ export function Stay() {
                   <span className="ico lodging">{LODGING_ICONS[l.type] || '🛏'}</span>
                   <span className="txt">
                     <span className="title">{l.name}{now && <span className="badge cat">current stay</span>}{l.paid && <span className="badge">paid</span>}</span>
-                    <span className="sub wrap">{fmtDate(l.check_in, false)} → {fmtDate(l.check_out, false)}{nights > 0 && ` · ${nights} night${nights === 1 ? '' : 's'}`}{l.address && ` · ${l.address}`}</span>
+                    <span className="sub wrap">{fmtDate(l.check_in, false)} {stayTime(l.check_in, 'in', settings)} → {fmtDate(l.check_out, false)} {stayTime(l.check_out, 'out', settings)}{nights > 0 && ` · ${nights} night${nights === 1 ? '' : 's'}`}{l.address && ` · ${l.address}`}</span>
                     <span className="sub wrap">{[l.reservation_number && `Reservation ${l.reservation_number}`, l.phone, l.price > 0 && <Money key="m" minor={l.price} code={l.currency || trip.currency} />].filter(Boolean).map((x, i) => <span key={i}>{i > 0 && ' · '}{x}</span>)}</span>
                   </span>
                   <span className="row" onClick={e => e.stopPropagation()}>{l.link && <a className="icon-btn" href={l.link} target="_blank" rel="noreferrer" title="Booking" aria-label="Booking"><Icon name="link" size={15} /></a>}{l.lat != null && <a className="icon-btn" href={gmaps(l.lat, l.lng!)} target="_blank" rel="noreferrer" title="Directions" aria-label="Directions"><Icon name="navigation" size={15} /></a>}</span>
@@ -63,17 +65,28 @@ export function Stay() {
 export function LodgingModal({ trip, item, defaults = {}, onClose, onSaved }: { trip: Trip; item: Lodging | null; defaults?: Record<string, unknown>; onClose: () => void; onSaved: () => void }) {
   const { meta } = useApp()
   const { toast } = useToast()
+  const { settings } = useApp()
+  const defIn = settings?.checkin_time || '15:00', defOut = settings?.checkout_time || '11:00'
   const [f, setF] = useState<Partial<Lodging>>(item ? { ...item, check_in: item.check_in.slice(0, 10), check_out: item.check_out.slice(0, 10) } : { name: '', type: 'hotel', address: '', check_in: trip.start_date, check_out: trip.end_date, reservation_number: '', link: '', phone: '', price: 0, currency: trip.currency, paid: false, notes: '', lat: null, lng: null, rating: null, ...defaults })
+  // times live next to the dates: "2026-07-05T15:00"; a stay saved without one shows the default
+  const [inTime, setInTime] = useState(stayClock(item?.check_in) || defIn)
+  const [outTime, setOutTime] = useState(stayClock(item?.check_out) || defOut)
   const [busy, setBusy] = useState(false)
   const [del, setDel] = useState(false)
   const set = <K extends keyof Lodging>(k: K, v: Lodging[K]) => setF(x => ({ ...x, [k]: v }))
   const base = `${V1}/trips/${trip.id}/lodging`
   const save = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true)
-    try { if (item) await api.put(`${base}/${item.id}`, f); else await api.post(base, f); toast(item ? 'Stay saved' : 'Stay added'); onSaved() } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
+    const body = { ...f, check_in: withClock(f.check_in, inTime), check_out: withClock(f.check_out, outTime) }
+    try { if (item) await api.put(`${base}/${item.id}`, body); else await api.post(base, body); toast(item ? 'Stay saved' : 'Stay added'); onSaved() } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
   }
   const remove = async () => { try { await api.del(`${base}/${item!.id}`); toast('Stay removed'); onSaved() } catch (e) { toast((e as Error).message, 'err') } }
-  const pick = (r: GeoResult) => setF(x => ({ ...x, name: x.name || r.name, address: r.display, lat: r.lat, lng: r.lng, link: x.link || r.website || '', phone: x.phone || r.phone || '' }))
+  const locate = (p: PickedLocation) => setF(x => {
+    const r = p.result
+    if (p.via === 'search' && r) return { ...x, lat: r.lat, lng: r.lng, name: x.name || r.name, address: r.display, link: x.link || r.website || '', phone: x.phone || r.phone || '' }
+    // a dropped pin or typed coordinates: keep the address someone typed, fill it only when empty
+    return { ...x, lat: p.lat, lng: p.lng, address: x.address || p.address || '' }
+  })
   const upload = async (file: File) => { if (!item) return; try { await uploadForm(`${base}/${item.id}/image`, file); toast('Image saved'); onSaved() } catch (e) { toast((e as Error).message, 'err') } }
   const nights = daysBetween(f.check_in || '', f.check_out || '')
   return (
@@ -83,11 +96,13 @@ export function LodgingModal({ trip, item, defaults = {}, onClose, onSaved }: { 
           <Field label="Name"><input value={f.name || ''} onChange={e => set('name', e.target.value)} required autoFocus={!item} /></Field>
           <Field label="Type"><Select value={f.type || 'hotel'} onChange={v => set('type', v)} options={(meta?.lodging_types || []).map(t => ({ value: t, label: `${LODGING_ICONS[t] || ''} ${cap(t)}` }))} /></Field>
         </div>
-        <Field label="Find the address"><GeoSearch onPick={pick} placeholder="Search hotel or address…" /></Field>
-        <Field label="Address"><input value={f.address || ''} onChange={e => set('address', e.target.value)} /></Field>
+        <Field label="Location" help="Search a hotel, or for a rental without an address paste the GPS coordinates or the maps link from the booking — or click the map.">
+          <LocationPicker lat={f.lat ?? null} lng={f.lng ?? null} onChange={locate} icon={LODGING_ICONS[f.type || 'hotel'] || '🛏'} center={trip.lat != null ? [trip.lat, trip.lng!] : undefined} searchPlaceholder="Search hotel or address, or paste a maps link…" />
+        </Field>
+        <Field label="Address" help="Optional — directions use the pin."><input value={f.address || ''} onChange={e => set('address', e.target.value)} /></Field>
         <div className="two-col tight">
-          <Field label="Check-in"><input type="date" value={f.check_in || ''} onChange={e => set('check_in', e.target.value)} /></Field>
-          <Field label="Check-out" help={nights > 0 ? `${nights} night${nights === 1 ? '' : 's'}` : undefined}><input type="date" value={f.check_out || ''} onChange={e => set('check_out', e.target.value)} /></Field>
+          <Field label="Check-in"><div className="row" style={{ gap: 6 }}><input type="date" value={f.check_in || ''} onChange={e => set('check_in', e.target.value)} /><input type="time" value={inTime} onChange={e => setInTime(e.target.value)} style={{ maxWidth: 120 }} aria-label="Check-in time" /></div></Field>
+          <Field label="Check-out" help={nights > 0 ? `${nights} night${nights === 1 ? '' : 's'}` : undefined}><div className="row" style={{ gap: 6 }}><input type="date" value={f.check_out || ''} onChange={e => set('check_out', e.target.value)} /><input type="time" value={outTime} onChange={e => setOutTime(e.target.value)} style={{ maxWidth: 120 }} aria-label="Check-out time" /></div></Field>
         </div>
         <div className="two-col tight">
           <Field label="Total price" help="Becomes a planned cost in the budget."><AmountInput amount={f.price ?? null} currency={f.currency || trip.currency} onAmount={m => set('price', m || 0)} onCurrency={c => set('currency', c)} /></Field>

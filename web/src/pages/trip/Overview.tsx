@@ -3,7 +3,7 @@ import { api, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
 import type { Activity, Lodging, Place, Transport } from '../../lib/types'
 import { LODGING_ICONS, PLACE_ICONS, TRANSPORT_ICONS, WX_ICON } from '../../lib/types'
-import { ago, daysBetween, fmtClock, fmtDate, fmtDateTime, fmtKm, plural, todayISO, weekday } from '../../lib/format'
+import { ago, daysBetween, fmtClock, fmtDate, fmtDateTime, fmtKm, plural, stayTime, todayISO, weekday } from '../../lib/format'
 import { Card, useAsync } from '../../components/ui'
 import { Icon } from '../../components/icons'
 import { Money } from '../../components/Money'
@@ -30,7 +30,7 @@ export function OverviewTab() {
   const upcoming: { when: string; label: string; sub: string; icon: string; onClick: () => void }[] = []
   for (const p of ov.places) if (p.day_date && p.status !== 'visited' && p.status !== 'skipped') upcoming.push({ when: p.day_date + 'T' + (p.start_time || '23:59'), label: p.name, sub: `${fmtDate(p.day_date, false)}${p.start_time ? ' · ' + fmtClock(p.start_time) : ''}`, icon: PLACE_ICONS[p.category] || '📍', onClick: () => edit('place', p) })
   for (const t of ov.transport) if (t.depart_at) upcoming.push({ when: t.depart_at, label: t.name || `${t.from_name} → ${t.to_name}`, sub: fmtDateTime(t.depart_at, false), icon: TRANSPORT_ICONS[t.type] || '➡️', onClick: () => edit('transport', t) })
-  for (const l of ov.lodging) if (l.check_in) upcoming.push({ when: l.check_in.slice(0, 10) + 'T15:00', label: `Check in · ${l.name}`, sub: fmtDate(l.check_in, false), icon: LODGING_ICONS[l.type] || '🛏', onClick: () => edit('lodging', l) })
+  for (const l of ov.lodging) if (l.check_in) upcoming.push({ when: l.check_in.slice(0, 10) + 'T' + stayTime(l.check_in, 'in', settings), label: `Check in · ${l.name}`, sub: fmtDate(l.check_in, false), icon: LODGING_ICONS[l.type] || '🛏', onClick: () => edit('lodging', l) })
   const next = upcoming.filter(u => u.when >= nowStamp).sort((a, b) => a.when.localeCompare(b.when)).slice(0, 4)
   const stay = ov.lodging.find(l => l.check_in.slice(0, 10) <= today && today < l.check_out.slice(0, 10))
   const visited = ov.places.filter(p => p.status === 'visited').length
