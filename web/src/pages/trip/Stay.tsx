@@ -2,15 +2,15 @@ import { useState } from 'react'
 import { api, uploadForm, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
 import type { GeoResult, Lodging, Transport, Trip } from '../../lib/types'
-import { LODGING_ICONS, TRANSPORT_ICONS } from '../../lib/types'
+import { LODGING_ICONS, PLACE_ICONS, TRANSPORT_ICONS } from '../../lib/types'
 import { appleMaps, cap, daysBetween, fmtDate, fmtDateTime, fmtKm, gmaps, todayISO } from '../../lib/format'
 import { Card, Confirm, Empty, Field, Modal, useToast } from '../../components/ui'
 import { Icon } from '../../components/icons'
-import { Select } from '../../components/Select'
+import { Select, type SelectOption } from '../../components/Select'
 import { AmountInput, Money } from '../../components/Money'
 import { GeoSearch } from '../../components/GeoSearch'
 import { LocationPicker, type PickedLocation } from '../../components/LocationPicker'
-import { stayClock, stayTime, withClock } from '../../lib/format'
+import { itineraryOrder, stayClock, stayTime, withClock } from '../../lib/format'
 import { useTrip } from './ctx'
 
 export function Stay() {
@@ -132,6 +132,7 @@ export function TransportModal({ trip, item, defaults = {}, onClose, onSaved }: 
   const [f, setF] = useState<Partial<Transport>>(item ? { ...item } : { type: 'flight', name: '', carrier: '', number: '', from_name: '', to_name: '', depart_at: trip.start_date ? trip.start_date + 'T08:00' : '', arrive_at: '', booking_ref: '', seat: '', link: '', price: 0, currency: trip.currency, paid: false, distance_km: 0, notes: '', from_lat: null, from_lng: null, to_lat: null, to_lng: null, ...defaults })
   const [busy, setBusy] = useState(false)
   const [del, setDel] = useState(false)
+  const [touchedDepart, setTouchedDepart] = useState(false)
   const set = <K extends keyof Transport>(k: K, v: Transport[K]) => setF(x => ({ ...x, [k]: v }))
   const base = `${V1}/trips/${trip.id}/transport`
   const save = async (e: React.FormEvent) => {
@@ -147,11 +148,11 @@ export function TransportModal({ trip, item, defaults = {}, onClose, onSaved }: 
           <Field label="Name" help="Optional — defaults to from → to."><input value={f.name || ''} onChange={e => set('name', e.target.value)} placeholder="Flight to Lisbon" autoFocus={!item} /></Field>
         </div>
         <div className="two-col tight">
-          <Field label="From"><GeoSearch initial={f.from_name} onPick={r => setF(x => ({ ...x, from_name: r.name, from_lat: r.lat, from_lng: r.lng }))} placeholder="Airport, station, city…" /></Field>
-          <Field label="To"><GeoSearch initial={f.to_name} onPick={r => setF(x => ({ ...x, to_name: r.name, to_lat: r.lat, to_lng: r.lng }))} placeholder="Airport, station, city…" /></Field>
+          <Field label="From" help="A stay or place of this trip, or search anywhere."><Endpoint name={f.from_name || ''} lat={f.from_lat ?? null} lng={f.from_lng ?? null} onPick={(e, day) => setF(x => ({ ...x, from_name: e.name, from_lat: e.lat, from_lng: e.lng, depart_at: !item && day && !touchedDepart ? day + 'T' + ((x.depart_at || '').slice(11, 16) || '08:00') : x.depart_at }))} /></Field>
+          <Field label="To"><Endpoint name={f.to_name || ''} lat={f.to_lat ?? null} lng={f.to_lng ?? null} onPick={e => setF(x => ({ ...x, to_name: e.name, to_lat: e.lat, to_lng: e.lng }))} /></Field>
         </div>
         <div className="two-col tight">
-          <Field label="Departs"><input type="datetime-local" value={f.depart_at || ''} onChange={e => set('depart_at', e.target.value)} /></Field>
+          <Field label="Departs"><input type="datetime-local" value={f.depart_at || ''} onChange={e => { setTouchedDepart(true); set('depart_at', e.target.value) }} /></Field>
           <Field label="Arrives"><input type="datetime-local" value={f.arrive_at || ''} onChange={e => set('arrive_at', e.target.value)} /></Field>
         </div>
         <div className="three-col tight">
@@ -176,5 +177,36 @@ export function TransportModal({ trip, item, defaults = {}, onClose, onSaved }: 
       </form>
       {del && <Confirm title="Remove this leg?" message="The leg and its planned cost are deleted." onCancel={() => setDel(false)} onConfirm={remove} />}
     </Modal>
+  )
+}
+
+interface EndpointValue { name: string; lat: number | null; lng: number | null }
+
+/**
+ * One end of a leg: pick a stay or place already in the trip (the car from the
+ * apartment to the trailhead) or search anywhere (an airport, a station).
+ * Picking a scheduled place also reports its day so a new leg can depart then.
+ */
+function Endpoint({ name, lat, lng, onPick }: EndpointValue & { onPick: (e: EndpointValue, day?: string) => void }) {
+  const { ov } = useTrip()
+  const options: SelectOption[] = [
+    ...ov.lodging.filter(l => l.lat != null).map(l => ({ value: `l${l.id}`, label: `${LODGING_ICONS[l.type] || '🛏'} ${l.name}`, hint: fmtDate(l.check_in, false), group: 'Stays' })),
+    ...[...ov.places].filter(p => p.lat != null).sort(itineraryOrder).map(p => ({ value: `p${p.id}`, label: `${PLACE_ICONS[p.category] || '📍'} ${p.name}`, hint: p.day_date ? fmtDate(p.day_date, false) : 'idea', group: p.day_date ? 'Places' : 'Ideas' })),
+  ]
+  const same = (a: number | null, b: number | null) => a != null && b != null && Math.abs(a - b) < 1e-6
+  const current = ov.lodging.find(l => l.name === name && same(l.lat, lat) && same(l.lng, lng)) ? `l${ov.lodging.find(l => l.name === name && same(l.lat, lat) && same(l.lng, lng))!.id}`
+    : ov.places.find(p => p.name === name && same(p.lat, lat) && same(p.lng, lng)) ? `p${ov.places.find(p => p.name === name && same(p.lat, lat) && same(p.lng, lng))!.id}` : ''
+  const pick = (v: string) => {
+    if (!v) { onPick({ name: '', lat: null, lng: null }); return }
+    const id = Number(v.slice(1))
+    if (v[0] === 'l') { const l = ov.lodging.find(x => x.id === id); if (l) onPick({ name: l.name, lat: l.lat, lng: l.lng }, l.check_out.slice(0, 10) || undefined) }
+    else { const p = ov.places.find(x => x.id === id); if (p) onPick({ name: p.name, lat: p.lat, lng: p.lng }, p.day_date || undefined) }
+  }
+  return (
+    <div className="grid" style={{ gap: 6 }}>
+      {options.length > 0 && <Select value={current} onChange={pick} options={options} placeholder="From this trip…" clearLabel="Clear" ariaLabel="A stay or place of this trip" />}
+      <GeoSearch key={name} initial={current ? '' : name} onPick={r => onPick({ name: r.name, lat: r.lat, lng: r.lng })} placeholder={current ? 'or somewhere else…' : 'Airport, station, city…'} />
+      {lat != null && !current && <div className="small muted">{name || 'Pinned'} · {lat.toFixed(4)}, {lng!.toFixed(4)}</div>}
+    </div>
   )
 }
