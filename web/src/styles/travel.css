@@ -525,4 +525,28 @@ button.tl-year:hover, button.tl-year.open { color: var(--accent); }
 .tp-row .grow { min-width: 0; }
 .tp-row .sel, .tp-row .select { width: 130px; }
 .hero-people a { color: inherit; } .hero-people a:hover { text-decoration: underline; }
-.meta-line .hero-people > span { display: inline; margin: 0; gap: 0; }
+.meta-line .hero-people { gap: 0; } .meta-line .hero-people > .icon { margin-right: 6px; } .meta-line .hero-people > span { display: inline; margin: 0; }
+
+/* ---- split: balances, bills, the Cospend link ---- */
+.balances { display: grid; gap: 8px; }
+.bal-row { display: grid; grid-template-columns: minmax(110px, 160px) 1fr 96px; align-items: center; gap: 10px; }
+.bal-name { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13.5px; }
+.bal-track { position: relative; height: 14px; }
+.bal-mid { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--border-strong, var(--border)); }
+.bal-bar { position: absolute; top: 0; bottom: 0; }
+.bal-bar.pos { background: #16a34a; border-radius: 0 4px 4px 0; }
+.bal-bar.neg { background: #dc2626; border-radius: 4px 0 0 4px; }
+.bal-val { text-align: right; font-variant-numeric: tabular-nums; font-size: 13.5px; font-weight: 600; }
+.good { color: #16a34a; } .bad { color: #dc2626; }
+.settle-row { align-items: center; }
+.owers { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.ower { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+.ower.on { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.ower input { width: auto; margin: 0; }
+.ower-dots { display: inline-flex; gap: 2px; flex-wrap: wrap; }
+.table.bills td { vertical-align: middle; }
+.nowrap { white-space: nowrap; }
+.cospend-link { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+.cospend-link .qr { border-radius: 8px; background: #fff; padding: 4px; }
+.link-box { padding: 6px 8px; background: var(--surface-2); border-radius: 6px; overflow-x: auto; white-space: nowrap; }
+@media (max-width: 640px) { .cospend-link { grid-template-columns: 1fr; } .bal-row { grid-template-columns: 90px 1fr 80px; } }

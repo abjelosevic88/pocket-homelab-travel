@@ -218,7 +218,23 @@ type Expense struct {
 	Notes      string  `json:"notes"`
 	CreatedAt  string  `json:"created_at"`
 	UpdatedAt  string  `json:"updated_at"`
+
+	// A spent cost is a bill (Cospend): who paid, for whom (trip people ids),
+	// how; in the trash when deleted; updated_ts for Cospend sync.
+	PayerID         *int64  `json:"payer_id"`
+	Owers           []int64 `json:"owers"`
+	PaymentModeID   int64   `json:"payment_mode_id"`
+	BillTime        string  `json:"bill_time"` // HH:MM, "" = no time
+	Deleted         bool    `json:"deleted"`
+	UpdatedTS       int64   `json:"updated_ts"`
+	Repeat          string  `json:"repeat"` // n | d | w | b | s | m | y
+	RepeatAllActive bool    `json:"repeat_all_active"`
+	RepeatUntil     string  `json:"repeat_until"`
+	RepeatFreq      int     `json:"repeat_freq"`
 }
+
+// IsBill reports whether an expense is a bill (spent, not just planned).
+func (e *Expense) IsBill() bool { return e.Kind == "actual" }
 
 // Checklist groups items (packing, to-do before leaving, shopping…).
 type Checklist struct {

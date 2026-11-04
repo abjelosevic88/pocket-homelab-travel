@@ -16,6 +16,7 @@ import { Places, PlaceModal } from './trip/Places'
 import { MapTab } from './trip/MapTab'
 import { Stay, LodgingModal, TransportModal } from './trip/Stay'
 import { BudgetTab, ExpenseModal } from './trip/Budget'
+import { Split } from './trip/Split'
 import { Checklists } from './trip/Lists'
 import { Journal, JournalModal } from './trip/Journal'
 import { Photos } from './trip/Photos'
@@ -127,6 +128,7 @@ export default function TripPage() {
         {tab === 'map' && <MapTab />}
         {tab === 'stay' && <Stay />}
         {tab === 'budget' && <BudgetTab />}
+        {tab === 'split' && <Split />}
         {tab === 'lists' && <Checklists />}
         {tab === 'journal' && <Journal />}
         {tab === 'photos' && <Photos />}

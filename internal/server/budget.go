@@ -90,10 +90,16 @@ func (s *Server) syncItemCost(ctx context.Context, t *store.Trip, kind string, i
 	}
 	e := store.Expense{TripID: t.ID, Name: name, Category: category, Amount: price, Currency: cur, AmountHome: currency.Convert(price, cur, t.Currency, rate), FXRate: rate, Date: date, Kind: ek, Source: "item", LinkKind: kind, LinkID: id}
 	if existing != nil {
-		e.ID = existing.ID
+		// once paid it is a bill: keep whoever paid and whoever it is for
+		e.ID, e.PayerID, e.PaymentModeID, e.BillTime, e.Notes = existing.ID, existing.PayerID, existing.PaymentModeID, existing.BillTime, existing.Notes
+		e.Deleted = existing.Deleted
+		if e.IsBill() && existing.PayerID == nil {
+			_ = s.billDefaults(ctx, t, &e)
+		}
 		_ = s.store.UpdateExpense(ctx, &e)
 		return
 	}
+	_ = s.billDefaults(ctx, t, &e)
 	_ = s.store.CreateExpense(ctx, &e)
 }
 
@@ -118,6 +124,56 @@ type expenseInput struct {
 	LinkKind *string  `json:"link_kind"`
 	LinkID   *int64   `json:"link_id"`
 	Notes    *string  `json:"notes"`
+
+	// bills
+	PayerID         *int64  `json:"payer_id"`
+	Owers           []int64 `json:"owers"`
+	PaymentModeID   *int64  `json:"payment_mode_id"`
+	BillTime        *string `json:"bill_time"`
+	Repeat          *string `json:"repeat"`
+	RepeatAllActive *bool   `json:"repeat_all_active"`
+	RepeatUntil     *string `json:"repeat_until"`
+	RepeatFreq      *int    `json:"repeat_freq"`
+}
+
+// applyBill sets who paid, for whom, how and whether it repeats.
+func applyBill(e *store.Expense, in expenseInput, keys map[string]bool) string {
+	if keys["payer_id"] {
+		e.PayerID = in.PayerID
+	}
+	if keys["owers"] {
+		e.Owers = append([]int64{}, in.Owers...)
+	}
+	if keys["payment_mode_id"] && in.PaymentModeID != nil {
+		e.PaymentModeID = *in.PaymentModeID
+	}
+	if keys["bill_time"] && in.BillTime != nil {
+		e.BillTime = strings.TrimSpace(*in.BillTime)
+		if e.BillTime != "" && !validClock(e.BillTime) {
+			return "time is HH:MM"
+		}
+	}
+	if keys["repeat"] && in.Repeat != nil {
+		switch *in.Repeat {
+		case "n", "d", "w", "b", "s", "m", "y":
+			e.Repeat = *in.Repeat
+		default:
+			return "repeat is n, d, w, b, s, m or y"
+		}
+	}
+	if keys["repeat_all_active"] && in.RepeatAllActive != nil {
+		e.RepeatAllActive = *in.RepeatAllActive
+	}
+	if keys["repeat_until"] && in.RepeatUntil != nil {
+		e.RepeatUntil = *in.RepeatUntil
+		if !validDate(e.RepeatUntil) {
+			return "repeat until must be YYYY-MM-DD"
+		}
+	}
+	if keys["repeat_freq"] && in.RepeatFreq != nil && *in.RepeatFreq > 0 {
+		e.RepeatFreq = *in.RepeatFreq
+	}
+	return ""
 }
 
 func (s *Server) applyExpense(ctx context.Context, t *store.Trip, e *store.Expense, in expenseInput, keys map[string]bool) string {
@@ -175,7 +231,10 @@ func (s *Server) applyExpense(ctx context.Context, t *store.Trip, e *store.Expen
 		e.FXRate, _ = s.rate(ctx, e.Currency, t.Currency, e.Date)
 	}
 	e.AmountHome = currency.Convert(e.Amount, e.Currency, t.Currency, e.FXRate)
-	return ""
+	if msg := applyBill(e, in, keys); msg != "" {
+		return msg
+	}
+	return s.billDefaults(ctx, t, e)
 }
 
 func (s *Server) handleCreateExpense(w http.ResponseWriter, r *http.Request) {
@@ -226,6 +285,15 @@ func (s *Server) handleUpdateExpense(w http.ResponseWriter, r *http.Request) {
 		if keys["notes"] && in.Notes != nil {
 			e.Notes = *in.Notes
 		}
+		// who paid and for whom are this app's to say
+		if msg := applyBill(e, in, keys); msg != "" {
+			writeErr(w, http.StatusBadRequest, msg)
+			return
+		}
+		if msg := s.billDefaults(r.Context(), t, e); msg != "" {
+			writeErr(w, http.StatusBadRequest, msg)
+			return
+		}
 		if err := s.store.UpdateExpense(r.Context(), e); err != nil {
 			s.fail(w, err, "update expense")
 			return
@@ -255,7 +323,19 @@ func (s *Server) handleDeleteExpense(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	t := tripFrom(r.Context()).trip
-	if err := s.store.DeleteExpense(r.Context(), t.ID, idParam(r, "id")); err != nil {
+	e, err := s.store.GetExpense(r.Context(), t.ID, idParam(r, "id"))
+	if err != nil {
+		s.fail(w, err, "delete expense")
+		return
+	}
+	// a bill goes to the trash (Cospend clients see it go); a planned cost, or
+	// one already in the trash, is deleted for good
+	if e.IsBill() && !e.Deleted && !queryBool(r, "purge") {
+		err = s.store.TrashExpense(r.Context(), t.ID, e.ID, true)
+	} else {
+		err = s.store.DeleteExpense(r.Context(), t.ID, e.ID)
+	}
+	if err != nil {
 		s.fail(w, err, "delete expense")
 		return
 	}
@@ -600,6 +680,7 @@ func (s *Server) syncMoney(ctx context.Context, tripID int64) (int, error) {
 		}
 		notes := strings.TrimSpace(strings.Join(nonEmpty(tx.Category, tx.Destination, tx.Notes), " · "))
 		e := &store.Expense{TripID: t.ID, Name: tx.Description, Category: cat, Amount: x.minor, Currency: x.cur, AmountHome: currency.Convert(x.minor, x.cur, t.Currency, rate), FXRate: rate, Date: tx.Date, Kind: "actual", Source: x.source, ExternalID: tx.ID, Notes: notes}
+		_ = s.billDefaults(ctx, t, e) // a new synced cost: paid by the owner, for everyone
 		_, err := s.store.UpsertExternalExpense(ctx, e, s.ownerEvent(ctx, t.OwnerID, func() (string, string, map[string]any) {
 			return "travel.expense_linked", fmt.Sprintf("expense:%d", e.ID), map[string]any{
 				"expense_id": e.ID, "trip_id": t.ID, "trip": t.Name, "name": e.Name, "category": e.Category,

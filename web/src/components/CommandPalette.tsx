@@ -13,7 +13,7 @@ import { PersonDot } from './WithPeople'
 
 export interface PaletteCommand { id: string; label: string; icon: string; hint?: string; keywords?: string; run: () => void }
 
-export const TRIP_TABS: [string, string, string][] = [['overview', 'Overview', 'luggage'], ['itinerary', 'Itinerary', 'calendar'], ['places', 'Places', 'pin'], ['map', 'Map', 'map'], ['stay', 'Stay & transport', 'bed'], ['budget', 'Budget', 'wallet'], ['lists', 'Checklists', 'checklist'], ['journal', 'Journal', 'book'], ['photos', 'Photos', 'camera'], ['documents', 'Documents', 'file'], ['settings', 'Settings', 'settings']]
+export const TRIP_TABS: [string, string, string][] = [['overview', 'Overview', 'luggage'], ['itinerary', 'Itinerary', 'calendar'], ['places', 'Places', 'pin'], ['map', 'Map', 'map'], ['stay', 'Stay & transport', 'bed'], ['budget', 'Budget', 'wallet'], ['split', 'Split', 'users'], ['lists', 'Checklists', 'checklist'], ['journal', 'Journal', 'book'], ['photos', 'Photos', 'camera'], ['documents', 'Documents', 'file'], ['settings', 'Settings', 'settings']]
 
 export function CommandPalette({ onClose, commands }: { onClose: () => void; commands: PaletteCommand[] }) {
   const { trips, people } = useApp()

@@ -284,15 +284,18 @@ func (s *Server) coreStatus() map[string]any {
 }
 
 // janitor syncs trip costs from Pocket Money for active trips every 30 minutes.
+// It also brings repeating bills up to date.
 func (s *Server) janitor(ctx context.Context) {
 	t := time.NewTicker(30 * time.Minute)
 	defer t.Stop()
+	s.repeatBills(ctx, store.Today())
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 			s.autoSync(ctx)
+			s.repeatBills(ctx, store.Today())
 		}
 	}
 }
@@ -316,6 +319,9 @@ func (s *Server) Router() http.Handler {
 	if s.cfg.MetricsEnabled {
 		r.Get("/metrics", s.handleMetrics)
 	}
+
+	// Nextcloud Cospend's public API, for MoneyBuster (cospend.go)
+	s.cospendRoutes(r)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", s.handleLogin)
@@ -410,6 +416,23 @@ func (s *Server) Router() http.Handler {
 				r.Put("/expenses/{id}", s.handleUpdateExpense)
 				r.Delete("/expenses/{id}", s.handleDeleteExpense)
 				r.Get("/budget", s.handleBudget)
+				r.Get("/split", s.handleSplit)
+				r.Get("/split/share", s.handleGetShare)
+				r.Put("/split/share", s.handlePutShare)
+				r.Delete("/split/share", s.handleDeleteShare)
+				r.Post("/split/settle", s.handleSettle)
+				r.Get("/split/trash", s.handleTrash)
+				r.Delete("/split/trash", s.handleEmptyTrash)
+				r.Post("/expenses/{id}/restore", s.handleRestoreExpense)
+				r.Post("/split/categories", s.handleSaveCategory)
+				r.Put("/split/categories/{id}", s.handleSaveCategory)
+				r.Delete("/split/categories/{id}", s.handleDeleteCategory)
+				r.Post("/split/payment-modes", s.handleSavePaymentMode)
+				r.Put("/split/payment-modes/{id}", s.handleSavePaymentMode)
+				r.Delete("/split/payment-modes/{id}", s.handleDeletePaymentMode)
+				r.Post("/split/currencies", s.handleSaveCurrency)
+				r.Put("/split/currencies/{id}", s.handleSaveCurrency)
+				r.Delete("/split/currencies/{id}", s.handleDeleteCurrency)
 				r.Post("/money/sync", s.handleMoneySync)
 				r.Post("/firefly/sync", s.handleMoneySync) // before v0.6.0
 

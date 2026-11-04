@@ -272,9 +272,9 @@ func (s *Store) TripCounts(ctx context.Context, id int64) (*TripCounts, error) {
 		(SELECT COUNT(1) FROM journal WHERE trip_id = ?),
 		(SELECT COUNT(1) FROM checklist_items i JOIN checklists c ON c.id = i.checklist_id WHERE c.trip_id = ?),
 		(SELECT COUNT(1) FROM checklist_items i JOIN checklists c ON c.id = i.checklist_id WHERE c.trip_id = ? AND i.done = 1),
-		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND kind = 'planned'),
-		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND kind = 'actual'),
-		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND kind = 'planned' AND source = 'item')`,
+		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND deleted = 0 AND kind = 'planned'),
+		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND deleted = 0 AND kind = 'actual'),
+		(SELECT COALESCE(SUM(amount_home), 0) FROM expenses WHERE trip_id = ? AND deleted = 0 AND kind = 'planned' AND source = 'item')`,
 		id, id, id, id, id, id, id, id, id, id, id)
 	var bookings int64
 	if err := row.Scan(&c.Places, &c.Visited, &c.Lodging, &c.Transport, &c.Documents, &c.Journal, &c.Checklist, &c.Checked, &c.Planned, &c.Actual, &bookings); err != nil {

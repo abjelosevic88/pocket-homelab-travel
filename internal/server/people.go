@@ -309,7 +309,9 @@ func (s *Server) handleMergePerson(w http.ResponseWriter, r *http.Request) {
 
 // moveMemberRefs moves what references one trip member to another before the
 // first is folded away (bills come with the shared expenses).
-func (s *Server) moveMemberRefs(tx *sql.Tx, tripID, from, into int64) error { return nil }
+func (s *Server) moveMemberRefs(tx *sql.Tx, tripID, from, into int64) error {
+	return moveMemberRefsImpl(tx, tripID, from, into)
+}
 
 // ---- people on a trip ----
 
@@ -469,4 +471,6 @@ func (s *Server) handleDeleteTripPerson(w http.ResponseWriter, r *http.Request) 
 }
 
 // memberInUse says why someone cannot leave a trip (they paid or owe a bill).
-func (s *Server) memberInUse(ctx context.Context, tripID, memberID int64) string { return "" }
+func (s *Server) memberInUse(ctx context.Context, tripID, memberID int64) string {
+	return s.memberInUseImpl(ctx, tripID, memberID)
+}

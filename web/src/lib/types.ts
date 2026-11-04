@@ -37,6 +37,21 @@ export interface Expense {
   id: number; trip_id: number; name: string; category: string; amount: number; currency: string; amount_home: number; fx_rate: number
   date: string; kind: 'planned' | 'actual'; source: 'manual' | 'money' | 'firefly' | 'item'; external_id: string; link_kind: string; link_id: number
   notes: string; created_at: string; updated_at: string
+  // a spent cost is a bill: who paid, for whom (trip people ids), how; trash; Cospend sync
+  payer_id: number | null; owers: number[]; payment_mode_id: number; bill_time: string; deleted: boolean; updated_ts: number
+  repeat: 'n' | 'd' | 'w' | 'b' | 's' | 'm' | 'y'; repeat_all_active: boolean; repeat_until: string; repeat_freq: number
+}
+export interface TripCategory { id: number; trip_id: number; key: string; name: string; icon: string; color: string; order: number }
+export interface TripPaymentMode { id: number; trip_id: number; name: string; icon: string; color: string; order: number; old_id: string }
+export interface TripCurrency { id: number; trip_id: number; name: string; exchange_rate: number }
+export interface Balance { member_id: number; name: string; paid: number; spent: number; balance: number }
+export interface Transfer { from: number; to: number; amount: number }
+export interface TripShare { trip_id: number; token: string; password: string; access_level: number; label: string; created_at: string }
+export interface SplitInfo {
+  currency: string; people: TripPerson[]; balances: Balance[]; settlement: Transfer[]
+  categories: TripCategory[]; payment_modes: TripPaymentMode[]; currencies: TripCurrency[]
+  bills: number; total: number; trash: number; share?: TripShare | null
+  by_category: Record<string, number>; by_payment_mode: Record<string, number>
 }
 export interface ChecklistItem { id: number; checklist_id: number; text: string; done: boolean; assignee_id: number | null; sort_order: number; created_at: string }
 export interface Checklist { id: number; trip_id: number; name: string; kind: string; sort_order: number; created_at: string; items: ChecklistItem[] }
@@ -55,6 +70,7 @@ export interface Overview {
   journal: JournalEntry[]; documents: Doc[]; budget: Budget
   countries: CountryDays[]
   people: TripPerson[]
+  split: SplitInfo | null
   integrations: { firefly: { configured: boolean; via: '' | 'core' | 'direct'; tag: string; synced_at: string }; dawarich: { configured: boolean; enabled: boolean; source?: LocationSource }; immich: { configured: boolean; enabled: boolean; url: string }; ai: { configured: boolean; model: string } }
 }
 export interface DayWeather { date: string; code: number; label: string; tmax: number; tmin: number; precip_mm: number; wind_kmh: number; sunrise?: string; sunset?: string; source: 'forecast' | 'archive' }
