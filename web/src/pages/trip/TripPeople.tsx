@@ -62,3 +62,41 @@ export function TripPeopleCard() {
     </Card>
   )
 }
+
+/**
+ * Everyone on the trip at a glance, with a quick way to add someone: pick from
+ * the people you travelled with (they autocomplete) or type a new name.
+ */
+export function PeopleStrip({ title = 'People' }: { title?: string }) {
+  const { ov, trip, isOwner, canEdit, patch, go } = useTrip()
+  const { people, reloadPeople } = useApp()
+  const { toast } = useToast()
+  const [busy, setBusy] = useState(false)
+  const list = ov.people || []
+  const base = `${V1}/trips/${trip.id}/people`
+  const add = async (body: { person_id?: number; name?: string }) => {
+    setBusy(true)
+    try { await api.post(base, body); patch({ people: await api.get<TripPerson[]>(base) }); reloadPeople(); toast('Added to the trip') } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
+  }
+  const candidates = isOwner ? people.filter(p => !list.some(tp => tp.person_id === p.id)).sort((a, b) => b.trips - a.trips || a.name.localeCompare(b.name)) : []
+  return (
+    <div className="people-strip">
+      <span className="ps-title">{title}</span>
+      <span className="ps-people">
+        {list.map(tp => (
+          tp.person_id
+            ? <Link key={tp.id} to={`/people/${tp.person_id}`} className={`ps-person ${tp.active ? '' : 'inactive'}`} title={tp.role === 'owner' ? `${tp.name} (owner)` : tp.name}><PersonDot name={tp.name} color={tp.color} size={24} /><span>{tp.name.split(' ')[0]}</span></Link>
+            : <span key={tp.id} className="ps-person"><PersonDot name={tp.name} color={tp.color} size={24} /><span>{tp.name.split(' ')[0]}</span></span>
+        ))}
+      </span>
+      {canEdit && (
+        <span className="ps-add">
+          <Select value="" onChange={v => v && add({ person_id: Number(v) })} disabled={busy}
+            options={candidates.map(p => ({ value: String(p.id), label: p.name, hint: p.trips ? `${p.trips} trip${p.trips === 1 ? '' : 's'} together` : 'new' }))}
+            onCreate={async name => { await add({ name }); return '' }} createLabel="Add" placeholder="+ Add someone…" ariaLabel="Add someone to the trip" />
+        </span>
+      )}
+      <button type="button" className="btn ghost sm" onClick={() => go('settings')} title="Weights, access and removing people">Manage</button>
+    </div>
+  )
+}

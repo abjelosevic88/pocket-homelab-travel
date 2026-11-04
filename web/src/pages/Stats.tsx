@@ -111,8 +111,13 @@ function CountryStrip({ countries, onFocus }: { countries: StatsCountry[]; onFoc
   const slide = (dir: number) => { const el = box.current; if (el) el.scrollBy({ left: dir * Math.max(tile + GAP, el.clientWidth - tile), behavior: 'smooth' }) }
   if (list.length === 0) return <Card title="Countries" className="mb"><p className="muted">No countries known yet. They come from the coordinates of stays, places and trip destinations.</p></Card>
   const visible = list.slice(win[0], win[1] + 1)
-  const sum = visible.reduce((n, c) => n + c.days, 0)
   const inView = (i: number) => i >= win[0] && i <= win[1]
+  // what the mode is about: visits (trips) or days
+  const value = (c: StatsCountry) => order === 'days' ? c.days : c.trips.length
+  // the percentage is each country's share of all of them; the water only compares what is in view
+  const total = list.reduce((n, c) => n + value(c), 0)
+  const maxInView = Math.max(1, ...visible.map(value))
+  const sum = visible.reduce((n, c) => n + c.days, 0)
   return (
     <Card title={`Countries · ${list.filter(c => c.days > 0).length}`} className="mb" actions={
       <div className="row" style={{ gap: 4 }}>
@@ -121,19 +126,23 @@ function CountryStrip({ countries, onFocus }: { countries: StatsCountry[]; onFoc
         <button type="button" className="icon-btn" onClick={() => zoom(1)} disabled={tile >= 260} title="Fewer, bigger (ctrl + wheel)" aria-label="Zoom in"><Icon name="plus" size={15} /></button>
         <button type="button" className="icon-btn" onClick={() => zoom(-1)} disabled={tile <= 96} title="More, smaller (ctrl + wheel)" aria-label="Zoom out"><Icon name="minus" size={15} /></button>
       </div>}>
-      <p className="muted small" style={{ marginTop: -4 }}>{order === 'days' ? 'Most days first.' : 'Most visited first.'} Each glass holds its share of the days spent in the countries in view — slide on and the rest fill up.</p>
+      <p className="muted small" style={{ marginTop: -4 }}>{order === 'days' ? 'Most days first.' : 'Most visited first.'} The percentage is the share of all your {order === 'days' ? 'days away' : 'visits'}; the water compares the countries in view — slide on and the rest fill up.</p>
       <div className="cstrip-wrap">
         <button type="button" className="cstrip-nav left" onClick={() => slide(-1)} disabled={win[0] === 0} aria-label="Previous countries"><Icon name="chevron-left" size={18} /></button>
         <div className="cstrip" ref={box} onScroll={measure} style={{ '--tile': `${tile}px`, '--gap': `${GAP}px` } as React.CSSProperties} role="list">
           {list.map((c, i) => {
-            const pct = sum > 0 && inView(i) ? c.days / sum * 100 : 0
+            const v = value(c)
+            const share = total > 0 ? v / total * 100 : 0
+            const level = inView(i) ? v / maxInView * 92 : 0
+            const avg = c.trips.length ? c.days / c.trips.length : 0
             return (
               <button type="button" key={c.code} role="listitem" className={`ctile ${inView(i) ? '' : 'out'} ${c.days === 0 ? 'only-planned' : ''}`} onClick={() => navigate(`/countries/${c.code}`)} onMouseEnter={() => onFocus(c.code)} onMouseLeave={() => onFocus(null)} onFocus={() => onFocus(c.code)} onBlur={() => onFocus(null)}
-                title={`${countryName(c.code)} — ${plural(c.trips.length, 'trip')}, ${plural(c.days, 'day')}${c.planned_days ? ` (+${c.planned_days} upcoming)` : ''}`}>
-                <span className="liquid" style={{ height: `${pct}%` }}><svg className="wave" viewBox="0 0 120 10" preserveAspectRatio="none" aria-hidden><path d="M0 5 Q 15 0 30 5 T 60 5 T 90 5 T 120 5 V10 H0 Z" /></svg></span>
+                title={`${countryName(c.code)} — ${plural(c.trips.length, 'visit')}, ${plural(c.days, 'day')}${c.planned_days ? ` (+${c.planned_days} upcoming)` : ''}, ${avg.toFixed(1)} days per visit · ${share.toFixed(1)}% of all ${order === 'days' ? 'days' : 'visits'}`}>
+                <span className="liquid" style={{ height: `${level}%` }}><svg className="wave" viewBox="0 0 120 10" preserveAspectRatio="none" aria-hidden><path d="M0 5 Q 15 0 30 5 T 60 5 T 90 5 T 120 5 V10 H0 Z" /></svg></span>
+                {share > 0 && <span className="ct-share">{share < 10 ? share.toFixed(1) : Math.round(share)}%</span>}
                 <span className="ct-top"><span className="ct-flag">{flag(c.code)}</span><span className="ct-name">{countryName(c.code)}</span></span>
-                <span className="ct-pct">{c.days > 0 ? (inView(i) ? `${pct < 10 ? pct.toFixed(1) : Math.round(pct)}%` : '') : 'upcoming'}</span>
-                <span className="ct-sub">{plural(c.trips.length, 'trip')} · {c.days} d{c.planned_days > 0 && <> +{c.planned_days}</>}</span>
+                <span className="ct-main"><b>{v}</b><small>{order === 'days' ? (v === 1 ? 'day' : 'days') : (v === 1 ? 'visit' : 'visits')}</small></span>
+                <span className="ct-sub">{order === 'days' ? plural(c.trips.length, 'visit') : plural(c.days, 'day')}{c.planned_days > 0 && <> · +{c.planned_days} d</>}{avg > 0 && <> · ⌀ {avg < 10 ? avg.toFixed(1) : Math.round(avg)} d</>}</span>
               </button>
             )
           })}

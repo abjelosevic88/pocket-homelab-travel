@@ -10,6 +10,7 @@ import { Money } from '../../components/Money'
 import { PersonDot } from '../../components/WithPeople'
 import { useTrip } from './ctx'
 import { CospendLinkCard } from './CospendLink'
+import { PeopleStrip } from './TripPeople'
 import { CospendImport } from '../../components/CospendImport'
 
 /**
@@ -42,6 +43,7 @@ export function Split() {
   }
   return (
     <>
+      <PeopleStrip title="Splitting between" />
       <div className="stats">
         <div className="stat"><div className="n"><Money minor={split.total} code={cur} /></div><div className="l">spent together · {plural(split.bills, 'bill')}</div></div>
         {myBalance && <div className="stat"><div className={`n ${myBalance.balance > 0 ? 'good' : myBalance.balance < 0 ? 'bad' : ''}`}><Money minor={Math.abs(myBalance.balance)} code={cur} /></div><div className="l">{myBalance.balance > 0 ? 'you get back' : myBalance.balance < 0 ? 'you owe' : 'you are square'}</div></div>}

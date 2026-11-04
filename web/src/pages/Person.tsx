@@ -39,6 +39,7 @@ export default function PersonPage() {
         </div>
         <div className="row wrap">
           {!p.is_self && <button type="button" className={`btn ${on ? 'primary' : ''}`} onClick={() => setWithPeople(on ? withPeople.filter(x => x !== p.id) : [...withPeople, p.id])} title="Show only the trips with them across the whole app"><Icon name="users" size={15} />{on ? 'Showing only trips with them' : 'Show only trips with them'}</button>}
+          <AddToTrip personId={p.id} name={p.name} onTrip={trips.map(t => t.id)} onAdded={reload} />
           <button type="button" className="btn" onClick={() => setEditing(true)}><Icon name="edit" size={15} />Edit</button>
           {!p.is_self && <button type="button" className="btn ghost" onClick={() => setMerging(true)} title="Fold a duplicate into someone else">Merge…</button>}
           {!p.is_self && <button type="button" className="btn ghost danger-text" onClick={() => setDel(true)}>Remove</button>}
@@ -98,4 +99,19 @@ function MergeModal({ id, name, onClose, onDone }: { id: number; name: string; o
       </div>
     </Modal>
   )
+}
+
+/** Put this person on one of your trips (upcoming ones first). */
+function AddToTrip({ personId, name, onTrip, onAdded }: { personId: number; name: string; onTrip: number[]; onAdded: () => void }) {
+  const { trips, user, reloadPeople } = useApp()
+  const { toast } = useToast()
+  const [busy, setBusy] = useState(false)
+  const mine = trips.filter(t => t.owner_id === user?.id && !onTrip.includes(t.id)).sort((a, b) => b.start_date.localeCompare(a.start_date))
+  if (mine.length === 0) return null
+  const add = async (id: string) => {
+    if (!id) return
+    setBusy(true)
+    try { await api.post(`${V1}/trips/${id}/people`, { person_id: personId }); toast(`${name} added to ${mine.find(t => String(t.id) === id)?.name}`); reloadPeople(); onAdded() } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
+  }
+  return <div style={{ minWidth: 220 }}><Select value="" onChange={add} disabled={busy} options={mine.map(t => ({ value: String(t.id), label: t.name, hint: t.start_date ? t.start_date.slice(0, 7) : '' }))} placeholder="+ Add to a trip…" ariaLabel={`Add ${name} to a trip`} /></div>
 }

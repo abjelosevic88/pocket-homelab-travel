@@ -555,3 +555,16 @@ button.tl-year:hover, button.tl-year.open { color: var(--accent); }
 .extra-in { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); }
 .extra-in input { width: 90px; }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* tiles: the value of the mode big, the share of all small */
+.ct-share { position: absolute; top: 8px; right: 8px; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--surface); color: var(--muted); font-variant-numeric: tabular-nums; z-index: 1; }
+.ct-main { position: relative; margin-top: auto; display: flex; align-items: baseline; gap: 5px; text-shadow: 0 0 6px var(--surface-2), 0 0 2px var(--surface-2); }
+.ct-main b { font-size: clamp(20px, calc(var(--tile) * .22), 40px); line-height: 1; font-variant-numeric: tabular-nums; }
+.ct-main small { font-size: 12px; color: var(--text); font-weight: 600; }
+.ctile .ct-sub { font-size: 12px; color: var(--text); opacity: .85; }
+.people-strip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.ps-title { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.ps-people { display: flex; gap: 6px; flex-wrap: wrap; }
+.ps-person { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px 2px 2px; border-radius: 999px; background: var(--surface-2); color: inherit; font-size: 13px; }
+.ps-person:hover { text-decoration: none; background: color-mix(in srgb, var(--accent) 12%, var(--surface-2)); }
+.ps-person.inactive { opacity: .55; }
+.ps-add { min-width: 220px; flex: 1 1 220px; max-width: 320px; }
