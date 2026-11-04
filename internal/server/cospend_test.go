@@ -175,3 +175,75 @@ func TestCospendAPI(t *testing.T) {
 		t.Fatalf("closed link answered: %d", code)
 	}
 }
+
+func TestParseCospendLink(t *testing.T) {
+	for _, c := range []struct{ in, base, tok, pass string }{
+		{"cospend://cloud.example.com/abc123/s3cret", "https://cloud.example.com/index.php/apps/cospend", "abc123", "s3cret"},
+		{"cospend+http://192.168.1.5:8080/nc/abc123/pw", "http://192.168.1.5:8080/nc/index.php/apps/cospend", "abc123", "pw"},
+		{"cospend://cloud.example.com/abc123/", "https://cloud.example.com/index.php/apps/cospend", "abc123", "no-pass"},
+		{"https://cloud.example.com/index.php/apps/cospend/s/abc123", "https://cloud.example.com/index.php/apps/cospend", "abc123", "no-pass"},
+		{"https://cloud.example.com/apps/cospend/s/abc123", "https://cloud.example.com/index.php/apps/cospend", "abc123", "no-pass"},
+	} {
+		base, tok, pass, err := parseCospendLink(c.in, "", "")
+		if err != nil || base != c.base || tok != c.tok || pass != c.pass {
+			t.Errorf("%s → %s %s %s %v", c.in, base, tok, pass, err)
+		}
+	}
+	if _, _, _, err := parseCospendLink("hello", "", ""); err == nil {
+		t.Error("garbage accepted")
+	}
+}
+
+// TestCospendImport imports one trip's Cospend link into a new trip of
+// another person — this app talking to itself as if it were Nextcloud.
+func TestCospendImport(t *testing.T) {
+	h := newIsoHarness(t)
+	tr := h.create(h.ownerTok, "/api/v1/trips", map[string]any{"name": "Bosna Road Trip", "start_date": "2025-07-28", "end_date": "2025-07-31", "currency": "EUR"})
+	base := fmt.Sprintf("/api/v1/trips/%d", tr)
+	ana := h.create(h.ownerTok, base+"/people", map[string]any{"name": "Ana"})
+	h.create(h.ownerTok, base+"/expenses", map[string]any{"name": "Ćevapi", "category": "food", "amount": 1800, "kind": "actual", "date": "2025-07-29", "payer_id": ana, "bill_time": "13:10"})
+	h.create(h.ownerTok, base+"/expenses", map[string]any{"name": "Fuel", "category": "fuel", "amount": 6000, "kind": "actual", "date": "2025-07-30"})
+	_, b := h.do(h.ownerTok, http.MethodPut, base+"/split/share", map[string]any{})
+	var sh ShareLink
+	_ = json.Unmarshal(b, &sh)
+
+	imp := func() CospendImportResult {
+		t.Helper()
+		code, b := h.do(h.memberTok, http.MethodPost, "/api/v1/import/cospend", map[string]any{"link": sh.Link})
+		var r CospendImportResult
+		if code != http.StatusOK || json.Unmarshal(b, &r) != nil {
+			t.Fatalf("import: %d %s", code, b)
+		}
+		return r
+	}
+	r := imp()
+	if !r.Created || r.Bills != 2 || r.New != 2 || r.Members != 2 {
+		t.Fatalf("import = %+v", r)
+	}
+	nb := fmt.Sprintf("/api/v1/trips/%d", r.TripID)
+	_, b = h.do(h.memberTok, http.MethodGet, nb+"/split", nil)
+	var s SplitInfo
+	_ = json.Unmarshal(b, &s)
+	if s.Total != 7800 || len(s.People) != 3 || len(s.Settlement) != 1 || s.Settlement[0].Amount != 2100 {
+		t.Fatalf("imported split = %s", b)
+	}
+	_, b = h.do(h.memberTok, http.MethodGet, nb, nil)
+	if !strings.Contains(string(b), `"start_date":"2025-07-29"`) {
+		t.Fatalf("trip dates = %s", b)
+	}
+	// into the same trip again: updated, nothing doubled
+	code, b := h.do(h.memberTok, http.MethodPost, "/api/v1/import/cospend", map[string]any{"link": sh.Link, "trip_id": r.TripID})
+	var r3 CospendImportResult
+	_ = json.Unmarshal(b, &r3)
+	if code != http.StatusOK || r3.New != 0 || r3.Bills != 2 {
+		t.Fatalf("re-import = %d %s", code, b)
+	}
+	// someone else's trip cannot be the target
+	if code, _ := h.do(h.memberTok, http.MethodPost, "/api/v1/import/cospend", map[string]any{"link": sh.Link, "trip_id": tr}); code == http.StatusOK {
+		t.Fatal("imported into someone else's trip")
+	}
+	// a wrong password says so
+	if code, b := h.do(h.memberTok, http.MethodPost, "/api/v1/import/cospend", map[string]any{"link": strings.Replace(sh.Link, sh.Password, "nope", 1)}); code != http.StatusBadGateway || !strings.Contains(string(b), "refused") {
+		t.Fatalf("wrong password: %d %s", code, b)
+	}
+}

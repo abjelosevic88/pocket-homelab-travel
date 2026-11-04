@@ -383,6 +383,9 @@ func (s *Server) budgetSummary(t *store.Trip, expenses []store.Expense) BudgetSu
 	days := map[string]*DayTotal{}
 	var actuals []store.Expense
 	for _, e := range expenses {
+		if e.Category == store.ReimbursementKey || e.Deleted {
+			continue // paying each other back is not spending
+		}
 		c := cats[e.Category]
 		if c == nil {
 			c = &CategoryTotal{Category: e.Category}

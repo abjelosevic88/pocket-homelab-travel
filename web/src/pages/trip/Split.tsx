@@ -10,6 +10,7 @@ import { Money } from '../../components/Money'
 import { PersonDot } from '../../components/WithPeople'
 import { useTrip } from './ctx'
 import { CospendLinkCard } from './CospendLink'
+import { CospendImport } from '../../components/CospendImport'
 
 /**
  * The trip's shared money, as in Nextcloud Cospend: every spent cost is a bill
@@ -116,6 +117,7 @@ export function Split() {
         </Card>
       </div>
       {split.trash > 0 && <Trash />}
+      {canEdit && <Card title="Import from Nextcloud Cospend" className="mb"><p className="muted small">Bring an existing Cospend project's bills and people into this trip. Run it again later and it updates instead of doubling.</p><CospendImport tripId={trip.id} onDone={() => reload()} /></Card>}
       {settling && <Confirm title="Mark the plan as paid?" message={`${plural(split.settlement.length, 'reimbursement')} will be added so everyone is square.`} onCancel={() => setSettling(false)} onConfirm={settle} />}
       {lists && <ListsModal categories={split.categories} modes={split.payment_modes} onClose={() => { setLists(false); reload() }} />}
     </>

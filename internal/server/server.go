@@ -483,6 +483,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/import/adventurelog/collections", s.handleALCollections)
 			r.Post("/import/adventurelog", s.handleALImport)
 			r.Post("/import/trip", s.handleImportJSON)
+			r.Post("/import/cospend", s.handleCospendImport)
 
 			r.Get("/users", s.handleListUsers)
 			r.Post("/users", s.handleCreateUser)

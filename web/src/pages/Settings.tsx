@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, V1 } from '../lib/api'
 import { useApp } from '../lib/app-context'
+import { CospendImport } from '../components/CospendImport'
 import type { APIToken, ConnMode, Settings as SettingsT, User } from '../lib/types'
 import { DATE_FORMATS, TIME_FORMATS, fmtBytes, fmtDateTime, type DateFormat, type TimeFormat } from '../lib/format'
 import { Avatar, Confirm, Field, Loading, Modal, Segmented, SettingRow, Switch, Tabs, useAsync, useIsMobile, useToast } from '../components/ui'
@@ -18,7 +19,7 @@ type TabId = 'general' | 'integrations' | 'import' | 'profile' | 'users' | 'api'
 const TABS: { id: TabId; label: string; icon: string; sub: string }[] = [
   { id: 'general', label: 'General', icon: 'settings', sub: 'Currency, distances, maps, date and time formats, and the app title.' },
   { id: 'integrations', label: 'Integrations', icon: 'layers', sub: 'Pocket Money, Pocket Movement or Dawarich, Immich and OpenAI — your own accounts, through Pocket Core or directly.' },
-  { id: 'import', label: 'Import', icon: 'download', sub: 'Bring collections over from AdventureLog, or restore a trip from a JSON backup.' },
+  { id: 'import', label: 'Import', icon: 'download', sub: 'Bring projects over from Nextcloud Cospend, collections from AdventureLog, or restore a trip from a JSON backup.' },
   { id: 'profile', label: 'Profile', icon: 'user', sub: 'Your name, email and password.' },
   { id: 'users', label: 'People', icon: 'users', sub: 'Everyone who has an account on this box.' },
   { id: 'api', label: 'API tokens', icon: 'key', sub: 'Personal tokens for widgets, scripts and calendar subscriptions.' },
@@ -355,6 +356,9 @@ function Import() {
   }
   return (
     <div className="stack loose">
+      <Section title="From Nextcloud Cospend" icon="download" sub="A Cospend project's people, bills, categories and payment methods, through its share link — into a new trip or one of yours. Import again any time: it updates instead of doubling.">
+        <CospendImport />
+      </Section>
       <Section title="From AdventureLog" icon="download" sub="Collections become trips; locations, lodging, transportation, notes and checklists come along, with their images. Re-running skips what is already here. Legs that AdventureLog imported from Dawarich are left out — the route is live here.">
         <form onSubmit={list} className="grid" style={{ gap: 12 }}>
           <Field label="AdventureLog URL"><input value={al.url} onChange={e => setAL({ ...al, url: e.target.value })} placeholder="https://adventurelog.example.com" required /></Field>
