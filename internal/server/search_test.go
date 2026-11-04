@@ -140,3 +140,41 @@ func TestStayTimesAndCoordinates(t *testing.T) {
 		t.Fatalf("member default = %s", st.CheckinTime)
 	}
 }
+
+func TestSavedPlaces(t *testing.T) {
+	h := newIsoHarness(t)
+	a := h.create(h.ownerTok, "/api/v1/trips", map[string]any{"name": "Portugal 2024", "start_date": "2024-07-01", "end_date": "2024-07-10", "currency": "EUR"})
+	b := h.create(h.ownerTok, "/api/v1/trips", map[string]any{"name": "Portugal 2025", "start_date": "2025-07-01", "end_date": "2025-07-10", "currency": "EUR"})
+	beach := map[string]any{"name": "Praia do Mosteiro", "category": "beach", "lat": 37.8, "lng": -25.8}
+	h.create(h.ownerTok, fmt.Sprintf("/api/v1/trips/%d/places", a), beach)
+	beach["day_date"] = "2025-07-02"
+	h.create(h.ownerTok, fmt.Sprintf("/api/v1/trips/%d/places", b), beach)
+	beach["day_date"] = "2025-07-05"
+	h.create(h.ownerTok, fmt.Sprintf("/api/v1/trips/%d/places", b), beach)
+	h.create(h.ownerTok, fmt.Sprintf("/api/v1/trips/%d/places", a), map[string]any{"name": "Café Central", "category": "cafe"})
+	h.create(h.memberTok, "/api/v1/trips", map[string]any{"name": "not mine", "currency": "EUR"})
+
+	var out []struct {
+		Name     string `json:"name"`
+		TripID   int64  `json:"trip_id"`
+		Visits   int    `json:"visits"`
+		LastDate string `json:"last_date"`
+	}
+	_, body := h.do(h.ownerTok, http.MethodGet, fmt.Sprintf("/api/v1/places/saved?trip=%d", b), nil)
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 2 || out[0].Name != "Praia do Mosteiro" || out[0].Visits != 3 || out[0].TripID != b || out[0].LastDate != "2025-07-05" {
+		t.Fatalf("saved = %s", body)
+	}
+	_, body = h.do(h.ownerTok, http.MethodGet, "/api/v1/places/saved?q=cafe", nil)
+	out = nil
+	_ = json.Unmarshal(body, &out)
+	if len(out) != 1 || out[0].Name != "Café Central" {
+		t.Fatalf("q=cafe → %s", body)
+	}
+	_, body = h.do(h.memberTok, http.MethodGet, "/api/v1/places/saved", nil)
+	if string(body) != "[]\n" && string(body) != "[]" {
+		t.Fatalf("member sees %s", body)
+	}
+}

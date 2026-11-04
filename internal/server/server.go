@@ -337,6 +337,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/geo/weather", s.handleGeoWeather)
 
 			r.Get("/search", s.handleSearch)
+			r.Get("/places/saved", s.handleSavedPlaces)
 			r.Get("/trips", s.handleListTrips)
 			r.Post("/trips", s.handleCreateTrip)
 			r.Route("/trips/{tripID}", func(r chi.Router) {

@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/search"
@@ -195,3 +197,92 @@ func dateOnly(s string) string {
 // tripCountryWords are extra words a trip is found by: the names of the
 // countries it went through (filled in once trips know their countries).
 func (s *Server) tripCountryWords(ctx context.Context, t *store.Trip) []string { return nil }
+
+// SavedPlace is a place from any of the person's trips, offered when adding
+// a place again (the same beach on day 2 and day 5, the café from last year).
+type SavedPlace struct {
+	store.Place
+	TripName string `json:"trip_name"`
+	Visits   int    `json:"visits"` // how many entries share this name and spot
+	LastDate string `json:"last_date"`
+}
+
+// handleSavedPlaces lists the person's places across all their trips, one
+// per name and spot (about 10 m), the current trip's first, then the most
+// recently used; q filters by name or address, ignoring accents.
+func (s *Server) handleSavedPlaces(w http.ResponseWriter, r *http.Request) {
+	u := userFrom(r.Context())
+	ctx := r.Context()
+	q := search.Fold(strings.TrimSpace(r.URL.Query().Get("q")))
+	current := int64(0)
+	if v := r.URL.Query().Get("trip"); v != "" {
+		fmt.Sscan(v, &current)
+	}
+	places, err := s.store.PlacesForUser(ctx, u.ID)
+	if err != nil {
+		s.fail(w, err, "saved places")
+		return
+	}
+	trips, err := s.store.ListTrips(ctx, store.TripFilter{UserID: u.ID})
+	if err != nil {
+		s.fail(w, err, "saved places")
+		return
+	}
+	tripByID := map[int64]*store.Trip{}
+	for i := range trips {
+		tripByID[trips[i].ID] = &trips[i]
+	}
+	words := strings.Fields(q)
+	byKey := map[string]*SavedPlace{}
+	order := []string{}
+	for _, p := range places {
+		t := tripByID[p.TripID]
+		if t == nil {
+			continue
+		}
+		if len(words) > 0 && !allTrue(search.MatchText(words, search.Fold(p.Name+" "+p.Address))) {
+			continue
+		}
+		key := search.Fold(p.Name)
+		if p.Lat != nil && p.Lng != nil {
+			key += fmt.Sprintf("@%.4f,%.4f", *p.Lat, *p.Lng)
+		}
+		when := p.DayDate
+		if when == "" {
+			when = t.StartDate
+		}
+		sp := byKey[key]
+		if sp == nil {
+			sp = &SavedPlace{Place: p, TripName: t.Name}
+			sp.Photos = nil
+			byKey[key] = sp
+			order = append(order, key)
+		}
+		sp.Visits++
+		// describe it by its latest entry, preferring the current trip's
+		if when > sp.LastDate || (p.TripID == current && sp.TripID != current) {
+			sp.LastDate = when
+			visits := sp.Visits
+			*sp = SavedPlace{Place: p, TripName: t.Name, Visits: visits, LastDate: when}
+		}
+	}
+	out := make([]SavedPlace, 0, len(order))
+	for _, k := range order {
+		out = append(out, *byKey[k])
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		ci, cj := out[i].TripID == current, out[j].TripID == current
+		if ci != cj {
+			return ci
+		}
+		return out[i].LastDate > out[j].LastDate
+	})
+	limit := 300 // the form filters these as you type
+	if q != "" {
+		limit = 40
+	}
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	writeJSON(w, http.StatusOK, out)
+}
