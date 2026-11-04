@@ -9,13 +9,14 @@ import { describeDates, fold, hitLink, useSearch } from '../lib/search'
 import { LODGING_ICONS, PLACE_ICONS } from '../lib/types'
 import { fmtDate, fmtRange } from '../lib/format'
 import { allCountries, flag } from '../lib/countries'
+import { PersonDot } from './WithPeople'
 
 export interface PaletteCommand { id: string; label: string; icon: string; hint?: string; keywords?: string; run: () => void }
 
 export const TRIP_TABS: [string, string, string][] = [['overview', 'Overview', 'luggage'], ['itinerary', 'Itinerary', 'calendar'], ['places', 'Places', 'pin'], ['map', 'Map', 'map'], ['stay', 'Stay & transport', 'bed'], ['budget', 'Budget', 'wallet'], ['lists', 'Checklists', 'checklist'], ['journal', 'Journal', 'book'], ['photos', 'Photos', 'camera'], ['documents', 'Documents', 'file'], ['settings', 'Settings', 'settings']]
 
 export function CommandPalette({ onClose, commands }: { onClose: () => void; commands: PaletteCommand[] }) {
-  const { trips } = useApp()
+  const { trips, people } = useApp()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
   const [hi, setHi] = useState(0)
@@ -45,6 +46,11 @@ export function CommandPalette({ onClose, commands }: { onClose: () => void; com
       for (const h of result.places) out.push({ key: `p${h.id}`, group: 'Places', icon: <span>{PLACE_ICONS[h.category] || '📍'}</span>, label: h.name, sub: <>in <b>{h.trip_name}</b>{h.date ? ` · ${fmtDate(h.date, false)}` : h.trip_start ? ` · ${fmtRange(h.trip_start, h.trip_end)}` : ''}{h.address ? ` · ${h.address}` : ''}</>, run: () => navigate(hitLink(h)) })
       for (const h of result.stays) out.push({ key: `l${h.id}`, group: 'Stays', icon: <span>{LODGING_ICONS[h.category] || '🛏'}</span>, label: h.name, sub: <>in <b>{h.trip_name}</b>{h.date ? ` · ${fmtRange(h.date, h.date_end)}` : ''}{h.address ? ` · ${h.address}` : ''}</>, run: () => navigate(hitLink(h)) })
     }
+    // people: "ana" → her page (and the trips together are found above)
+    if (words.length) for (const p of people) {
+      if (!hit(p.name)) continue
+      out.push({ key: `pp${p.id}`, group: 'People', icon: <PersonDot name={p.name} color={p.color} size={18} />, label: p.name, sub: `${p.trips} trip${p.trips === 1 ? '' : 's'} together`, run: () => navigate(`/people/${p.id}`) })
+    }
     // countries: "bosnia" → its page (with what you noted and every trip there)
     if (words.length) for (const c of allCountries()) {
       if (!hit(`${c.name} ${c.code}`)) continue
@@ -56,7 +62,7 @@ export function CommandPalette({ onClose, commands }: { onClose: () => void; com
       out.push({ key: c.id, group: 'Commands', icon: <Icon name={c.icon} size={16} />, label: c.label, hint: c.hint, run: c.run })
     }
     return out
-  }, [q, trips, commands, navigate, result])
+  }, [q, trips, commands, navigate, result, people])
   const dates = describeDates(result)
   useEffect(() => setHi(0), [q])
   useEffect(() => { list.current?.querySelector(`[data-i="${hi}"]`)?.scrollIntoView({ block: 'nearest' }) }, [hi])

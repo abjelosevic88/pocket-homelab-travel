@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, uploadForm, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
-import type { APIToken, CountryDays, GeoResult, Trip, TripMember, TripStatus } from '../../lib/types'
+import type { APIToken, CountryDays, GeoResult, Trip, TripStatus } from '../../lib/types'
 import { allCountries, countryName, flag } from '../../lib/countries'
 import { STATUS_LABEL } from '../../lib/types'
 import { TRIP_COLORS } from '../../lib/format'
@@ -12,26 +12,20 @@ import { Select } from '../../components/Select'
 import { AmountInput } from '../../components/Money'
 import { GeoSearch } from '../../components/GeoSearch'
 import { useTrip } from './ctx'
+import { TripPeopleCard } from './TripPeople'
 
 export function TripSettings() {
   const { trip, isOwner, canEdit, reload, edit, ov } = useTrip()
-  const { users, user, status } = useApp()
+  const { status } = useApp()
   const { toast } = useToast()
   const navigate = useNavigate()
   const [del, setDel] = useState(false)
   const [dup, setDup] = useState(false)
-  const [members, setMembers] = useState<TripMember[]>(trip.members || [])
-  useEffect(() => setMembers(trip.members || []), [trip.members])
   const { data: tokens } = useAsync(() => api.get<APIToken[]>(`${V1}/tokens`), [])
   const base = `${V1}/trips/${trip.id}`
-  const saveMembers = async (list: TripMember[]) => {
-    setMembers(list)
-    try { await api.put(`${base}/members`, { members: list.filter(m => m.role !== 'owner').map(m => ({ user_id: m.user_id, role: m.role })) }); await reload() } catch (e) { toast((e as Error).message, 'err') }
-  }
   const remove = async () => { try { await api.del(base); toast('Trip deleted'); navigate('/trips') } catch (e) { toast((e as Error).message, 'err') } }
   const uploadCover = async (file: File) => { try { await uploadForm(`${base}/cover`, file); await reload(); toast('Cover updated') } catch (e) { toast((e as Error).message, 'err') } }
   const archive = async () => { try { await api.put(base, { archived: !trip.archived }); await reload() } catch (e) { toast((e as Error).message, 'err') } }
-  const others = users.filter(u => u.id !== trip.owner_id)
   const calUrl = `${location.origin}/cal/${trip.id}.ics?token=`
   return (
     <div className="overview-grid">
@@ -47,16 +41,7 @@ export function TripSettings() {
         </dl>
         {canEdit && <div className="row mt"><label className="btn sm"><Icon name="image" size={14} />Upload cover photo…<input type="file" accept="image/*" hidden onChange={e => e.target.files?.[0] && uploadCover(e.target.files[0])} /></label>{trip.has_cover && <button type="button" className="btn ghost sm" onClick={async () => { await api.del(`${base}/cover`); reload() }}>Remove cover</button>}</div>}
       </Card>
-      <Card title="Who can see this trip">
-        <p className="muted small">The owner can do everything. Editors plan, tick and write; viewers only look. Companions need an account (Settings → People).</p>
-        <table className="table compact">
-          <tbody>
-            <tr><td><b>{trip.members?.find(m => m.role === 'owner')?.name || 'Owner'}</b></td><td className="muted">owner</td><td /></tr>
-            {members.filter(m => m.role !== 'owner').map(m => <tr key={m.user_id}><td>{m.name || m.email}</td><td>{isOwner ? <Segmented value={m.role} onChange={r => saveMembers(members.map(x => x.user_id === m.user_id ? { ...x, role: r } : x))} options={[{ value: 'editor', label: 'Editor' }, { value: 'viewer', label: 'Viewer' }]} size="sm" /> : <span className="muted">{m.role}</span>}</td><td className="right">{isOwner && <button type="button" className="btn ghost sm danger-text" onClick={() => saveMembers(members.filter(x => x.user_id !== m.user_id))}>Remove</button>}</td></tr>)}
-          </tbody>
-        </table>
-        {isOwner && others.filter(u => !members.some(m => m.user_id === u.id)).length > 0 && <div className="row mt-sm"><Select value="" onChange={v => { const u = users.find(x => x.id === Number(v)); if (u) saveMembers([...members, { user_id: u.id, name: u.name, email: u.email, role: 'editor' }]) }} options={others.filter(u => !members.some(m => m.user_id === u.id)).map(u => ({ value: String(u.id), label: u.name || u.email, hint: u.email }))} placeholder="+ Add a companion…" /></div>}
-      </Card>
+      <TripPeopleCard />
       <Card title="Export & calendar">
         <div className="row wrap mb-sm">
           <a className="btn sm" href={`${base}/export/calendar.ics`}><Icon name="calendar" size={14} />Calendar (.ics)</a>

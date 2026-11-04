@@ -98,7 +98,7 @@ func Parse(s string) Query {
 	var q Query
 	for _, w := range strings.Fields(Fold(s)) {
 		w = strings.Trim(w, ".,;:!?\"'()")
-		if w == "" {
+		if w == "" || w == "with" || w == "sa" { // "with Ana", "sa Anom": the name is what counts
 			continue
 		}
 		if len(w) == 4 && (strings.HasPrefix(w, "19") || strings.HasPrefix(w, "20")) {

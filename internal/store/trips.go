@@ -41,6 +41,9 @@ type TripFilter struct {
 	Archived *bool
 	Status   string
 	Query    string
+	// WithPeople keeps trips on which every one of these people (ids in the
+	// requesting user's address book) was.
+	WithPeople []int64
 }
 
 // ListTrips returns trips the user can see, newest start date first.
@@ -62,6 +65,12 @@ func (s *Store) ListTrips(ctx context.Context, f TripFilter) ([]Trip, error) {
 	if f.Status != "" {
 		q += ` AND t.status = ?`
 		args = append(args, f.Status)
+	}
+	if len(f.WithPeople) > 0 {
+		ph, ids := inInts(f.WithPeople)
+		q += ` AND t.id IN (SELECT trip_id FROM trip_people WHERE person_id IN (` + ph + `) GROUP BY trip_id HAVING COUNT(DISTINCT person_id) = ?)`
+		args = append(args, ids...)
+		args = append(args, len(f.WithPeople))
 	}
 	if f.Query != "" {
 		q += ` AND (t.name LIKE ? OR t.destination LIKE ?)`
@@ -208,7 +217,11 @@ func (s *Store) CreateTrip(ctx context.Context, t *Trip, after ...core.CommitHoo
 	}
 	t.ID, _ = res.LastInsertId()
 	t.Days = DaysBetween(t.StartDate, t.EndDate)
-	return core.Commit(tx, after...)
+	if err := core.Commit(tx, after...); err != nil {
+		return err
+	}
+	// the owner is on their own trip (and in its shared expenses)
+	return s.AddOwnerToTrip(ctx, t)
 }
 
 // UpdateTrip saves all editable columns.
@@ -327,8 +340,8 @@ type HomeStats struct {
 }
 
 // HomeStats aggregates the user's trips.
-func (s *Store) HomeStats(ctx context.Context, userID int64) (*HomeStats, error) {
-	trips, err := s.ListTrips(ctx, TripFilter{UserID: userID})
+func (s *Store) HomeStats(ctx context.Context, userID int64, withPeople ...int64) (*HomeStats, error) {
+	trips, err := s.ListTrips(ctx, TripFilter{UserID: userID, WithPeople: withPeople})
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +374,16 @@ func (s *Store) HomeStats(ctx context.Context, userID int64) (*HomeStats, error)
 	if next != nil {
 		st.NextTripID = next.ID
 	}
-	_ = s.DB.QueryRowContext(ctx, `SELECT COUNT(1), COALESCE(SUM(p.status = 'visited'), 0) FROM places p JOIN trips t ON t.id = p.trip_id WHERE t.archived = 0 AND (t.owner_id = ? OR t.id IN (SELECT trip_id FROM trip_members WHERE user_id = ?))`, userID, userID).Scan(&st.Places, &st.Visited)
+	ids := make([]int64, 0, len(trips))
+	for i := range trips {
+		if !trips[i].Archived {
+			ids = append(ids, trips[i].ID)
+		}
+	}
+	if len(ids) > 0 {
+		ph, args := inInts(ids)
+		_ = s.DB.QueryRowContext(ctx, `SELECT COUNT(1), COALESCE(SUM(status = 'visited'), 0) FROM places WHERE trip_id IN (`+ph+`)`, args...).Scan(&st.Places, &st.Visited)
+	}
 	return st, nil
 }
 

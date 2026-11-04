@@ -78,16 +78,22 @@ func (s *Server) runSearch(ctx context.Context, userID int64, q search.Query) (*
 	if q.Empty() {
 		return res, nil
 	}
-	trips, err := s.store.ListTrips(ctx, store.TripFilter{UserID: userID})
+	trips, err := s.store.ListTrips(ctx, s.visibleTrips(ctx, userID))
 	if err != nil {
 		return nil, err
 	}
 	byID := map[int64]*store.Trip{}
 	tripText := map[int64]string{}
+	ids := make([]int64, len(trips))
+	for i := range trips {
+		ids[i] = trips[i].ID
+	}
+	names, _ := s.store.TripPeopleNames(ctx, ids) // "ana" finds the trips with Ana
 	for i := range trips {
 		t := &trips[i]
 		byID[t.ID] = t
-		tripText[t.ID] = search.Fold(strings.Join(append([]string{t.Name, t.Destination}, s.tripCountryWords(ctx, t)...), " "))
+		words := append([]string{t.Name, t.Destination}, s.tripCountryWords(ctx, t)...)
+		tripText[t.ID] = search.Fold(strings.Join(append(words, names[t.ID]...), " "))
 	}
 	hitsByTrip := map[int64][]SearchHit{}
 	// Places and stays only when there is text to look for: "2025" alone lists trips.

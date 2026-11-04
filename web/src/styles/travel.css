@@ -497,3 +497,32 @@ button.tl-year:hover, button.tl-year.open { color: var(--accent); }
 .briefs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
 .hero-countries a { color: inherit; } .hero-countries a:hover { text-decoration: none; opacity: .85; }
 .card-flags { display: inline-flex; gap: 3px; margin-left: 6px; font-size: 13px; }
+
+/* ---- people ---- */
+.person-dot { border-radius: 50%; display: inline-grid; place-items: center; color: #fff; font-weight: 700; flex: none; letter-spacing: .02em; box-shadow: 0 0 0 2px var(--surface); }
+.with-picker { position: relative; }
+.btn.with-on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.with-names { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.with-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; width: 290px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg, var(--shadow)); padding: 10px; display: grid; gap: 8px; }
+.with-head { display: grid; gap: 1px; padding: 2px 4px; }
+.with-search { width: 100%; }
+.with-list { max-height: 320px; overflow-y: auto; display: grid; gap: 1px; }
+.with-row { display: flex; align-items: center; gap: 10px; padding: 6px 6px; border-radius: 8px; cursor: pointer; }
+.with-row:hover { background: var(--surface-2); }
+.with-row input { width: auto; margin: 0; }
+.with-foot { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
+.with-banner { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; margin-bottom: 14px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); font-size: 13.5px; }
+.with-banner > .icon { color: var(--accent); }
+.people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 10px; }
+.person-card { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: inherit; min-width: 0; }
+.person-card:hover { border-color: var(--accent); text-decoration: none; }
+.person-card .grow { min-width: 0; }
+.person-card b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trip-people { display: grid; gap: 4px; }
+.tp-row { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-radius: 8px; }
+.tp-row:hover { background: var(--surface-2); }
+.tp-row.inactive { opacity: .6; }
+.tp-row .grow { min-width: 0; }
+.tp-row .sel, .tp-row .select { width: 130px; }
+.hero-people a { color: inherit; } .hero-people a:hover { text-decoration: underline; }
+.meta-line .hero-people > span { display: inline; margin: 0; gap: 0; }

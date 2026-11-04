@@ -15,6 +15,8 @@ import Trips from './pages/Trips'
 import Stats from './pages/Stats'
 import CountriesPage from './pages/Countries'
 import CountryPage from './pages/Country'
+import PeoplePage from './pages/People'
+import PersonPage from './pages/Person'
 import TripPage from './pages/Trip'
 import Settings from './pages/Settings'
 
@@ -39,6 +41,8 @@ function App() {
         <Route path="/insights" element={<Stats />} />
         <Route path="/countries" element={<CountriesPage />} />
         <Route path="/countries/:code" element={<CountryPage />} />
+        <Route path="/people" element={<PeoplePage />} />
+        <Route path="/people/:id" element={<PersonPage />} />
         <Route path="/trips/:id" element={<TripPage />} />
         <Route path="/trips/:id/:tab" element={<TripPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

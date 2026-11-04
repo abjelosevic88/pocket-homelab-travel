@@ -54,6 +54,7 @@ export interface Overview {
   trip: Trip; places: Place[]; lodging: Lodging[]; transport: Transport[]; expenses: Expense[]; checklists: Checklist[]
   journal: JournalEntry[]; documents: Doc[]; budget: Budget
   countries: CountryDays[]
+  people: TripPerson[]
   integrations: { firefly: { configured: boolean; via: '' | 'core' | 'direct'; tag: string; synced_at: string }; dawarich: { configured: boolean; enabled: boolean; source?: LocationSource }; immich: { configured: boolean; enabled: boolean; url: string }; ai: { configured: boolean; model: string } }
 }
 export interface DayWeather { date: string; code: number; label: string; tmax: number; tmin: number; precip_mm: number; wind_kmh: number; sunrise?: string; sunset?: string; source: 'forecast' | 'archive' }
@@ -126,3 +127,8 @@ export interface CountryPage {
   trips?: CountryTrip[]; pins?: CountryPin[]; totals?: { days: number; planned_days: number; trips: number; first: string; last: string }
   wiki?: { title: string; extract: string; url: string; thumbnail?: string } | null
 }
+
+export interface Person { id: number; owner_id: number; name: string; color: string; user_id: number | null; email: string; notes: string; is_self: boolean; created_at: string; updated_at: string; trips: number; last_trip?: string }
+export interface TripPerson { id: number; trip_id: number; person_id: number | null; name: string; weight: number; active: boolean; color: string; updated_ts: number; user_id: number | null; is_self: boolean; role: '' | 'owner' | 'editor' | 'viewer' }
+export interface PersonTrip { id: number; name: string; color: string; status: TripStatus; start_date: string; end_date: string; days: number; has_cover: boolean; updated_at: string; upcoming: boolean; countries: CountryDays[]; others: string[] }
+export interface PersonPage { person: Person; trips: PersonTrip[]; totals: { trips: number; upcoming: number; days: number; countries: number }; countries: CountryDays[]; company: { name: string; n: number }[] }

@@ -432,12 +432,12 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := userFrom(ctx)
-	stats, err := s.store.HomeStats(ctx, u.ID)
+	stats, err := s.store.HomeStats(ctx, u.ID, withPeople(ctx)...)
 	if err != nil {
 		s.fail(w, err, "stats")
 		return
 	}
-	trips, _ := s.store.ListTrips(ctx, store.TripFilter{UserID: u.ID})
+	trips, _ := s.store.ListTrips(ctx, s.visibleTrips(ctx, u.ID))
 	today := store.Today()
 	var current, next *store.Trip
 	recent := []store.Trip{}

@@ -123,7 +123,7 @@ func (s *Server) handleCountry(w http.ResponseWriter, r *http.Request) {
 // countryTravels finds the person's trips through a country, and their
 // located stays and places there.
 func (s *Server) countryTravels(ctx context.Context, userID int64, code string) ([]CountryTrip, []CountryPin, error) {
-	trips, err := s.store.ListTrips(ctx, store.TripFilter{UserID: userID})
+	trips, err := s.store.ListTrips(ctx, s.visibleTrips(ctx, userID))
 	if err != nil {
 		return nil, nil, err
 	}

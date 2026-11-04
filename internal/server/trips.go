@@ -66,7 +66,8 @@ func (s *Server) isOwner(r *http.Request) bool {
 func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
 	// Your own trips and the ones shared with you; admins see no more than anyone else.
-	f := store.TripFilter{UserID: u.ID, Query: strings.TrimSpace(r.URL.Query().Get("q"))}
+	f := s.visibleTrips(r.Context(), u.ID)
+	f.Query = strings.TrimSpace(r.URL.Query().Get("q"))
 	if v := r.URL.Query().Get("archived"); v != "" {
 		b := queryBool(r, "archived")
 		f.Archived = &b
@@ -333,6 +334,12 @@ func (s *Server) handleTripMembers(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, err, "set member")
 			return
 		}
+		// a companion with access is on the trip (and shares its bills)
+		if mu, err := s.store.GetUser(r.Context(), m.UserID); err == nil {
+			if p, err := s.store.PersonByUser(r.Context(), t.OwnerID, mu); err == nil {
+				_ = s.store.AddTripPerson(r.Context(), &store.TripPerson{TripID: t.ID, PersonID: &p.ID, Name: p.Name, Color: p.Color, Weight: 1, Active: true})
+			}
+		}
 	}
 	for _, m := range cur {
 		if m.UserID != t.OwnerID && !keep[m.UserID] {
@@ -449,6 +456,17 @@ func (s *Server) handleDuplicateTrip(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, err, "create trip")
 		return
 	}
+	// the same people come along (the owner is already on it)
+	if people, err := s.store.ListTripPeople(ctx, src.ID); err == nil {
+		for _, tp := range people {
+			if tp.Role == "owner" {
+				continue
+			}
+			np := tp
+			np.ID, np.TripID = 0, nt.ID
+			_ = s.store.AddTripPerson(ctx, &np)
+		}
+	}
 	places, _ := s.store.ListPlaces(ctx, src.ID)
 	for _, p := range places {
 		p.ID, p.TripID, p.ImagePath, p.VisitedAt, p.ExternalID = 0, nt.ID, "", "", ""
@@ -527,12 +545,14 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 		imURL = imConn.public
 	}
 	budget := s.budgetSummary(t, expenses)
+	tripPeople, _ := s.store.ListTripPeople(ctx, t.ID)
 	// Freshness of the cost sync.
 	_, syncedAt, _ := s.store.CacheGet(ctx, cacheKey(t.ID, "firefly-synced"))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"trip": t, "places": places, "lodging": lodging, "transport": transport, "expenses": expenses,
 		"checklists": lists, "journal": journal, "documents": docs, "budget": budget,
 		"countries": countryDays(t, lodging, places),
+		"people":    tripPeople,
 		"integrations": map[string]any{
 			"firefly": map[string]any{"configured": moneyVia != "", "via": moneyVia, "tag": t.FireflyTag, "synced_at": syncedAt},
 			// "dawarich" is the recorded route, from Pocket Movement or Dawarich (source)

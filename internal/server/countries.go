@@ -324,7 +324,7 @@ type StatsYear struct {
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r.Context())
 	ctx := r.Context()
-	trips, err := s.store.ListTrips(ctx, store.TripFilter{UserID: u.ID})
+	trips, err := s.store.ListTrips(ctx, s.visibleTrips(ctx, u.ID))
 	if err != nil {
 		s.fail(w, err, "stats")
 		return
