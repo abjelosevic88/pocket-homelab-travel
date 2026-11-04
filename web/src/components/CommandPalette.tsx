@@ -8,6 +8,7 @@ import { TripThumb, tripWhen } from './Sidebar'
 import { describeDates, fold, hitLink, useSearch } from '../lib/search'
 import { LODGING_ICONS, PLACE_ICONS } from '../lib/types'
 import { fmtDate, fmtRange } from '../lib/format'
+import { allCountries, flag } from '../lib/countries'
 
 export interface PaletteCommand { id: string; label: string; icon: string; hint?: string; keywords?: string; run: () => void }
 
@@ -43,6 +44,12 @@ export function CommandPalette({ onClose, commands }: { onClose: () => void; com
     if (result) {
       for (const h of result.places) out.push({ key: `p${h.id}`, group: 'Places', icon: <span>{PLACE_ICONS[h.category] || '📍'}</span>, label: h.name, sub: <>in <b>{h.trip_name}</b>{h.date ? ` · ${fmtDate(h.date, false)}` : h.trip_start ? ` · ${fmtRange(h.trip_start, h.trip_end)}` : ''}{h.address ? ` · ${h.address}` : ''}</>, run: () => navigate(hitLink(h)) })
       for (const h of result.stays) out.push({ key: `l${h.id}`, group: 'Stays', icon: <span>{LODGING_ICONS[h.category] || '🛏'}</span>, label: h.name, sub: <>in <b>{h.trip_name}</b>{h.date ? ` · ${fmtRange(h.date, h.date_end)}` : ''}{h.address ? ` · ${h.address}` : ''}</>, run: () => navigate(hitLink(h)) })
+    }
+    // countries: "bosnia" → its page (with what you noted and every trip there)
+    if (words.length) for (const c of allCountries()) {
+      if (!hit(`${c.name} ${c.code}`)) continue
+      out.push({ key: `c${c.code}`, group: 'Countries', icon: <span>{flag(c.code)}</span>, label: c.name, sub: 'Country facts, your notes and trips', run: () => navigate(`/countries/${c.code}`) })
+      if (out.filter(r => r.group === 'Countries').length >= 4) break
     }
     for (const c of commands) {
       if (n && !hit(`${c.label} ${c.keywords || ''}`)) continue

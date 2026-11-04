@@ -4,6 +4,7 @@ import { api, V1 } from '../lib/api'
 import type { SearchHit, Trip } from '../lib/types'
 import { LODGING_ICONS, PLACE_ICONS, STATUS_LABEL } from '../lib/types'
 import { describeDates, hitLink, matches, useSearch } from '../lib/search'
+import { countryName, flag } from '../lib/countries'
 import { daysBetween, fmtRange, plural, todayISO } from '../lib/format'
 import { Empty, Loading, PageHeader, Segmented, useAsync } from '../components/ui'
 import { Money } from '../components/Money'
@@ -67,7 +68,7 @@ export function TripCard({ t, hits }: { t: Trip; hits?: SearchHit[] }) {
         {t.days > 0 && <span className="days">{plural(t.days, 'day')}</span>}
       </div>
       <div className="body">
-        <h3>{t.name}</h3>
+        <h3>{t.name}{t.countries && t.countries.some(c => c.days > 0) && <span className="card-flags" title={t.countries.filter(c => c.days > 0).map(c => `${countryName(c.code)} ${c.days}d`).join(', ')}>{t.countries.filter(c => c.days > 0).map(c => flag(c.code)).join('')}</span>}</h3>
         <div className="muted small">{t.destination || '—'} · {fmtRange(t.start_date, t.end_date)}</div>
         {c && <div className="facts">
           <span title="Places (visited)"><Icon name="pin" size={13} />{c.visited > 0 ? `${c.visited}/${c.places}` : c.places}</span>

@@ -78,6 +78,7 @@ func (s *Server) handleListTrips(w http.ResponseWriter, r *http.Request) {
 	}
 	for i := range trips {
 		trips[i].Counts, _ = s.store.TripCounts(r.Context(), trips[i].ID)
+		trips[i].Countries = s.tripCountries(r.Context(), &trips[i])
 	}
 	writeJSON(w, http.StatusOK, trips)
 }

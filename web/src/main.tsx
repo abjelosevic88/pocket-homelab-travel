@@ -13,6 +13,8 @@ import Login from './pages/Login'
 import Home from './pages/Home'
 import Trips from './pages/Trips'
 import Stats from './pages/Stats'
+import CountriesPage from './pages/Countries'
+import CountryPage from './pages/Country'
 import TripPage from './pages/Trip'
 import Settings from './pages/Settings'
 
@@ -35,6 +37,8 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/trips" element={<Trips />} />
         <Route path="/insights" element={<Stats />} />
+        <Route path="/countries" element={<CountriesPage />} />
+        <Route path="/countries/:code" element={<CountryPage />} />
         <Route path="/trips/:id" element={<TripPage />} />
         <Route path="/trips/:id/:tab" element={<TripPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

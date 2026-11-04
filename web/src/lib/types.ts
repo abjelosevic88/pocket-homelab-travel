@@ -11,7 +11,7 @@ export interface Trip {
   color: string; has_cover: boolean; link: string; notes: string; lat: number | null; lng: number | null; timezone: string
   firefly_tag: string; dawarich: boolean; immich: boolean; archived: boolean; external_id: string
   created_at: string; updated_at: string; days: number; role?: string; members?: TripMember[]; counts?: TripCounts
-  country_code: string; countries_manual: string[]
+  country_code: string; countries_manual: string[]; countries?: CountryDays[]
 }
 export type PlaceStatus = 'idea' | 'planned' | 'booked' | 'visited' | 'skipped'
 export interface PlacePhoto { id: number; place_id: number; source: 'upload' | 'import' | 'wikipedia' | 'commons'; credit: string; license: string; source_url: string; sort_order: number; created_at: string }
@@ -111,3 +111,18 @@ export interface StatsCountry { code: string; name: string; days: number; planne
 export interface StatsTrip { id: number; name: string; color: string; status: TripStatus; start_date: string; end_date: string; days: number; countries: CountryDays[]; places: number; visited: number; upcoming: boolean }
 export interface StatsYear { year: number; trips: number; days: number; countries: string[]; new_countries: string[] }
 export interface Stats { countries: StatsCountry[]; trips: StatsTrip[]; years: StatsYear[]; totals: { trips: number; days: number; countries: number; places_visited: number; pending_lookups: number } }
+
+export interface CountryFacts {
+  code: string; name: string; official: string; capital: string[]; region: string; subregion: string
+  population: number; population_year: number; area_km2: number; languages: string[]
+  currencies: { code: string; name: string; symbol: string }[]; calling_code: string; tld: string; drives: '' | 'left' | 'right'
+  timezones: string[]; borders: string[]; landlocked: boolean; latlng: number[]; demonym: string; independent: boolean
+}
+export interface CountryNote { code: string; facts: Record<string, string>; extra: { label: string; value: string }[]; notes: string; updated_at: string }
+export interface CountryTrip { id: number; name: string; color: string; status: TripStatus; start_date: string; end_date: string; days: number; trip_days: number; others: string[]; has_cover: boolean; upcoming: boolean; updated_at: string }
+export interface CountryPin { kind: 'place' | 'lodging'; id: number; trip_id: number; trip_name: string; name: string; category: string; status: string; lat: number; lng: number }
+export interface CountryPage {
+  country: CountryFacts; note: CountryNote
+  trips?: CountryTrip[]; pins?: CountryPin[]; totals?: { days: number; planned_days: number; trips: number; first: string; last: string }
+  wiki?: { title: string; extract: string; url: string; thumbnail?: string } | null
+}

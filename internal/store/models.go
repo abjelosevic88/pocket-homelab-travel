@@ -76,6 +76,8 @@ type Trip struct {
 	Role    string       `json:"role,omitempty"` // the requesting user's role
 	Members []TripMember `json:"members,omitempty"`
 	Counts  *TripCounts  `json:"counts,omitempty"`
+	// Countries of the trip with days (lists and search fill it)
+	Countries []CountryDays `json:"countries,omitempty"`
 }
 
 // TripMember is a user with access to a trip.

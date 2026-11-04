@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -134,3 +135,77 @@ func TestCountriesDetectedAndStats(t *testing.T) {
 		t.Fatalf("after move: %+v", ls)
 	}
 }
+
+func TestCountryPage(t *testing.T) {
+	h := newIsoHarness(t)
+	h.srv.countryLookup = func(ctx context.Context, lat, lng float64) (string, error) { return "BA", nil }
+	h.srv.geo.HTTP = &http.Client{Transport: offline{}} // no Wikipedia from tests
+	tr := h.create(h.ownerTok, "/api/v1/trips", map[string]any{"name": "Bosna Road Trip", "start_date": "2025-07-28", "end_date": "2025-07-31", "currency": "EUR"})
+	h.create(h.ownerTok, fmt.Sprintf("/api/v1/trips/%d/lodging", tr), map[string]any{"name": "Mostar", "lat": 43.34, "lng": 17.81, "check_in": "2025-07-28", "check_out": "2025-07-31"})
+	h.srv.detectCountries(context.Background())
+
+	var out struct {
+		Country struct {
+			Name    string   `json:"name"`
+			Capital []string `json:"capital"`
+		} `json:"country"`
+		Trips []CountryTrip `json:"trips"`
+		Pins  []CountryPin  `json:"pins"`
+		Note  store.CountryNote
+	}
+	code, b := h.do(h.ownerTok, http.MethodGet, "/api/v1/countries/ba", nil)
+	if code != http.StatusOK {
+		t.Fatalf("%d %s", code, b)
+	}
+	_ = json.Unmarshal(b, &out)
+	if out.Country.Name != "Bosnia and Herzegovina" || len(out.Trips) != 1 || out.Trips[0].Days != 4 || len(out.Pins) != 1 {
+		t.Fatalf("country = %s", b)
+	}
+	// someone else sees the facts, not the trips
+	_, b = h.do(h.memberTok, http.MethodGet, "/api/v1/countries/BA", nil)
+	out.Trips = nil
+	_ = json.Unmarshal(b, &out)
+	if len(out.Trips) != 0 {
+		t.Fatalf("member sees %s", b)
+	}
+	// notes are per person
+	note := map[string]any{"facts": map[string]string{"capital": "Sarajevo (city of 1000 minarets)"}, "extra": []map[string]string{{"label": "Emergency", "value": "112"}, {"label": "", "value": "x"}}, "notes": "Ćevapi in Baščaršija"}
+	if code, b := h.do(h.ownerTok, http.MethodPut, "/api/v1/countries/BA/note", note); code != http.StatusOK {
+		t.Fatalf("put note: %d %s", code, b)
+	}
+	if code, _ := h.do(h.ownerTok, http.MethodPut, "/api/v1/countries/BA/note", map[string]any{"facts": map[string]string{"president": "x"}}); code != http.StatusBadRequest {
+		t.Fatalf("unknown fact accepted: %d", code)
+	}
+	_, b = h.do(h.ownerTok, http.MethodGet, "/api/v1/countries/BA?brief=1", nil)
+	var brief struct {
+		Note  store.CountryNote `json:"note"`
+		Trips any               `json:"trips"`
+	}
+	_ = json.Unmarshal(b, &brief)
+	if brief.Note.Facts["capital"] == "" || len(brief.Note.Extra) != 1 || brief.Note.Notes == "" || brief.Trips != nil {
+		t.Fatalf("brief = %s", b)
+	}
+	_, b = h.do(h.memberTok, http.MethodGet, "/api/v1/countries/BA?brief=1", nil)
+	brief.Note = store.CountryNote{}
+	_ = json.Unmarshal(b, &brief)
+	if brief.Note.Notes != "" {
+		t.Fatalf("member sees owner's note: %s", b)
+	}
+	if code, _ := h.do(h.ownerTok, http.MethodGet, "/api/v1/countries/ZZ", nil); code != http.StatusNotFound {
+		t.Fatalf("ZZ: %d", code)
+	}
+	// trip lists carry their countries
+	_, b = h.do(h.ownerTok, http.MethodGet, "/api/v1/trips", nil)
+	var trips []struct {
+		Countries []CountryDays `json:"countries"`
+	}
+	_ = json.Unmarshal(b, &trips)
+	if len(trips) != 1 || len(trips[0].Countries) != 1 || trips[0].Countries[0].Code != "BA" {
+		t.Fatalf("trips = %s", b)
+	}
+}
+
+// offline fails every outbound request.
+type offline struct{}
+
+func (offline) RoundTrip(*http.Request) (*http.Response, error) { return nil, errors.New("offline") }

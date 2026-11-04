@@ -126,11 +126,7 @@ func (s *Server) countryAt(ctx context.Context, lat, lng float64) (string, error
 }
 
 // CountryDays is how many days of a trip were spent in a country.
-type CountryDays struct {
-	Code  string `json:"code"`
-	Days  int    `json:"days"`
-	First string `json:"first"` // first day there (YYYY-MM-DD)
-}
+type CountryDays = store.CountryDays
 
 func knownCountry(c string) bool { return len(c) == 2 }
 

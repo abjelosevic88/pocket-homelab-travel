@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -64,5 +65,60 @@ func (s *Store) SetCountryCode(ctx context.Context, l Located, code string) erro
 		return fmt.Errorf("no country for %s", l.Table)
 	}
 	_, err := s.DB.ExecContext(ctx, `UPDATE `+l.Table+` SET country_code = ? WHERE id = ? AND lat = ? AND lng = ?`, code, l.ID, l.Lat, l.Lng)
+	return err
+}
+
+// CountryDays is how many days of a trip were spent in a country.
+type CountryDays struct {
+	Code  string `json:"code"`
+	Days  int    `json:"days"`
+	First string `json:"first"` // first day there (YYYY-MM-DD)
+}
+
+// CountryFact is a fact someone added to a country ("Plugs": "C, F").
+type CountryFact struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
+// CountryNote is a person's own take on a country.
+type CountryNote struct {
+	Code      string            `json:"code"`
+	Facts     map[string]string `json:"facts"` // corrections to built-in facts, by field
+	Extra     []CountryFact     `json:"extra"`
+	Notes     string            `json:"notes"`
+	UpdatedAt string            `json:"updated_at"`
+}
+
+// GetCountryNote returns userID's note on a country (empty when none).
+func (s *Store) GetCountryNote(ctx context.Context, userID int64, code string) (*CountryNote, error) {
+	n := &CountryNote{Code: code, Facts: map[string]string{}, Extra: []CountryFact{}}
+	var facts, extra string
+	err := s.DB.QueryRowContext(ctx, `SELECT facts, extra, notes, updated_at FROM country_notes WHERE user_id = ? AND code = ?`, userID, code).Scan(&facts, &extra, &n.Notes, &n.UpdatedAt)
+	if err != nil {
+		if notFound(err) == ErrNotFound {
+			return n, nil
+		}
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(facts), &n.Facts)
+	_ = json.Unmarshal([]byte(extra), &n.Extra)
+	if n.Facts == nil {
+		n.Facts = map[string]string{}
+	}
+	if n.Extra == nil {
+		n.Extra = []CountryFact{}
+	}
+	return n, nil
+}
+
+// SaveCountryNote stores userID's note on a country.
+func (s *Store) SaveCountryNote(ctx context.Context, userID int64, n *CountryNote) error {
+	facts, _ := json.Marshal(n.Facts)
+	extra, _ := json.Marshal(n.Extra)
+	n.UpdatedAt = Now()
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO country_notes (user_id, code, facts, extra, notes, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, code) DO UPDATE SET facts = excluded.facts, extra = excluded.extra, notes = excluded.notes, updated_at = excluded.updated_at`,
+		userID, n.Code, string(facts), string(extra), n.Notes, n.UpdatedAt)
 	return err
 }

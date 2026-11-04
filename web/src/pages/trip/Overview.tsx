@@ -6,14 +6,13 @@ import { LODGING_ICONS, PLACE_ICONS, TRANSPORT_ICONS, WX_ICON } from '../../lib/
 import { ago, daysBetween, fmtClock, fmtDate, fmtDateTime, fmtKm, plural, stayTime, todayISO, weekday } from '../../lib/format'
 import { Card, useAsync } from '../../components/ui'
 import { Icon } from '../../components/icons'
+import { CountryBrief } from '../../components/CountryFacts'
+import { countryName, flag } from '../../lib/countries'
 import { Money } from '../../components/Money'
 import { useTrip } from './ctx'
 import { RecapModal } from './ai'
 import { useState } from 'react'
 
-const regionNames = typeof Intl !== 'undefined' && 'DisplayNames' in Intl ? new Intl.DisplayNames(undefined, { type: 'region' }) : null
-/** A country's name from its ISO code, in the browser's language. */
-const countryName = (code: string) => { try { return regionNames?.of(code) || code } catch { return code } }
 
 export function OverviewTab() {
   const { ov, trip, weather, route, timeline, photos, extErrors, refreshExternal, canEdit, edit, go } = useTrip()
@@ -24,6 +23,8 @@ export function OverviewTab() {
   const b = ov.budget
   const running = trip.start_date && trip.start_date <= today && trip.end_date >= today
   const past = trip.end_date && trip.end_date < today
+  // the trip's countries: detected (or set) with days, else the destination's while nothing else is known
+  const tripCountries = ov.countries.length ? ov.countries : trip.country_code && trip.country_code.length === 2 ? [{ code: trip.country_code, days: 0, first: '' }] : []
   const until = trip.start_date > today ? daysBetween(today, trip.start_date) : 0
   // Next up: the next scheduled thing from now.
   const nowStamp = `${today}T${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`
@@ -74,6 +75,9 @@ export function OverviewTab() {
         {ov.lodging.length === 0 && !past && <p className="muted small">No stay yet. <a href="#" onClick={e => { e.preventDefault(); edit('lodging', null, {}) }}>Add where you sleep</a>.</p>}
         {ov.transport.length === 0 && !past && <p className="muted small">No transport yet. <a href="#" onClick={e => { e.preventDefault(); edit('transport', null, {}) }}>Add the flight, train or drive</a>.</p>}
       </Card>
+      {tripCountries.length > 0 && (past
+        ? <Card title="Countries" className="span2"><div className="row wrap" style={{ gap: 8 }}>{tripCountries.map(c => <Link key={c.code} to={`/countries/${c.code}`} className="country-chip">{flag(c.code)} {countryName(c.code)}{c.days > 0 && <span className="muted"> · {c.days} d</span>}</Link>)}</div></Card>
+        : <Card title={tripCountries.length > 1 ? "Where you're going" : `Where you're going · ${countryName(tripCountries[0].code)}`} className="span2"><div className="briefs">{tripCountries.map(c => <CountryBrief key={c.code} code={c.code} days={tripCountries.length > 1 ? c.days : undefined} />)}</div></Card>)}
       {wx.length > 0 && <Card title={`Weather${trip.destination ? ' · ' + trip.destination : ''}`} className="span2">
         <div className="wx-strip">{wx.map(w => <div key={w.date} className={`wx-day ${w.date === today ? 'today' : ''}`} title={`${w.label}${w.precip_mm ? ` · ${w.precip_mm.toFixed(1)} mm` : ''} · wind ${Math.round(w.wind_kmh)} km/h`}><div className="muted">{weekday(w.date)} {fmtDate(w.date, false)}</div><div className="big">{WX_ICON(w.code)}</div><div><b>{Math.round(w.tmax)}°</b> <span className="muted">{Math.round(w.tmin)}°</span></div>{w.precip_mm >= 1 && <div className="muted row" style={{ justifyContent: 'center', gap: 2 }}><Icon name="droplet" size={11} />{w.precip_mm.toFixed(0)}</div>}</div>)}</div>
         <p className="muted small mt-sm" style={{ margin: '6px 0 0' }}>Open-Meteo · {wx.some(w => w.source === 'archive') ? 'recorded weather for past days, ' : ''}forecast up to 16 days ahead.</p>
