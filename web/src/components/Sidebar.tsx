@@ -45,7 +45,8 @@ export function Sidebar({ onAdd, onNavigate, target }: { onAdd: (k: AddKind, t?:
   const nav = [
     { to: '/', label: 'Home', icon: 'home', end: true },
     { to: '/trips', label: 'Trips', icon: 'luggage', end: true, count: trips.length },
-    { to: '/insights', label: 'Insights', icon: 'globe', end: true },
+    { to: '/insights', label: 'Insights', icon: 'chart', end: true },
+    { to: '/countries', label: 'Countries', icon: 'globe', end: false },
   ]
   return (
     <aside className="sidebar" aria-label="Travel">

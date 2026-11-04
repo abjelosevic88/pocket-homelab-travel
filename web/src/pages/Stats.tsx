@@ -4,7 +4,7 @@ import { api, V1 } from '../lib/api'
 import type { Stats, StatsCountry, StatsTrip } from '../lib/types'
 import { countryName, flag } from '../lib/countries'
 import { fmtRange, plural, todayISO } from '../lib/format'
-import { Card, Empty, Loading, PageHeader, useAsync, useToast } from '../components/ui'
+import { Card, Empty, Loading, PageHeader, Segmented, useAsync, useToast } from '../components/ui'
 import { Icon } from '../components/icons'
 
 /** Where you went, for how long and when. */
@@ -12,7 +12,16 @@ export default function StatsPage() {
   const { data, error, loading, reload } = useAsync(() => api.get<Stats>(`${V1}/stats`), [])
   const { toast } = useToast()
   const [busy, setBusy] = useState(false)
-  const [focus, setFocus] = useState<string | null>(null) // a country highlighted in the timeline
+  const [focus, setFocusNow] = useState<string | null>(null) // a country highlighted in the timeline
+  // Leaving a tile keeps its highlight a moment: moving to the next tile crosses
+  // the gap between them without the timeline flashing back to all trips.
+  const clear = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const setFocus = useCallback((code: string | null) => {
+    if (clear.current) { clearTimeout(clear.current); clear.current = null }
+    if (code) setFocusNow(code)
+    else clear.current = setTimeout(() => setFocusNow(null), 500)
+  }, [])
+  useEffect(() => () => { if (clear.current) clearTimeout(clear.current) }, [])
   const detect = async () => {
     setBusy(true)
     try { const r = await api.post<{ detected: number; missing: number }>(`${V1}/countries/detect`); toast(r.missing ? `Found ${r.detected}, ${r.missing} still to look up` : `Countries found for ${plural(r.detected, 'spot')}`); await reload() } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
@@ -43,6 +52,7 @@ export default function StatsPage() {
 }
 
 const ZOOM_KEY = 'pt.insights.tile'
+const ORDER_KEY = 'pt.insights.order'
 const GAP = 12
 
 /**
@@ -55,8 +65,12 @@ function CountryStrip({ countries, onFocus }: { countries: StatsCountry[]; onFoc
   const navigate = useNavigate()
   const box = useRef<HTMLDivElement>(null)
   const [tile, setTile] = useState(() => { try { return Number(localStorage.getItem(ZOOM_KEY)) || 150 } catch { return 150 } })
+  const [order, setOrderNow] = useState<'visits' | 'days'>(() => { try { return localStorage.getItem(ORDER_KEY) === 'days' ? 'days' : 'visits' } catch { return 'visits' } })
+  const setOrder = (o: 'visits' | 'days') => { setOrderNow(o); try { localStorage.setItem(ORDER_KEY, o) } catch { /* private mode */ } ; box.current?.scrollTo({ left: 0 }) }
   const [win, setWin] = useState<[number, number]>([0, 0])
-  const list = useMemo(() => [...countries].sort((a, b) => (b.trips.length - a.trips.length) || (b.days - a.days) || (b.planned_days - a.planned_days)), [countries])
+  const list = useMemo(() => [...countries].sort((a, b) => order === 'days'
+    ? (b.days - a.days) || (b.trips.length - a.trips.length) || (b.planned_days - a.planned_days)
+    : (b.trips.length - a.trips.length) || (b.days - a.days) || (b.planned_days - a.planned_days)), [countries, order])
   const measure = useCallback(() => {
     const el = box.current
     if (!el) return
@@ -102,11 +116,12 @@ function CountryStrip({ countries, onFocus }: { countries: StatsCountry[]; onFoc
   return (
     <Card title={`Countries · ${list.filter(c => c.days > 0).length}`} className="mb" actions={
       <div className="row" style={{ gap: 4 }}>
-        <span className="muted small hide-sm">{visible.length} in view · {plural(sum, 'day')}</span>
+        <Segmented value={order} onChange={setOrder} options={[{ value: 'visits', label: 'Visits' }, { value: 'days', label: 'Days' }]} size="sm" label="Order by" />
+        <span className="muted small hide-sm" style={{ marginLeft: 6 }}>{visible.length} in view · {plural(sum, 'day')}</span>
         <button type="button" className="icon-btn" onClick={() => zoom(1)} disabled={tile >= 260} title="Fewer, bigger (ctrl + wheel)" aria-label="Zoom in"><Icon name="plus" size={15} /></button>
         <button type="button" className="icon-btn" onClick={() => zoom(-1)} disabled={tile <= 96} title="More, smaller (ctrl + wheel)" aria-label="Zoom out"><Icon name="minus" size={15} /></button>
       </div>}>
-      <p className="muted small" style={{ marginTop: -4 }}>Most visited first. Each glass holds its share of the days spent in the countries in view — slide on and the rest fill up.</p>
+      <p className="muted small" style={{ marginTop: -4 }}>{order === 'days' ? 'Most days first.' : 'Most visited first.'} Each glass holds its share of the days spent in the countries in view — slide on and the rest fill up.</p>
       <div className="cstrip-wrap">
         <button type="button" className="cstrip-nav left" onClick={() => slide(-1)} disabled={win[0] === 0} aria-label="Previous countries"><Icon name="chevron-left" size={18} /></button>
         <div className="cstrip" ref={box} onScroll={measure} style={{ '--tile': `${tile}px`, '--gap': `${GAP}px` } as React.CSSProperties} role="list">
