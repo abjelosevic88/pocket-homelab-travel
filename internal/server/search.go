@@ -194,7 +194,6 @@ func dateOnly(s string) string {
 	return s
 }
 
-
 // SavedPlace is a place from any of the person's trips, offered when adding
 // a place again (the same beach on day 2 and day 5, the café from last year).
 type SavedPlace struct {
