@@ -14,7 +14,7 @@ export default function CountriesPage() {
   const { data: all } = useAsync(() => api.get<Lite[]>(`${V1}/countries`), [])
   const { data: stats } = useAsync(() => api.get<Stats>(`${V1}/stats`), [])
   const [q, setQ] = useState('')
-  const [show, setShow] = useState<'all' | 'visited' | 'not'>('all')
+  const [show, setShow] = useState<'all' | 'visited' | 'not'>('visited')
   const days = useMemo(() => new Map((stats?.countries || []).map(c => [c.code, c])), [stats])
   const groups = useMemo(() => {
     const list = (all || []).filter(c => (!q || matches(q, `${c.name} ${c.capital} ${c.code} ${c.subregion}`)) && (show === 'all' || (show === 'visited') === ((days.get(c.code)?.days || 0) > 0)))
