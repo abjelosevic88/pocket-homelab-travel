@@ -12,6 +12,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import Login from './pages/Login'
 import Home from './pages/Home'
 import Trips from './pages/Trips'
+import Stats from './pages/Stats'
 import TripPage from './pages/Trip'
 import Settings from './pages/Settings'
 
@@ -33,6 +34,7 @@ function App() {
       <Route element={<Gate><ErrorBoundary where="travel"><Layout /></ErrorBoundary></Gate>}>
         <Route path="/" element={<Home />} />
         <Route path="/trips" element={<Trips />} />
+        <Route path="/insights" element={<Stats />} />
         <Route path="/trips/:id" element={<TripPage />} />
         <Route path="/trips/:id/:tab" element={<TripPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

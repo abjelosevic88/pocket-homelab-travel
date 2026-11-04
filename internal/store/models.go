@@ -66,6 +66,10 @@ type Trip struct {
 	ExternalID  string   `json:"external_id"`
 	CreatedAt   string   `json:"created_at"`
 	UpdatedAt   string   `json:"updated_at"`
+	CountryCode string   `json:"country_code"` // of the destination's coordinates (detected)
+	// CountriesManual is the person's own list of the trip's countries; empty
+	// means the detected ones are used.
+	CountriesManual []string `json:"countries_manual"`
 
 	// Derived
 	Days    int          `json:"days"`
@@ -127,6 +131,7 @@ type Place struct {
 	HasImage    bool     `json:"has_image"`
 	SortOrder   int      `json:"sort_order"`
 	ExternalID  string   `json:"external_id"`
+	CountryCode string   `json:"country_code"`
 	CreatedAt   string   `json:"created_at"`
 	UpdatedAt   string   `json:"updated_at"`
 
@@ -155,6 +160,7 @@ type Lodging struct {
 	ImagePath         string   `json:"-"`
 	HasImage          bool     `json:"has_image"`
 	ExternalID        string   `json:"external_id"`
+	CountryCode       string   `json:"country_code"`
 	CreatedAt         string   `json:"created_at"`
 	UpdatedAt         string   `json:"updated_at"`
 }

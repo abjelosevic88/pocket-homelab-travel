@@ -11,6 +11,7 @@ export interface Trip {
   color: string; has_cover: boolean; link: string; notes: string; lat: number | null; lng: number | null; timezone: string
   firefly_tag: string; dawarich: boolean; immich: boolean; archived: boolean; external_id: string
   created_at: string; updated_at: string; days: number; role?: string; members?: TripMember[]; counts?: TripCounts
+  country_code: string; countries_manual: string[]
 }
 export type PlaceStatus = 'idea' | 'planned' | 'booked' | 'visited' | 'skipped'
 export interface PlacePhoto { id: number; place_id: number; source: 'upload' | 'import' | 'wikipedia' | 'commons'; credit: string; license: string; source_url: string; sort_order: number; created_at: string }
@@ -52,6 +53,7 @@ export interface Budget {
 export interface Overview {
   trip: Trip; places: Place[]; lodging: Lodging[]; transport: Transport[]; expenses: Expense[]; checklists: Checklist[]
   journal: JournalEntry[]; documents: Doc[]; budget: Budget
+  countries: CountryDays[]
   integrations: { firefly: { configured: boolean; via: '' | 'core' | 'direct'; tag: string; synced_at: string }; dawarich: { configured: boolean; enabled: boolean; source?: LocationSource }; immich: { configured: boolean; enabled: boolean; url: string }; ai: { configured: boolean; model: string } }
 }
 export interface DayWeather { date: string; code: number; label: string; tmax: number; tmin: number; precip_mm: number; wind_kmh: number; sunrise?: string; sunset?: string; source: 'forecast' | 'archive' }
@@ -103,3 +105,9 @@ export const WX_ICON = (code: number) => code === 0 ? '☀️' : code <= 2 ? '�
 export interface SearchHit { kind: 'place' | 'lodging'; id: number; trip_id: number; trip_name: string; trip_start: string; trip_end: string; name: string; category: string; address: string; date: string; date_end: string; status: string }
 export interface SearchTrip extends Trip { direct: boolean; hits: SearchHit[] }
 export interface SearchResult { query: { words: string[] | null; years: number[] | null; months: number[] | null; seasons: string[] | null }; trips: SearchTrip[]; places: SearchHit[]; stays: SearchHit[] }
+
+export interface CountryDays { code: string; days: number; first: string }
+export interface StatsCountry { code: string; name: string; days: number; planned_days: number; trips: number[]; first: string; last: string }
+export interface StatsTrip { id: number; name: string; color: string; status: TripStatus; start_date: string; end_date: string; days: number; countries: CountryDays[]; places: number; visited: number; upcoming: boolean }
+export interface StatsYear { year: number; trips: number; days: number; countries: string[]; new_countries: string[] }
+export interface Stats { countries: StatsCountry[]; trips: StatsTrip[]; years: StatsYear[]; totals: { trips: number; days: number; countries: number; places_visited: number; pending_lookups: number } }

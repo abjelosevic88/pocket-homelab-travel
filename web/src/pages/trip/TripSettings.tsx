@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, uploadForm, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
-import type { APIToken, GeoResult, Trip, TripMember, TripStatus } from '../../lib/types'
+import type { APIToken, CountryDays, GeoResult, Trip, TripMember, TripStatus } from '../../lib/types'
+import { allCountries, countryName, flag } from '../../lib/countries'
 import { STATUS_LABEL } from '../../lib/types'
 import { TRIP_COLORS } from '../../lib/format'
 import { Card, Confirm, Field, Modal, Segmented, useAsync, useToast } from '../../components/ui'
@@ -102,7 +103,7 @@ function DuplicateModal({ trip, onClose, onDone }: { trip: Trip; onClose: () => 
 }
 
 /** Create or edit a trip. */
-export function TripModal({ trip, onClose, onSaved }: { trip?: Trip; onClose: () => void; onSaved: (t: Trip) => void }) {
+export function TripModal({ trip, detected = [], onClose, onSaved }: { trip?: Trip; detected?: CountryDays[]; onClose: () => void; onSaved: (t: Trip) => void }) {
   const { settings } = useApp()
   const { toast } = useToast()
   const [f, setF] = useState<Partial<Trip>>(trip ? { ...trip } : { name: '', destination: '', description: '', start_date: '', end_date: '', status: 'planning', currency: settings?.home_currency || 'EUR', budget: 0, color: TRIP_COLORS[0], link: '', notes: '', firefly_tag: '', dawarich: true, immich: true, lat: null, lng: null, timezone: '' })
@@ -128,6 +129,7 @@ export function TripModal({ trip, onClose, onSaved }: { trip?: Trip; onClose: ()
         {tab === 'main' && <>
           <Field label="Name"><input value={f.name || ''} onChange={e => set('name', e.target.value)} required autoFocus={!trip} placeholder="Barcelona 2026" maxLength={80} /></Field>
           <Field label="Destination" help="Search to pin the trip on the map — that's where the weather and 'Discover nearby' look."><GeoSearch onPick={pickDest} placeholder="Barcelona, Tokyo, Yosemite…" initial="" /><input className="mt-sm" value={f.destination || ''} onChange={e => set('destination', e.target.value)} placeholder="Shown on the trip card" /></Field>
+          <CountriesField manual={f.countries_manual || []} detected={detected} onChange={v => set('countries_manual', v)} />
           <div className="two-col tight">
             <Field label="Start"><input type="date" value={f.start_date || ''} onChange={e => set('start_date', e.target.value)} /></Field>
             <Field label="End"><input type="date" value={f.end_date || ''} min={f.start_date || undefined} onChange={e => set('end_date', e.target.value)} /></Field>
@@ -152,5 +154,32 @@ export function TripModal({ trip, onClose, onSaved }: { trip?: Trip; onClose: ()
         <div className="form-actions"><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy}>{trip ? 'Save' : 'Create trip'}</button></div>
       </form>
     </Modal>
+  )
+}
+
+/**
+ * The trip's countries. Detected from where you slept and what you visited
+ * (shown with their days); editing the list makes it yours, and only those
+ * countries count. Empty = detect again.
+ */
+function CountriesField({ manual, detected, onChange }: { manual: string[]; detected: CountryDays[]; onChange: (codes: string[]) => void }) {
+  const options = useMemo(() => allCountries().map(c => ({ value: c.code, label: `${flag(c.code)} ${c.name}` })), [])
+  const auto = detected.filter(c => c.days > 0).map(c => c.code)
+  const list = manual.length ? manual : auto
+  const days = (code: string) => detected.find(c => c.code === code)?.days || 0
+  const edit = (codes: string[]) => onChange(codes)
+  return (
+    <Field group label="Countries" help={manual.length ? 'Your list: only these countries count for this trip.' : auto.length ? 'Detected from the stays and places of the trip. Add or remove one to set them yourself.' : 'Detected from the stays and places once they have a location — or add them here.'}>
+      <div className="row wrap" style={{ gap: 6 }}>
+        {list.map(code => (
+          <span key={code} className={`country-chip ${manual.length ? '' : 'auto'}`} title={countryName(code)}>
+            {flag(code)} {countryName(code)}{days(code) > 0 && <span className="muted"> · {days(code)}d</span>}
+            <button type="button" className="icon-btn" aria-label={`Remove ${countryName(code)}`} onClick={() => edit(list.filter(c => c !== code))} style={{ width: 20, height: 20 }}><Icon name="x" size={12} /></button>
+          </span>
+        ))}
+        <div style={{ minWidth: 200 }}><Select value="" onChange={v => v && !list.includes(v) && edit([...list, v])} options={options.filter(o => !list.includes(o.value))} placeholder="Add a country…" ariaLabel="Add a country" /></div>
+        {manual.length > 0 && <button type="button" className="btn ghost sm" onClick={() => edit([])}>Use detected</button>}
+      </div>
+    </Field>
   )
 }

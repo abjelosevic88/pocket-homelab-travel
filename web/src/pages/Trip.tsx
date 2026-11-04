@@ -7,6 +7,7 @@ import { daysBetween, fmtRange, plural, todayISO } from '../lib/format'
 import { Loading, Tabs, useToast } from '../components/ui'
 import { Icon } from '../components/icons'
 import { TRIP_TABS } from '../components/CommandPalette'
+import { countryName, flag } from '../lib/countries'
 import { useApp } from '../lib/app-context'
 import { TripCtx, type EditKind } from './trip/ctx'
 import { OverviewTab } from './trip/Overview'
@@ -109,7 +110,7 @@ export default function TripPage() {
           <div>
             <div className="row" style={{ gap: 8, marginBottom: 6 }}><span className="status-pill">{running ? `Day ${daysBetween(t.start_date, today) + 1} of ${t.days}` : until ? `In ${until} days` : STATUS_LABEL[t.status]}</span>{t.archived && <span className="status-pill"><Icon name="archive" size={12} />Archived</span>}</div>
             <h1>{t.name}</h1>
-            <div className="meta-line"><span><Icon name="pin" size={14} />{t.destination || 'No destination yet'}</span><span><Icon name="calendar" size={14} />{fmtRange(t.start_date, t.end_date)}</span>{t.days > 0 && <span>{plural(t.days, 'day')}</span>}{t.members && t.members.length > 1 && <span><Icon name="users" size={14} />{t.members.map(m => m.name.split(' ')[0]).join(', ')}</span>}</div>
+            <div className="meta-line"><span><Icon name="pin" size={14} />{t.destination || 'No destination yet'}</span><span><Icon name="calendar" size={14} />{fmtRange(t.start_date, t.end_date)}</span>{t.days > 0 && <span>{plural(t.days, 'day')}</span>}{ov.countries.some(c => c.days > 0) && <span className="hero-countries" title={ov.countries.map(c => `${countryName(c.code)}: ${plural(c.days, 'day')}`).join('\n')}>{ov.countries.filter(c => c.days > 0).map(c => <span key={c.code}>{flag(c.code)}{ov.countries.length > 1 && <small> {c.days}d</small>}</span>)}</span>}{t.members && t.members.length > 1 && <span><Icon name="users" size={14} />{t.members.map(m => m.name.split(' ')[0]).join(', ')}</span>}</div>
           </div>
           <div className="row">
             {state.canEdit && <button type="button" className="btn glass" onClick={() => edit('place', null, {})}><Icon name="pin" size={15} />Place</button>}
@@ -137,7 +138,7 @@ export default function TripPage() {
       {editing?.kind === 'transport' && <TransportModal trip={t} item={editing.item as Transport | null} defaults={editing.defaults} onClose={close} onSaved={afterSave} />}
       {editing?.kind === 'expense' && <ExpenseModal trip={t} item={editing.item as Expense | null} defaults={editing.defaults} onClose={close} onSaved={afterSave} />}
       {editing?.kind === 'journal' && <JournalModal trip={t} item={editing.item as JournalEntry | null} defaults={editing.defaults} onClose={close} onSaved={afterSave} />}
-      {editing?.kind === 'trip' && <TripModal trip={editing.item as Trip} onClose={close} onSaved={afterSave} />}
+      {editing?.kind === 'trip' && <TripModal trip={editing.item as Trip} detected={ov.countries} onClose={close} onSaved={afterSave} />}
     </TripCtx.Provider>
   )
 }

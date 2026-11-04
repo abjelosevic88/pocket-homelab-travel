@@ -8,14 +8,16 @@ import (
 	"time"
 )
 
-const tripCols = `t.id, t.owner_id, t.name, t.destination, t.description, t.start_date, t.end_date, t.status, t.currency, t.budget, t.color, t.cover_path, t.link, t.notes, t.lat, t.lng, t.timezone, t.firefly_tag, t.dawarich, t.immich, t.archived, t.external_id, t.created_at, t.updated_at`
+const tripCols = `t.id, t.owner_id, t.name, t.destination, t.description, t.start_date, t.end_date, t.status, t.currency, t.budget, t.color, t.cover_path, t.link, t.notes, t.lat, t.lng, t.timezone, t.firefly_tag, t.dawarich, t.immich, t.archived, t.external_id, t.created_at, t.updated_at, t.country_code, t.countries`
 
 func scanTrip(row interface{ Scan(...any) error }) (*Trip, error) {
 	var t Trip
 	var dw, im, ar int
-	if err := row.Scan(&t.ID, &t.OwnerID, &t.Name, &t.Destination, &t.Description, &t.StartDate, &t.EndDate, &t.Status, &t.Currency, &t.Budget, &t.Color, &t.CoverPath, &t.Link, &t.Notes, &t.Lat, &t.Lng, &t.Timezone, &t.FireflyTag, &dw, &im, &ar, &t.ExternalID, &t.CreatedAt, &t.UpdatedAt); err != nil {
+	var manual string
+	if err := row.Scan(&t.ID, &t.OwnerID, &t.Name, &t.Destination, &t.Description, &t.StartDate, &t.EndDate, &t.Status, &t.Currency, &t.Budget, &t.Color, &t.CoverPath, &t.Link, &t.Notes, &t.Lat, &t.Lng, &t.Timezone, &t.FireflyTag, &dw, &im, &ar, &t.ExternalID, &t.CreatedAt, &t.UpdatedAt, &t.CountryCode, &manual); err != nil {
 		return nil, notFound(err)
 	}
+	t.CountriesManual = SplitCodes(manual)
 	t.Dawarich, t.Immich, t.Archived = dw == 1, im == 1, ar == 1
 	t.HasCover = t.CoverPath != ""
 	t.Days = DaysBetween(t.StartDate, t.EndDate)
@@ -76,9 +78,11 @@ func (s *Store) ListTrips(ctx context.Context, f TripFilter) ([]Trip, error) {
 	for rows.Next() {
 		var t Trip
 		var dw, im, ar int
-		if err := rows.Scan(&t.ID, &t.OwnerID, &t.Name, &t.Destination, &t.Description, &t.StartDate, &t.EndDate, &t.Status, &t.Currency, &t.Budget, &t.Color, &t.CoverPath, &t.Link, &t.Notes, &t.Lat, &t.Lng, &t.Timezone, &t.FireflyTag, &dw, &im, &ar, &t.ExternalID, &t.CreatedAt, &t.UpdatedAt, &t.Role); err != nil {
+		var manual string
+		if err := rows.Scan(&t.ID, &t.OwnerID, &t.Name, &t.Destination, &t.Description, &t.StartDate, &t.EndDate, &t.Status, &t.Currency, &t.Budget, &t.Color, &t.CoverPath, &t.Link, &t.Notes, &t.Lat, &t.Lng, &t.Timezone, &t.FireflyTag, &dw, &im, &ar, &t.ExternalID, &t.CreatedAt, &t.UpdatedAt, &t.CountryCode, &manual, &t.Role); err != nil {
 			return nil, err
 		}
+		t.CountriesManual = SplitCodes(manual)
 		t.Dawarich, t.Immich, t.Archived = dw == 1, im == 1, ar == 1
 		t.HasCover = t.CoverPath != ""
 		t.Days = DaysBetween(t.StartDate, t.EndDate)
@@ -196,9 +200,9 @@ func (s *Store) CreateTrip(ctx context.Context, t *Trip, after ...core.CommitHoo
 	if t.Status == "" {
 		t.Status = StatusPlanning
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO trips (owner_id, name, destination, description, start_date, end_date, status, currency, budget, color, cover_path, link, notes, lat, lng, timezone, firefly_tag, dawarich, immich, archived, external_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.OwnerID, t.Name, t.Destination, t.Description, t.StartDate, t.EndDate, t.Status, t.Currency, t.Budget, t.Color, t.CoverPath, t.Link, t.Notes, t.Lat, t.Lng, t.Timezone, t.FireflyTag, boolInt(t.Dawarich), boolInt(t.Immich), boolInt(t.Archived), t.ExternalID)
+	res, err := tx.ExecContext(ctx, `INSERT INTO trips (owner_id, name, destination, description, start_date, end_date, status, currency, budget, color, cover_path, link, notes, lat, lng, timezone, firefly_tag, dawarich, immich, archived, external_id, country_code, countries)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.OwnerID, t.Name, t.Destination, t.Description, t.StartDate, t.EndDate, t.Status, t.Currency, t.Budget, t.Color, t.CoverPath, t.Link, t.Notes, t.Lat, t.Lng, t.Timezone, t.FireflyTag, boolInt(t.Dawarich), boolInt(t.Immich), boolInt(t.Archived), t.ExternalID, t.CountryCode, JoinCodes(t.CountriesManual))
 	if err != nil {
 		return err
 	}
@@ -214,7 +218,9 @@ func (s *Store) UpdateTrip(ctx context.Context, t *Trip, after ...core.CommitHoo
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `UPDATE trips SET name = ?, destination = ?, description = ?, start_date = ?, end_date = ?, status = ?, currency = ?, budget = ?, color = ?, cover_path = ?, link = ?, notes = ?, lat = ?, lng = ?, timezone = ?, firefly_tag = ?, dawarich = ?, immich = ?, archived = ?, updated_at = ? WHERE id = ?`,
+	_, err = tx.ExecContext(ctx, `UPDATE trips SET country_code = CASE WHEN lat IS ? AND lng IS ? THEN country_code ELSE '' END, countries = ?,
+		name = ?, destination = ?, description = ?, start_date = ?, end_date = ?, status = ?, currency = ?, budget = ?, color = ?, cover_path = ?, link = ?, notes = ?, lat = ?, lng = ?, timezone = ?, firefly_tag = ?, dawarich = ?, immich = ?, archived = ?, updated_at = ? WHERE id = ?`,
+		nullF(t.Lat), nullF(t.Lng), JoinCodes(t.CountriesManual),
 		t.Name, t.Destination, t.Description, t.StartDate, t.EndDate, t.Status, t.Currency, t.Budget, t.Color, t.CoverPath, t.Link, t.Notes, t.Lat, t.Lng, t.Timezone, t.FireflyTag, boolInt(t.Dawarich), boolInt(t.Immich), boolInt(t.Archived), Now(), t.ID)
 	if err != nil {
 		return err

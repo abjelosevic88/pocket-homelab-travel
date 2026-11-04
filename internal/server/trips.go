@@ -101,6 +101,8 @@ type tripInput struct {
 	Dawarich    *bool    `json:"dawarich"`
 	Immich      *bool    `json:"immich"`
 	Archived    *bool    `json:"archived"`
+	// CountriesManual replaces the detected countries ([] = detect again)
+	CountriesManual []string `json:"countries_manual"`
 }
 
 func applyTripInput(t *store.Trip, in tripInput, keys map[string]bool) string {
@@ -164,6 +166,16 @@ func applyTripInput(t *store.Trip, in tripInput, keys map[string]bool) string {
 	}
 	if has("archived") && in.Archived != nil {
 		t.Archived = *in.Archived
+	}
+	if has("countries_manual") {
+		t.CountriesManual = store.SplitCodes(strings.Join(in.CountriesManual, ","))
+		if len(t.CountriesManual) != len(in.CountriesManual) {
+			for _, c := range in.CountriesManual {
+				if len(strings.TrimSpace(c)) != 2 {
+					return "countries are two-letter codes (PT, ES)"
+				}
+			}
+		}
 	}
 	if t.Name == "" {
 		return "name is required"
@@ -519,6 +531,7 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"trip": t, "places": places, "lodging": lodging, "transport": transport, "expenses": expenses,
 		"checklists": lists, "journal": journal, "documents": docs, "budget": budget,
+		"countries": countryDays(t, lodging, places),
 		"integrations": map[string]any{
 			"firefly": map[string]any{"configured": moneyVia != "", "via": moneyVia, "tag": t.FireflyTag, "synced_at": syncedAt},
 			// "dawarich" is the recorded route, from Pocket Movement or Dawarich (source)

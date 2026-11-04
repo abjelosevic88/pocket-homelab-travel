@@ -194,9 +194,6 @@ func dateOnly(s string) string {
 	return s
 }
 
-// tripCountryWords are extra words a trip is found by: the names of the
-// countries it went through (filled in once trips know their countries).
-func (s *Server) tripCountryWords(ctx context.Context, t *store.Trip) []string { return nil }
 
 // SavedPlace is a place from any of the person's trips, offered when adding
 // a place again (the same beach on day 2 and day 5, the café from last year).

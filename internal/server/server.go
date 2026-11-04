@@ -59,6 +59,12 @@ type Server struct {
 
 	modesKick chan struct{} // a connection-mode report is due (modes.go)
 
+	// countries of coordinates (countries.go)
+	countryKick   chan struct{}
+	countryLookup func(ctx context.Context, lat, lng float64) (string, error) // tests replace Nominatim
+	nominatimMu   sync.Mutex
+	nominatimLast time.Time
+
 	// whether Pocket Movement is open to a person through Core (location.go)
 	mvMu   sync.Mutex
 	mvSeen map[string]movementSeen
@@ -78,7 +84,7 @@ func New(cfg *config.Config, st *store.Store, log *slog.Logger, webFS fs.FS) *Se
 		geo: geo.New(cfg.UserAgent, 25*time.Second), fx: fx.New(cfg.FXProvider, cfg.UserAgent, 8*time.Second), syncing: map[int64]bool{},
 		oidc:     &oidcProvider{issuerURL: cfg.OIDCIssuer},
 		core:     core.New(cfg.CoreURL, core.Options{DB: st.DB, TokenFile: cfg.DataDir + "/core.token", UserAgent: cfg.UserAgent}),
-		resolved: map[string]resolvedURL{}, modesKick: make(chan struct{}, 1), mvSeen: map[string]movementSeen{}}
+		resolved: map[string]resolvedURL{}, modesKick: make(chan struct{}, 1), countryKick: make(chan struct{}, 1), mvSeen: map[string]movementSeen{}}
 }
 
 // Bootstrap seeds the first admin (if configured), integration defaults and demo data.
@@ -123,6 +129,7 @@ func (s *Server) Bootstrap(ctx context.Context) error {
 	}
 	_ = s.store.PurgeSessions(ctx)
 	go s.janitor(ctx)
+	go s.countryLoop(ctx)
 	if s.core.Configured() {
 		go s.coreLoop(ctx)
 		go s.modesLoop(ctx)
@@ -319,6 +326,7 @@ func (s *Server) Router() http.Handler {
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.requireAuth)
+			r.Use(s.kickCountriesOnWrite)
 			r.Post("/auth/logout", s.handleLogout)
 			r.Get("/auth/me", s.handleMe)
 			r.Put("/auth/me", s.handleUpdateMe)
@@ -338,6 +346,8 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/search", s.handleSearch)
 			r.Get("/places/saved", s.handleSavedPlaces)
+			r.Get("/stats", s.handleStats)
+			r.Post("/countries/detect", s.handleDetectCountries)
 			r.Get("/trips", s.handleListTrips)
 			r.Post("/trips", s.handleCreateTrip)
 			r.Route("/trips/{tripID}", func(r chi.Router) {
