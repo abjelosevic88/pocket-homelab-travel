@@ -74,6 +74,7 @@ export interface Overview {
   people: TripPerson[]
   split: SplitInfo | null
   day_costs: DayCost[]
+  budget_plan: PlanLine[]
   integrations: { firefly: { configured: boolean; via: '' | 'core' | 'direct'; tag: string; synced_at: string }; dawarich: { configured: boolean; enabled: boolean; source?: LocationSource }; immich: { configured: boolean; enabled: boolean; url: string }; ai: { configured: boolean; model: string } }
 }
 export interface DayWeather { date: string; code: number; label: string; tmax: number; tmin: number; precip_mm: number; wind_kmh: number; sunrise?: string; sunset?: string; source: 'forecast' | 'archive' }
@@ -112,6 +113,7 @@ export interface HomeData {
   recorded_km: number; photos: number; journal: (JournalEntry & { trip_name?: string })[]
   pins: { id: number; name: string; status: TripStatus; start_date: string; end_date: string; lat: number; lng: number; has_cover: boolean; stay?: string; stay_id?: number; stay_from?: string; stay_to?: string }[]
   hero_weather: DayWeather | null
+  on_this_day: OnThisDay[]
 }
 
 export const PLACE_ICONS: Record<string, string> = { sight: '🏛', museum: '🖼', nature: '🌿', beach: '🏖', viewpoint: '🌄', food: '🍽', cafe: '☕', bar: '🍸', shop: '🛍', activity: '🎟', event: '🎭', nightlife: '🌙', wellness: '🧖', transport: '🚏', other: '📍', historic: '🏰', lodging: '🛏' }
@@ -152,4 +154,6 @@ export interface TripPerson { id: number; trip_id: number; person_id: number | n
 export interface PersonTrip { id: number; name: string; color: string; status: TripStatus; start_date: string; end_date: string; days: number; has_cover: boolean; updated_at: string; upcoming: boolean; countries: CountryDays[]; others: string[] }
 export interface PersonPage { person: Person; trips: PersonTrip[]; totals: { trips: number; upcoming: number; days: number; countries: number }; countries: CountryDays[]; company: { name: string; n: number }[] }
 
-export interface DayCost { date: string; actual: Record<string, number>; planned: Record<string, number> }
+export interface DayCost { date: string; actual: Record<string, number>; planned: Record<string, number>; people: Record<string, Record<string, number>> }
+export interface PlanLine { category: string; amount: number; per_day: boolean }
+export interface OnThisDay { trip_id: number; trip_name: string; color: string; has_cover: boolean; updated_at: string; date: string; year: number; years_ago: number; day_number: number; days: number; stay: string; places: string[]; countries: string[] }

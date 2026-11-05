@@ -21,15 +21,15 @@ export default function PeoplePage() {
     <>
       <PageHeader title="People" sub="Everyone you travel with. Add them to a trip, split its bills, or show only the trips with them." actions={<button type="button" className="btn primary" onClick={() => setAdding(true)}><Icon name="plus" size={15} />Person</button>} />
       {people.length > 8 && <div className="toolbar"><div className="search"><Icon name="search" size={15} /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Find someone…" aria-label="Find someone" /></div></div>}
+      {people.some(p => p.user_id != null && !p.is_self) && <div className="legend" style={{ marginTop: 0, marginBottom: 12 }}><span className="key"><span className="person-dot account" style={{ width: 14, height: 14, background: 'var(--muted)' }} />can sign in here</span><span className="key"><span className="person-dot" style={{ width: 14, height: 14, background: 'var(--muted)' }} />only shares the bills</span></div>}
       {people.length <= 1 ? <Card><Empty icon="users" title="Nobody yet">Add the people you travel with — with or without an account here. Then add them to trips, split bills with them, and look back at everything you did together.</Empty></Card> : (
         <div className="people-grid">
           {list.map(p => (
-            <Link key={p.id} to={`/people/${p.id}`} className="person-card">
-              <PersonDot name={p.name} color={p.color} size={40} />
+            <Link key={p.id} to={`/people/${p.id}`} className={`person-card ${p.user_id != null && !p.is_self ? 'account' : ''}`} title={p.user_id != null && !p.is_self ? `${p.name} can sign in here` : undefined}>
+              <PersonDot name={p.name} color={p.color} size={40} account={p.user_id != null && !p.is_self} />
               <span className="grow">
                 <b>{p.name}{p.is_self && <span className="muted"> (you)</span>}</b>
                 <span className="muted small block">{p.trips ? `${plural(p.trips, 'trip')}${p.last_trip ? ` · last ${fmtDate(p.last_trip)}` : ''}` : 'no trips yet'}</span>
-                {p.user_id != null && !p.is_self && <span className="small block"><Icon name="user" size={12} /> has an account</span>}
               </span>
               {!p.is_self && <button type="button" className={`btn sm ${withPeople.includes(p.id) ? 'primary' : 'ghost'}`} title="Show only trips with them" onClick={e => { e.preventDefault(); setWithPeople(withPeople.includes(p.id) ? withPeople.filter(x => x !== p.id) : [...withPeople, p.id]) }}><Icon name="users" size={13} />{withPeople.includes(p.id) ? 'With' : 'Filter'}</button>}
             </Link>

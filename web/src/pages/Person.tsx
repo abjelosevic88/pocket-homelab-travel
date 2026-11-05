@@ -6,7 +6,7 @@ import type { PersonPage as Page } from '../lib/types'
 import { STATUS_LABEL } from '../lib/types'
 import { countryName, flag } from '../lib/countries'
 import { fmtRange, plural } from '../lib/format'
-import { Card, Confirm, Empty, Loading, Modal, useAsync, useToast } from '../components/ui'
+import { Card, Confirm, Empty, Field, Loading, Modal, Segmented, useAsync, useToast } from '../components/ui'
 import { Icon } from '../components/icons'
 import { Select } from '../components/Select'
 import { PersonDot } from '../components/WithPeople'
@@ -31,15 +31,16 @@ export default function PersonPage() {
   return (
     <>
       <div className="country-hero">
-        <PersonDot name={p.name} color={p.color} size={64} />
+        <PersonDot name={p.name} color={p.color} size={64} account={p.user_id != null && !p.is_self} />
         <div className="grow">
-          <div className="muted small"><Link to="/people">People</Link>{p.user_id != null && !p.is_self && <> · has an account</>}</div>
+          <div className="muted small"><Link to="/people">People</Link></div>
           <h1>{p.name}{p.is_self && <span className="muted"> (you)</span>}</h1>
           {p.notes && <div className="muted" style={{ whiteSpace: 'pre-wrap' }}>{p.notes}</div>}
         </div>
         <div className="row wrap">
           {!p.is_self && <button type="button" className={`btn ${on ? 'primary' : ''}`} onClick={() => setWithPeople(on ? withPeople.filter(x => x !== p.id) : [...withPeople, p.id])} title="Show only the trips with them across the whole app"><Icon name="users" size={15} />{on ? 'Showing only trips with them' : 'Show only trips with them'}</button>}
           <AddToTrip personId={p.id} name={p.name} onTrip={trips.map(t => t.id)} onAdded={reload} />
+          {!p.is_self && <AccountButton id={p.id} name={p.name} userId={p.user_id} email={p.email} onDone={reload} />}
           <button type="button" className="btn" onClick={() => setEditing(true)}><Icon name="edit" size={15} />Edit</button>
           {!p.is_self && <button type="button" className="btn ghost" onClick={() => setMerging(true)} title="Fold a duplicate into someone else">Merge…</button>}
           {!p.is_self && <button type="button" className="btn ghost danger-text" onClick={() => setDel(true)}>Remove</button>}
@@ -114,4 +115,64 @@ function AddToTrip({ personId, name, onTrip, onAdded }: { personId: number; name
     try { await api.post(`${V1}/trips/${id}/people`, { person_id: personId }); toast(`${name} added to ${mine.find(t => String(t.id) === id)?.name}`); reloadPeople(); onAdded() } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
   }
   return <div style={{ minWidth: 220 }}><Select value="" onChange={add} disabled={busy} options={mine.map(t => ({ value: String(t.id), label: t.name, hint: t.start_date ? t.start_date.slice(0, 7) : '' }))} placeholder="+ Add to a trip…" ariaLabel={`Add ${name} to a trip`} /></div>
+}
+
+/**
+ * Make someone a user of this box (link an existing account, or create one —
+ * admins only), or take the account away from them again. A user gets into
+ * the trips they are on; the account itself is not deleted.
+ */
+function AccountButton({ id, name, userId, email, onDone }: { id: number; name: string; userId: number | null; email: string; onDone: () => void }) {
+  const { users, user, status, reloadMeta, reloadPeople, people } = useApp()
+  const { toast } = useToast()
+  const [open, setOpen] = useState(false)
+  const [unlink, setUnlink] = useState(false)
+  const account = users.find(u => u.id === userId)
+  const link = async (uid: number | null) => {
+    await api.put(`${V1}/people/${id}`, { user_id: uid })
+    await reloadPeople(); onDone()
+  }
+  if (userId != null) return (
+    <>
+      <button type="button" className="btn account-btn" onClick={() => setUnlink(true)} title={account ? `Signs in as ${account.email}` : undefined}><Icon name="user" size={15} />User{account ? ` · ${account.email}` : ''}<span className="muted small">· remove</span></button>
+      {unlink && <Confirm title={`Remove ${name} as a user?`} confirmLabel="Remove as user" message={`${name} stays in your people and on their trips, but no longer gets into them with ${account?.email || 'their account'}. The account itself is kept.`} onCancel={() => setUnlink(false)} onConfirm={async () => { try { await link(null); toast(`${name} is no longer a user`) } catch (e) { toast((e as Error).message, 'err') } finally { setUnlink(false) } }} />}
+    </>
+  )
+  // accounts nobody in your people stands for yet
+  const free = users.filter(u => u.id !== user?.id && !people.some(p => p.user_id === u.id))
+  const admin = user?.role === 'admin'
+  if (!admin && free.length === 0) return null
+  return (
+    <>
+      <button type="button" className="btn" onClick={() => setOpen(true)}><Icon name="user" size={15} />Make a user</button>
+      {open && <MakeUserModal name={name} email={email} free={free} admin={admin} local={status?.auth_mode === 'local'} onClose={() => setOpen(false)}
+        onLink={async uid => { try { await link(uid); toast(`${name} is a user now`); setOpen(false) } catch (e) { toast((e as Error).message, 'err') } }}
+        onCreate={async f => {
+          try { const u = await api.post<{ id: number }>(`${V1}/users`, { ...f, role: 'member' }); await reloadMeta(); await link(u.id); toast(`${name} can sign in now`); setOpen(false) } catch (e) { toast((e as Error).message, 'err') }
+        }} />}
+    </>
+  )
+}
+
+function MakeUserModal({ name, email, free, admin, local, onClose, onLink, onCreate }: { name: string; email: string; free: { id: number; name: string; email: string }[]; admin: boolean; local: boolean; onClose: () => void; onLink: (id: number) => Promise<void>; onCreate: (f: { name: string; email: string; password: string }) => Promise<void> }) {
+  const [how, setHow] = useState<'new' | 'existing'>(admin ? 'new' : 'existing')
+  const [pick, setPick] = useState('')
+  const [f, setF] = useState({ name, email, password: '' })
+  const [busy, setBusy] = useState(false)
+  const go = async (e: React.FormEvent) => { e.preventDefault(); setBusy(true); try { if (how === 'existing') await onLink(Number(pick)); else await onCreate(f) } finally { setBusy(false) } }
+  return (
+    <Modal title={`Make ${name} a user`} onClose={onClose}>
+      <form onSubmit={go} className="grid" style={{ gap: 14 }}>
+        <p className="muted small" style={{ margin: 0 }}>A user signs in here and gets into the trips {name} is on (as an editor — change it per trip). Their bills and trips stay as they are.</p>
+        {admin && free.length > 0 && <Segmented value={how} onChange={setHow} options={[{ value: 'new', label: 'New account' }, { value: 'existing', label: 'Existing account' }]} size="sm" />}
+        {how === 'existing' ? (
+          <Field label="Account"><Select value={pick} onChange={setPick} options={free.map(u => ({ value: String(u.id), label: u.name || u.email, hint: u.email }))} placeholder="Choose an account…" /></Field>
+        ) : <>
+          <Field label="Email" help="Used to sign in."><input type="email" value={f.email} onChange={e => setF({ ...f, email: e.target.value })} required autoFocus /></Field>
+          {local && <Field label="Password" help="At least 8 characters — tell it to them."><input type="password" value={f.password} onChange={e => setF({ ...f, password: e.target.value })} minLength={8} required autoComplete="new-password" /></Field>}
+        </>}
+        <div className="form-actions"><span className="spacer" /><button type="button" className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={busy || (how === 'existing' && !pick)}>{how === 'existing' ? 'Link' : 'Create user'}</button></div>
+      </form>
+    </Modal>
+  )
 }

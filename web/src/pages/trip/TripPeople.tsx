@@ -40,7 +40,7 @@ export function TripPeopleCard() {
       <div className="trip-people">
         {list.map(tp => (
           <div key={tp.id} className={`tp-row ${tp.active ? '' : 'inactive'}`}>
-            <PersonDot name={tp.name} color={tp.color} size={26} />
+            <PersonDot name={tp.name} color={tp.color} size={26} account={tp.user_id != null && tp.role !== "owner"} />
             <span className="grow">
               {tp.person_id ? <Link to={`/people/${tp.person_id}`}><b>{tp.name}</b></Link> : <b>{tp.name}</b>}
               <span className="muted small block">{tp.role === 'owner' ? 'owner' : tp.user_id != null ? (tp.role ? `can ${tp.role === 'viewer' ? 'look' : 'edit'}` : 'no access') : 'shares the bills'}{tp.weight !== 1 && ` · counts ${tp.weight}×`}{!tp.active && ' · not in new bills'}</span>
@@ -72,31 +72,33 @@ export function PeopleStrip({ title = 'People' }: { title?: string }) {
   const { people, reloadPeople } = useApp()
   const { toast } = useToast()
   const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(false)
   const list = ov.people || []
   const base = `${V1}/trips/${trip.id}/people`
   const add = async (body: { person_id?: number; name?: string }) => {
     setBusy(true)
-    try { await api.post(base, body); patch({ people: await api.get<TripPerson[]>(base) }); reloadPeople(); toast('Added to the trip') } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
+    try { await api.post(base, body); patch({ people: await api.get<TripPerson[]>(base) }); reloadPeople(); toast('Added to the trip'); setOpen(false) } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
   }
   const candidates = isOwner ? people.filter(p => !list.some(tp => tp.person_id === p.id)).sort((a, b) => b.trips - a.trips || a.name.localeCompare(b.name)) : []
   return (
-    <div className="people-strip">
+    <div className="people-strip-wrap"><div className="people-strip">
       <span className="ps-title">{title}</span>
       <span className="ps-people">
         {list.map(tp => (
           tp.person_id
-            ? <Link key={tp.id} to={`/people/${tp.person_id}`} className={`ps-person ${tp.active ? '' : 'inactive'}`} title={tp.role === 'owner' ? `${tp.name} (owner)` : tp.name}><PersonDot name={tp.name} color={tp.color} size={24} /><span>{tp.name.split(' ')[0]}</span></Link>
-            : <span key={tp.id} className="ps-person"><PersonDot name={tp.name} color={tp.color} size={24} /><span>{tp.name.split(' ')[0]}</span></span>
+            ? <Link key={tp.id} to={`/people/${tp.person_id}`} className={`ps-person ${tp.active ? '' : 'inactive'}`} title={tp.role === 'owner' ? `${tp.name} (owner)` : tp.name}><PersonDot name={tp.name} color={tp.color} size={24} account={tp.user_id != null && tp.role !== "owner"} /><span>{tp.name.split(' ')[0]}</span></Link>
+            : <span key={tp.id} className="ps-person"><PersonDot name={tp.name} color={tp.color} size={24} account={tp.user_id != null && tp.role !== "owner"} /><span>{tp.name.split(' ')[0]}</span></span>
         ))}
       </span>
+      {canEdit && <button type="button" className={`btn sm ps-add-btn ${open ? 'primary' : ''}`} onClick={() => setOpen(!open)} aria-expanded={open}><Icon name={open ? 'x' : 'plus'} size={14} />{open ? 'Close' : 'Add someone'}</button>}
       {canEdit && (
-        <span className="ps-add">
+        <span className={`ps-add ${open ? 'open' : ''}`}>
           <Select value="" onChange={v => v && add({ person_id: Number(v) })} disabled={busy}
             options={candidates.map(p => ({ value: String(p.id), label: p.name, hint: p.trips ? `${p.trips} trip${p.trips === 1 ? '' : 's'} together` : 'new' }))}
             onCreate={async name => { await add({ name }); return '' }} createLabel="Add" placeholder="+ Add someone…" ariaLabel="Add someone to the trip" />
         </span>
       )}
       <button type="button" className="btn ghost sm" onClick={() => go('settings')} title="Weights, access and removing people">Manage</button>
-    </div>
+    </div></div>
   )
 }

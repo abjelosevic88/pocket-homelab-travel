@@ -803,3 +803,26 @@ func (s *Server) autoSync(ctx context.Context) {
 		}
 	}
 }
+
+// handlePutBudgetPlan saves the trip's budget plan (per category, a total or
+// per day); the trip budget becomes its sum.
+func (s *Server) handlePutBudgetPlan(w http.ResponseWriter, r *http.Request) {
+	if !s.canEdit(w, r) {
+		return
+	}
+	var in struct {
+		Lines []store.PlanLine `json:"lines"`
+	}
+	if err := decode(r, &in); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	ctx := r.Context()
+	t := tripFrom(ctx).trip
+	if err := s.store.SetBudgetPlan(ctx, t.ID, t.Days, in.Lines); err != nil {
+		s.fail(w, err, "budget plan")
+		return
+	}
+	plan, _ := s.store.BudgetPlan(ctx, t.ID)
+	writeJSON(w, http.StatusOK, plan)
+}

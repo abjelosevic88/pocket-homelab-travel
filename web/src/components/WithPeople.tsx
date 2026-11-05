@@ -6,9 +6,9 @@ import { fold } from '../lib/search'
 import { Icon } from './icons'
 
 /** A round badge with someone's initials in their colour. */
-export function PersonDot({ name, color, size = 22 }: { name: string; color?: string; size?: number }) {
+export function PersonDot({ name, color, size = 22, account }: { name: string; color?: string; size?: number; account?: boolean }) {
   const ini = name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?'
-  return <span className="person-dot" style={{ width: size, height: size, fontSize: size * .42, background: color || personColor(name) }} aria-hidden>{ini}</span>
+  return <span className={`person-dot ${account ? 'account' : ''}`} style={{ width: size, height: size, fontSize: size * .42, background: color || personColor(name) }} aria-hidden>{ini}</span>
 }
 
 const PALETTE = ['#0ea5e9', '#f97316', '#22c55e', '#a855f7', '#ef4444', '#eab308', '#14b8a6', '#ec4899', '#6366f1', '#84cc16']

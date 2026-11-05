@@ -546,16 +546,21 @@ func (s *Server) handleTripOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	budget := s.budgetSummary(t, expenses)
 	tripPeople, _ := s.store.ListTripPeople(ctx, t.ID)
+	budgetPlan, _ := s.store.BudgetPlan(ctx, t.ID)
+	if budgetPlan == nil {
+		budgetPlan = []store.PlanLine{}
+	}
 	split, _ := s.splitInfo(ctx, t, tripFrom(ctx).role != "viewer")
 	// Freshness of the cost sync.
 	_, syncedAt, _ := s.store.CacheGet(ctx, cacheKey(t.ID, "firefly-synced"))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"trip": t, "places": places, "lodging": lodging, "transport": transport, "expenses": expenses,
 		"checklists": lists, "journal": journal, "documents": docs, "budget": budget,
-		"countries": countryDays(t, lodging, places),
-		"people":    tripPeople,
-		"split":     split,
-		"day_costs": dayCosts(t, expenses, lodging),
+		"countries":   countryDays(t, lodging, places),
+		"people":      tripPeople,
+		"split":       split,
+		"day_costs":   dayCosts(t, expenses, tripPeople),
+		"budget_plan": budgetPlan,
 		"integrations": map[string]any{
 			"firefly": map[string]any{"configured": moneyVia != "", "via": moneyVia, "tag": t.FireflyTag, "synced_at": syncedAt},
 			// "dawarich" is the recorded route, from Pocket Movement or Dawarich (source)

@@ -650,77 +650,116 @@ type DayCost struct {
 	Date    string           `json:"date"` // YYYY-MM-DD, or "before" / "after" the trip
 	Actual  map[string]int64 `json:"actual"`
 	Planned map[string]int64 `json:"planned"`
+	// People is each member's share of the day's bills, by category.
+	People map[int64]map[string]int64 `json:"people"`
 }
 
-// dayCosts spreads a trip's costs over its days: a stay over its nights,
-// everything else on its own date (a flight on the day it leaves, dinner on
-// the evening it was eaten). Costs dated outside the trip land in "before"
-// or "after"; reimbursements are not costs.
-func dayCosts(t *store.Trip, expenses []store.Expense, stays []store.Lodging) []DayCost {
-	byID := map[int64]store.Lodging{}
-	for _, l := range stays {
-		byID[l.ID] = l
+// spreadOverTrip says whether a cost belongs to the whole trip rather than
+// one day: stays, tickets (a leg, or transport booked before the trip) and
+// insurance are averaged over every day; a meal or a taxi stays on its day.
+func spreadOverTrip(t *store.Trip, e store.Expense) bool {
+	switch {
+	case e.LinkKind == "lodging" || e.LinkKind == "transport":
+		return true
+	case e.Category == "lodging" || e.Category == "insurance":
+		return true
+	case e.Category == "transport":
+		return e.Date == "" || (t.StartDate != "" && e.Date < t.StartDate) || (t.EndDate != "" && e.Date > t.EndDate)
+	}
+	return false
+}
+
+// dayCosts spreads a trip's costs over its days. Whole-trip costs (stays,
+// flights, insurance) are shared out equally over every day of the trip;
+// everything else sits on its own date (dinner on the evening it was eaten).
+// Other costs dated outside the trip land in "before" or "after";
+// reimbursements are not costs. Each bill's split between the people is
+// kept per day too, so one person's days can be shown.
+func dayCosts(t *store.Trip, expenses []store.Expense, people []store.TripPerson) []DayCost {
+	weight := map[int64]float64{}
+	for _, p := range people {
+		w := p.Weight
+		if w == 0 {
+			w = 1
+		}
+		weight[p.ID] = w
+	}
+	var tripDays []string
+	if s, err := store.ParseDate(t.StartDate); err == nil {
+		if e, err := store.ParseDate(t.EndDate); err == nil && !e.Before(s) {
+			for d := s; !d.After(e); d = d.AddDate(0, 0, 1) {
+				tripDays = append(tripDays, d.Format("2006-01-02"))
+			}
+		}
 	}
 	days := map[string]*DayCost{}
-	add := func(date, cat string, amount int64, actual bool) {
-		key := date
-		switch {
-		case date == "" || (t.StartDate != "" && date < t.StartDate):
-			key = "before"
-			if date == "" {
-				key = t.StartDate
-				if key == "" {
-					key = "before"
-				}
-			}
-		case t.EndDate != "" && date > t.EndDate:
-			key = "after"
-		}
+	get := func(key string) *DayCost {
 		d := days[key]
 		if d == nil {
-			d = &DayCost{Date: key, Actual: map[string]int64{}, Planned: map[string]int64{}}
+			d = &DayCost{Date: key, Actual: map[string]int64{}, Planned: map[string]int64{}, People: map[int64]map[string]int64{}}
 			days[key] = d
 		}
-		if actual {
-			d.Actual[cat] += amount
-		} else {
-			d.Planned[cat] += amount
+		return d
+	}
+	keyOf := func(date string) string {
+		switch {
+		case date == "":
+			if t.StartDate != "" {
+				return t.StartDate
+			}
+			return "before"
+		case t.StartDate != "" && date < t.StartDate:
+			return "before"
+		case t.EndDate != "" && date > t.EndDate:
+			return "after"
+		}
+		return date
+	}
+	// add puts an amount on a day, and each ower's share of it
+	add := func(key string, e store.Expense, amount int64) {
+		d := get(key)
+		if !e.IsBill() {
+			d.Planned[e.Category] += amount
+			return
+		}
+		d.Actual[e.Category] += amount
+		var total float64
+		for _, m := range e.Owers {
+			total += weight[m]
+		}
+		if total == 0 {
+			return
+		}
+		for _, m := range e.Owers {
+			if _, ok := weight[m]; !ok {
+				continue
+			}
+			if d.People[m] == nil {
+				d.People[m] = map[string]int64{}
+			}
+			d.People[m][e.Category] += int64(math.Round(float64(amount) * weight[m] / total))
 		}
 	}
 	for _, e := range expenses {
 		if e.Deleted || e.Category == store.ReimbursementKey {
 			continue
 		}
-		actual := e.IsBill()
-		if e.LinkKind == "lodging" {
-			if l, ok := byID[e.LinkID]; ok {
-				in, out := dateOnly(l.CheckIn), dateOnly(l.CheckOut)
-				if nights := store.DaysBetween(in, out) - 1; nights >= 1 {
-					start, _ := store.ParseDate(in)
-					per, rest := e.AmountHome/int64(nights), e.AmountHome%int64(nights)
-					for n := 0; n < nights; n++ {
-						amt := per
-						if n == 0 {
-							amt += rest
-						}
-						add(start.AddDate(0, 0, n).Format("2006-01-02"), e.Category, amt, actual)
-					}
-					continue
+		if n := int64(len(tripDays)); n > 1 && spreadOverTrip(t, e) {
+			per, rest := e.AmountHome/n, e.AmountHome%n
+			for i, day := range tripDays {
+				amt := per
+				if i == 0 {
+					amt += rest
 				}
+				add(day, e, amt)
 			}
+			continue
 		}
-		add(e.Date, e.Category, e.AmountHome, actual)
+		add(keyOf(e.Date), e, e.AmountHome)
 	}
 	// every day of the trip, even the free ones
-	if s, err := store.ParseDate(t.StartDate); err == nil {
-		if e, err := store.ParseDate(t.EndDate); err == nil && !e.Before(s) {
-			for d := s; !d.After(e); d = d.AddDate(0, 0, 1) {
-				k := d.Format("2006-01-02")
-				if days[k] == nil {
-					days[k] = &DayCost{Date: k, Actual: map[string]int64{}, Planned: map[string]int64{}}
-				}
-			}
-		}
+	for _, k := range tripDays {
+		get(k)
 	}
 	out := make([]DayCost, 0, len(days))
 	for _, d := range days {

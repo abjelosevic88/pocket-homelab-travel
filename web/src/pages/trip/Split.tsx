@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
 import type { Expense, SplitInfo, TripCategory, TripPaymentMode } from '../../lib/types'
-import { fmtDate, groupBills, plural } from '../../lib/format'
+import { ago, fmtDate, groupBills, plural, todayISO, weekday, type GroupedBill } from '../../lib/format'
 import { Card, Confirm, Empty, Field, Modal, useAsync, useToast } from '../../components/ui'
 import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
@@ -21,11 +21,13 @@ import { CospendImport } from '../../components/CospendImport'
  * paid and what their share of everything was.
  */
 export function Split() {
-  const { ov, trip, canEdit, edit, reload } = useTrip()
+  const { ov, trip, canEdit, edit, reload, go } = useTrip()
   const { user } = useApp()
+  const { toast } = useToast()
   const split = ov.split
-  const [who, setWho] = useState('')
+  const [mode, setMode] = useState('')
   const [cat, setCat] = useState('')
+  const [syncing, setSyncing] = useState(false)
   const [lists, setLists] = useState(false)
   const [focus, setFocus] = useState<number | null>(null)
   const [center, setCenter] = useState('')
@@ -38,15 +40,21 @@ export function Split() {
   const cats = new Map(split.categories.map(c => [c.key, c]))
   const modes = new Map(split.payment_modes.map(m => [m.id, m]))
   const all = groupBills(ov.expenses.filter(e => e.kind === 'actual'))
-  const bills = all.filter(e => (!who || e.payer_id === Number(who) || e.owers.includes(Number(who)) || e.parts.some(p => p.owers.includes(Number(who)))) && (!cat || e.category === cat))
+  const bills = all.filter(e => (!mode || e.payment_mode_id === Number(mode)) && (!cat || e.category === cat))
+  // only what the bills use is offered as a filter
+  const usedCats = split.categories.filter(c => all.some(b => b.category === c.key))
+  const usedModes = split.payment_modes.filter(m => all.some(b => b.payment_mode_id === m.id))
+  const spentAll = split.balances.reduce((n, b) => n + b.spent, 0)
+  const integ = ov.integrations.firefly
+  const sync = async () => {
+    setSyncing(true)
+    try { const r = await api.post<{ synced: number }>(`${V1}/trips/${trip.id}/money/sync`); toast(`Synced ${r.synced} transactions from Pocket Money`); await reload() } catch (e) { toast((e as Error).message, 'err') } finally { setSyncing(false) }
+  }
   const me = people.find(p => p.user_id === user?.id)
   const myBalance = me ? split.balances.find(b => b.member_id === me.id) : undefined
   const maxAbs = Math.max(1, ...split.balances.map(b => Math.abs(b.balance)))
   const cur = split.currency
   const plan = center && centered ? centered.settlement : split.settlement
-  // bills by day, newest first
-  const days = new Map<string, typeof bills>()
-  for (const b of bills) days.set(b.date, [...(days.get(b.date) || []), b])
   const addBill = () => edit('expense', null, { kind: 'actual', date: new Date().toISOString().slice(0, 10) })
   return (
     <>
@@ -64,6 +72,7 @@ export function Split() {
           </div>
         )}
       </div>
+      <button type="button" className="page-switch" onClick={() => go('budget')}><Icon name="wallet" size={16} /><span><b>Budget & statistics</b><span className="muted small block">Plan before the trip, see how it is going, day by day and by category</span></span><span className="spacer" />→</button>
 
       <div className="two-col">
         <Card title="Balances" actions={<span className="muted small">click someone for the details</span>}>
@@ -74,7 +83,7 @@ export function Split() {
                 const w = Math.abs(b.balance) / maxAbs * 50
                 return (
                   <button type="button" key={b.member_id} className={`bal-row ${focus === b.member_id ? 'sel' : ''}`} onClick={() => setFocus(focus === b.member_id ? null : b.member_id)}>
-                    <span className="bal-name"><PersonDot name={b.name} color={p?.color} size={22} /><span><span className="block">{b.name}</span><span className="muted small block">paid <Money minor={b.paid} code={cur} compact /> · share <Money minor={b.spent} code={cur} compact />{(b.sent > 0 || b.received > 0) && <> · {b.sent > 0 && <>gave <Money minor={b.sent} code={cur} compact /></>}{b.sent > 0 && b.received > 0 && ', '}{b.received > 0 && <>got <Money minor={b.received} code={cur} compact /></>}</>}</span></span></span>
+                    <span className="bal-name"><PersonDot name={b.name} color={p?.color} size={22} /><span><span className="block">{b.name}</span><span className="muted small block">paid <Money minor={b.paid} code={cur} compact /> · share <Money minor={b.spent} code={cur} compact />{spentAll > 0 && <b className="bal-pct" title="Their part of everything spent together"> {Math.round(b.spent / spentAll * 100)}%</b>}{(b.sent > 0 || b.received > 0) && <> · {b.sent > 0 && <>gave <Money minor={b.sent} code={cur} compact /></>}{b.sent > 0 && b.received > 0 && ', '}{b.received > 0 && <>got <Money minor={b.received} code={cur} compact /></>}</>}</span></span></span>
                     <span className="bal-track"><i className="bal-mid" />{b.balance !== 0 && <span className={`bal-bar ${b.balance > 0 ? 'pos' : 'neg'}`} style={b.balance > 0 ? { left: '50%', width: `${w}%` } : { right: '50%', width: `${w}%` }} />}</span>
                     <span className={`bal-val ${b.balance > 0 ? 'good' : b.balance < 0 ? 'bad' : 'muted'}`}>{b.balance > 0 ? '+' : b.balance < 0 ? '−' : ''}<Money minor={Math.abs(b.balance)} code={cur} /></span>
                   </button>
@@ -103,14 +112,107 @@ export function Split() {
       {focus != null && person(focus) && <PersonMoney member={focus} onPick={setFocus} />}
 
       <Card title={`Bills · ${bills.length}`} className="mb" actions={
-        <div className="row" style={{ gap: 6 }}>
-          {people.length > 1 && <Select value={who} onChange={setWho} options={people.map(p => ({ value: String(p.id), label: p.name }))} placeholder="Anyone" clearLabel="Anyone" ariaLabel="Filter by person" />}
-          <Select value={cat} onChange={setCat} options={split.categories.map(c => ({ value: c.key, label: `${c.icon} ${c.name}` }))} placeholder="Any category" clearLabel="Any category" ariaLabel="Filter by category" />
+        <div className="row wrap" style={{ gap: 6 }}>
+          {usedCats.length > 1 && <span className="bill-filter"><Select value={cat} onChange={setCat} options={usedCats.map(c => ({ value: c.key, label: `${c.icon} ${c.name}` }))} placeholder="Any category" clearLabel="Any category" ariaLabel="Filter by category" /></span>}
+          {usedModes.length > 0 && <span className="bill-filter"><Select value={mode} onChange={setMode} options={usedModes.map(m => ({ value: String(m.id), label: `${m.icon} ${m.name}` }))} placeholder="Any payment" clearLabel="Any payment" ariaLabel="Filter by payment method" /></span>}
+          {integ.configured && trip.firefly_tag && canEdit && <button type="button" className="btn sm" onClick={sync} disabled={syncing} title={integ.synced_at ? `Synced ${ago(integ.synced_at)}` : 'Not synced yet'}><Icon name="refresh" size={13} />{syncing ? 'Syncing…' : 'Pocket Money'}</button>}
         </div>}>
-        {bills.length === 0 ? <Empty icon="wallet" title={all.length ? 'Nothing matches' : 'No bills yet'}>{canEdit && !all.length && <button type="button" className="btn primary big-btn mt-sm" onClick={addBill}><Icon name="plus" size={18} />Add the first bill</button>}</Empty> : (
-          <div className="bill-days">
-            {[...days.entries()].map(([day, list]) => (
-              <div key={day} className="bill-day">
+        {integ.configured && !trip.firefly_tag && canEdit && <div className="hint-strip"><Icon name="info" size={14} />Set a Money tag under <a href="#" onClick={e => { e.preventDefault(); edit('trip', trip) }}>Edit trip</a> and every expense in Pocket Money with that tag lands here as a bill.</div>}
+        {bills.length === 0 ? <Empty icon="wallet" title={all.length ? 'Nothing matches' : 'No bills yet'}>{canEdit && !all.length && <button type="button" className="btn primary big-btn mt-sm" onClick={addBill}><Icon name="plus" size={18} />Add the first bill</button>}</Empty>
+          : <BillTimeline bills={bills} cats={cats} modes={modes} name={name} person={person} />}
+      </Card>
+
+      <div className="two-col">
+        {canEdit && <CospendLinkCard />}
+        <Card title="Categories & payment methods" actions={canEdit && <button type="button" className="btn ghost sm" onClick={() => setLists(true)}><Icon name="edit" size={13} />Edit</button>}>
+          <div className="row wrap" style={{ gap: 6 }}>{split.categories.map(c => <span key={c.id} className="country-chip">{c.icon} {c.name}{split.by_category[c.key] ? <span className="muted"> · <Money minor={split.by_category[c.key]} code={cur} compact /></span> : null}</span>)}</div>
+          <div className="row wrap mt-sm" style={{ gap: 6 }}>{split.payment_modes.map(m => <span key={m.id} className="country-chip">{m.icon} {m.name}</span>)}</div>
+        </Card>
+      </div>
+      {split.trash > 0 && <Trash />}
+      {canEdit && <Card title="Import from Nextcloud Cospend" className="mb"><p className="muted small">Bring an existing Cospend project's bills and people into this trip. Run it again later and it updates instead of doubling.</p><CospendImport tripId={trip.id} onDone={() => reload()} /></Card>}
+      {lists && <ListsModal categories={split.categories} modes={split.payment_modes} onClose={() => { setLists(false); reload() }} />}
+      {transfer && <TransferModal initial={transfer} onClose={() => setTransfer(null)} onSaved={() => { setTransfer(null); reload() }} />}
+    </>
+  )
+}
+
+type Bill = GroupedBill<Expense>
+
+/**
+ * The bills under a strip of the trip's days: the strip scrolls sideways, a
+ * day jumps the list to its bills, and scrolling the list (about six bills
+ * high) moves the strip along. Bills before or after the trip get one chip each.
+ */
+function BillTimeline({ bills, cats, modes, name, person }: { bills: Bill[]; cats: Map<string, TripCategory>; modes: Map<number, TripPaymentMode>; name: (id: number | null) => string; person: (id: number | null) => { color: string } | undefined }) {
+  const { ov, trip, edit } = useTrip()
+  const split = ov.split!
+  const people = split.people
+  const cur = split.currency
+  const listRef = useRef<HTMLDivElement>(null)
+  const stripRef = useRef<HTMLDivElement>(null)
+  const [active, setActive] = useState('')
+  // the list: oldest day first, so it runs the same way as the strip
+  const byDay = new Map<string, Bill[]>()
+  for (const b of [...bills].sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.bill_time || '').localeCompare(b.bill_time || ''))) byDay.set(b.date || '', [...(byDay.get(b.date || '') || []), b])
+  const listDays = [...byDay.keys()]
+  const slot = (d: string) => !d || (trip.start_date && d < trip.start_date) ? 'before' : trip.end_date && d > trip.end_date ? 'after' : d
+  // the strip: every day of the trip, plus before / after when there are bills then
+  const tripDays: string[] = []
+  if (trip.start_date && trip.end_date) for (let d = new Date(trip.start_date + 'T00:00:00Z'); d.toISOString().slice(0, 10) <= trip.end_date; d.setUTCDate(d.getUTCDate() + 1)) tripDays.push(d.toISOString().slice(0, 10))
+  const chips = [...(listDays.some(d => slot(d) === 'before') ? ['before'] : []), ...tripDays, ...listDays.filter(d => slot(d) === d && !tripDays.includes(d)), ...(listDays.some(d => slot(d) === 'after') ? ['after'] : [])]
+  const totalOf = (chip: string) => listDays.filter(d => slot(d) === chip).reduce((n, d) => n + byDay.get(d)!.filter(b => b.category !== 'reimbursement').reduce((m, b) => m + b.total_home, 0), 0)
+  const totals = new Map(chips.map(c => [c, totalOf(c)]))
+  const max = Math.max(1, ...totals.values())
+  const jump = (chip: string) => {
+    const day = listDays.find(d => slot(d) === chip) ?? listDays.find(d => slot(d) > chip) ?? listDays[listDays.length - 1]
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-day="${day}"]`)
+    if (el && listRef.current) listRef.current.scrollTo({ top: el.offsetTop - listRef.current.offsetTop, behavior: 'smooth' })
+    setActive(chip)
+  }
+  const onScroll = () => {
+    const list = listRef.current
+    if (!list) return
+    let cur = listDays[0]
+    for (const el of list.querySelectorAll<HTMLElement>('[data-day]')) if (el.offsetTop - list.offsetTop <= list.scrollTop + 8) cur = el.dataset.day || ''
+    if (list.scrollTop + list.clientHeight >= list.scrollHeight - 2) cur = listDays[listDays.length - 1]
+    const chip = slot(cur)
+    if (chip !== active) setActive(chip)
+  }
+  // keep the active day in view on the strip
+  useEffect(() => {
+    const el = stripRef.current?.querySelector<HTMLElement>(`[data-chip="${active}"]`)
+    const strip = stripRef.current
+    if (el && strip) strip.scrollTo({ left: el.offsetLeft - strip.offsetLeft - strip.clientWidth / 2 + el.clientWidth / 2, behavior: 'smooth' })
+  }, [active])
+  // during the trip, start at today's bills
+  useEffect(() => {
+    const t = todayISO()
+    if (trip.start_date && trip.start_date <= t && t <= trip.end_date && listDays.length) jump(slot(listDays.filter(d => d <= t).pop() || listDays[0]))
+    else setActive(slot(listDays[0]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return (
+    <>
+      <div className="bill-strip" ref={stripRef} role="tablist" aria-label="Days of the trip">
+        {chips.map(c => {
+          const v = totals.get(c) || 0
+          const has = listDays.some(d => slot(d) === c)
+          return (
+            <button type="button" key={c} data-chip={c} role="tab" aria-selected={active === c} className={`bs-day ${active === c ? 'on' : ''} ${has ? '' : 'empty'}`} onClick={() => jump(c)} title={c === 'before' ? 'Before the trip' : c === 'after' ? 'After the trip' : fmtDate(c)}>
+              <span className="bs-wd">{c === 'before' ? 'before' : c === 'after' ? 'after' : weekday(c).slice(0, 2)}</span>
+              <span className="bs-n">{c === 'before' ? '←' : c === 'after' ? '→' : Number(c.slice(8, 10))}</span>
+              <span className="bs-bar"><i style={{ height: `${v / max * 100}%` }} /></span>
+            </button>
+          )
+        })}
+      </div>
+      <div className="bill-scroll" ref={listRef} onScroll={onScroll}>
+        <div className="bill-days">
+          {listDays.map(day => {
+            const list = byDay.get(day)!
+            return (
+              <div key={day} className="bill-day" data-day={day}>
                 <div className="bill-day-head"><b>{day ? fmtDate(day) : 'No date'}</b><span className="muted small">{plural(list.length, 'bill')}</span><span className="spacer" /><Money minor={list.filter(b => b.category !== 'reimbursement').reduce((n, b) => n + b.total_home, 0)} code={cur} /></div>
                 {list.map(b => {
                   const c = cats.get(b.category)
@@ -131,22 +233,10 @@ export function Split() {
                   )
                 })}
               </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      <div className="two-col">
-        {canEdit && <CospendLinkCard />}
-        <Card title="Categories & payment methods" actions={canEdit && <button type="button" className="btn ghost sm" onClick={() => setLists(true)}><Icon name="edit" size={13} />Edit</button>}>
-          <div className="row wrap" style={{ gap: 6 }}>{split.categories.map(c => <span key={c.id} className="country-chip">{c.icon} {c.name}{split.by_category[c.key] ? <span className="muted"> · <Money minor={split.by_category[c.key]} code={cur} compact /></span> : null}</span>)}</div>
-          <div className="row wrap mt-sm" style={{ gap: 6 }}>{split.payment_modes.map(m => <span key={m.id} className="country-chip">{m.icon} {m.name}</span>)}</div>
-        </Card>
+            )
+          })}
+        </div>
       </div>
-      {split.trash > 0 && <Trash />}
-      {canEdit && <Card title="Import from Nextcloud Cospend" className="mb"><p className="muted small">Bring an existing Cospend project's bills and people into this trip. Run it again later and it updates instead of doubling.</p><CospendImport tripId={trip.id} onDone={() => reload()} /></Card>}
-      {lists && <ListsModal categories={split.categories} modes={split.payment_modes} onClose={() => { setLists(false); reload() }} />}
-      {transfer && <TransferModal initial={transfer} onClose={() => setTransfer(null)} onSaved={() => { setTransfer(null); reload() }} />}
     </>
   )
 }

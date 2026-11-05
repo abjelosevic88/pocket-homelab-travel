@@ -27,7 +27,8 @@ const TABS = TRIP_TABS.map(([id, label, icon]) => ({ id, label, icon }))
 const ADD_KINDS: EditKind[] = ['place', 'lodging', 'transport', 'expense', 'journal']
 
 export default function TripPage() {
-  const { id, tab = 'overview' } = useParams()
+  const { id, tab: rawTab = 'overview' } = useParams()
+  const tab = rawTab === 'split' ? 'spending' : rawTab // the tab used to be called Split
   const navigate = useNavigate()
   const { toast } = useToast()
   const { reloadTrips } = useApp()
@@ -128,7 +129,7 @@ export default function TripPage() {
         {tab === 'map' && <MapTab />}
         {tab === 'stay' && <Stay />}
         {tab === 'budget' && <BudgetTab />}
-        {tab === 'split' && <Split />}
+        {tab === 'spending' && <Split />}
         {tab === 'lists' && <Checklists />}
         {tab === 'journal' && <Journal />}
         {tab === 'photos' && <Photos />}

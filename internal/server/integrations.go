@@ -563,7 +563,8 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out := map[string]any{"stats": stats, "current": current, "next": next, "upcoming": upcoming, "recent": recent,
-		"recorded_km": recordedKm, "photos": photosN, "journal": journal, "pins": pins, "hero_weather": heroWx}
+		"recorded_km": recordedKm, "photos": photosN, "journal": journal, "pins": pins, "hero_weather": heroWx,
+		"on_this_day": s.onThisDay(ctx, trips, today)}
 	// Today's plan for a running trip.
 	if current != nil {
 		places, _ := s.store.ListPlaces(ctx, current.ID)

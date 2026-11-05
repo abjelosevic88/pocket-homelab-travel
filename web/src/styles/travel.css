@@ -568,6 +568,14 @@ button.tl-year:hover, button.tl-year.open { color: var(--accent); }
 .ps-person:hover { text-decoration: none; background: color-mix(in srgb, var(--accent) 12%, var(--surface-2)); }
 .ps-person.inactive { opacity: .55; }
 .ps-add { min-width: 220px; flex: 1 1 220px; max-width: 320px; }
+.people-strip-wrap { container-type: inline-size; }
+.ps-add-btn { display: none; }
+/* not enough room (a phone, a long list): the field folds into a button */
+@container (max-width: 720px) {
+  .ps-add-btn { display: inline-flex; }
+  .ps-add { display: none; }
+  .ps-add.open { display: block; flex-basis: 100%; max-width: none; order: 10; }
+}
 
 /* ---- split v2 ---- */
 .split-head { display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap; margin-bottom: 16px; }
@@ -581,7 +589,7 @@ button.bal-row.sel { background: color-mix(in srgb, var(--accent) 10%, var(--sur
 .bal-row { grid-template-columns: minmax(150px, 240px) 1fr 96px; }
 .bal-name > span { min-width: 0; overflow: hidden; }
 .bal-name .small { white-space: normal; line-height: 1.35; }
-.bill-days { display: grid; gap: 14px; }
+.bill-days { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .bill-day-head { display: flex; align-items: baseline; gap: 8px; padding: 0 4px 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 .bill-row { display: flex; align-items: center; gap: 12px; padding: 8px 6px; border-radius: 10px; cursor: pointer; }
 .bill-row:hover, .bill-row:focus-visible { background: var(--surface-2); outline: none; }
@@ -617,3 +625,71 @@ button.bal-row.sel { background: color-mix(in srgb, var(--accent) 10%, var(--sur
 .pvp-rows { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13.5px; }
 .pvp-rows dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .pvp-rows dt { color: var(--muted); }
+
+/* ---- Spending ↔ Budget switch ---- */
+.page-switch { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 14px; margin: 0 0 14px; border: 1px dashed var(--border-strong, var(--border)); border-radius: 12px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.page-switch:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); border-color: var(--accent); }
+.bal-pct { color: var(--text); font-weight: 600; }
+
+/* ---- bills under a strip of days ---- */
+.bill-strip { display: flex; gap: 4px; overflow-x: auto; padding: 2px 2px 8px; margin: 0 -2px 6px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+.bs-day { flex: 0 0 40px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 0 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: inherit; font: inherit; cursor: pointer; scroll-snap-align: center; }
+.bs-day:hover { border-color: var(--accent); }
+.bs-day.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bs-day.empty { opacity: .45; }
+.bs-wd { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: inherit; opacity: .75; }
+.bs-n { font-size: 15px; font-weight: 700; line-height: 1.1; }
+.bs-bar { width: 6px; height: 18px; border-radius: 3px; background: var(--surface-2); display: flex; align-items: flex-end; overflow: hidden; }
+.bs-bar i { display: block; width: 100%; background: var(--accent); border-radius: 3px; }
+.bs-day.on .bs-bar { background: rgba(255,255,255,.3); }
+.bs-day.on .bs-bar i { background: #fff; }
+.bill-scroll { position: relative; max-height: 420px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 2px; }
+.bill-scroll .bill-day-head { position: sticky; top: 0; z-index: 1; background: var(--surface); }
+
+/* ---- budget: plan vs actual ---- */
+.pvp-bar { position: relative; overflow: visible; }
+.pvp-bar .paid { border-radius: 7px 0 0 7px; }
+.pvp-budget { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--text); border-radius: 1px; }
+.dbd-info .sw, .plan-rows .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.legend .sw.plan-mark { width: 2px; height: 12px; background: var(--text); border-radius: 1px; }
+.plan-rows { display: grid; gap: 8px; }
+.plan-row { display: grid; grid-template-columns: minmax(110px, 160px) 1fr auto; gap: 10px; align-items: center; font-size: 13.5px; }
+.pr-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pr-track { position: relative; display: flex; gap: 2px; height: 10px; border-radius: 5px; background: var(--surface-2); }
+.pr-spent { background: var(--accent); border-radius: 5px 0 0 5px; min-width: 0; }
+.pr-open { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 45%, transparent) 0 3px, transparent 3px 6px); border-radius: 0 5px 5px 0; }
+.pr-plan { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--text); border-radius: 1px; }
+.pr-val { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 92px; }
+.num-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 18px; }
+.num-grid b { font-size: 17px; }
+.plan-edit { display: grid; gap: 6px; max-height: 55vh; overflow-y: auto; }
+.pe-row { display: grid; grid-template-columns: 1fr 130px auto 110px; gap: 8px; align-items: center; }
+.pe-total { text-align: right; }
+@media (max-width: 640px) {
+  .pe-row { grid-template-columns: 1fr 110px; }
+  .pe-row .segmented, .pe-total { grid-column: span 1; }
+  .plan-row { grid-template-columns: 1fr auto; }
+  .plan-row .pr-track { grid-column: 1 / -1; order: 3; }
+}
+/* day by day: thin stacked segments; a long trip scrolls sideways */
+.dbd-wrap { position: relative; }
+.dbd-max { position: absolute; top: -2px; left: 0; font-size: 10.5px; }
+.dbd { padding-top: 14px; scrollbar-width: thin; }
+.dbd-bar { gap: 2px; }
+.dbd.long .dbd-col { flex: 0 0 26px; }
+.dbd-col { cursor: pointer; }
+
+/* ---- home: on this day ---- */
+.otd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.otd { display: flex; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--border); border-left: 4px solid var(--c); border-radius: 12px; background: var(--surface); color: inherit; }
+.otd:hover { text-decoration: none; border-color: var(--c); }
+.otd-cover { flex: 0 0 64px; height: 64px; border-radius: 10px; background: color-mix(in srgb, var(--c) 20%, var(--surface-2)) center / cover; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.5); line-height: 1; }
+.otd-cover b { font-size: 22px; } .otd-cover small { font-size: 9.5px; }
+.otd-places { color: var(--text); opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* someone with an account: a ring around the dot, a tinted card */
+.person-dot.account { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.person-card.account { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.bill-filter { width: 170px; }
+.dbd:not(.long) .dbd-col { max-width: 90px; }
+@media (max-width: 640px) { .bill-filter { width: 140px; } }

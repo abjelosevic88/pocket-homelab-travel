@@ -416,6 +416,7 @@ func (s *Server) Router() http.Handler {
 				r.Put("/expenses/{id}", s.handleUpdateExpense)
 				r.Delete("/expenses/{id}", s.handleDeleteExpense)
 				r.Get("/budget", s.handleBudget)
+				r.Put("/budget/plan", s.handlePutBudgetPlan)
 				r.Get("/split", s.handleSplit)
 				r.Get("/split/share", s.handleGetShare)
 				r.Put("/split/share", s.handlePutShare)

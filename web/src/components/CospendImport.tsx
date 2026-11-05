@@ -38,7 +38,7 @@ export function CospendImport({ tripId, onDone }: { tripId?: number; onDone?: (r
         {!tripId && <Field label="Into"><Select value={f.trip} onChange={v => setF({ ...f, trip: v })} options={trips.map(t => ({ value: String(t.id), label: t.name, hint: t.start_date.slice(0, 4) }))} placeholder="A new trip" clearLabel="A new trip" /></Field>}
       </div>
       <div className="row"><button className="btn primary" disabled={busy}><Icon name="download" size={15} />{busy ? 'Importing…' : 'Import'}</button>
-        {result && !tripId && <button type="button" className="btn" onClick={() => navigate(`/trips/${result.trip_id}/split`)}>Open “{result.name}”</button>}
+        {result && !tripId && <button type="button" className="btn" onClick={() => navigate(`/trips/${result.trip_id}/spending`)}>Open “{result.name}”</button>}
         {result && <span className="muted small">{result.members} people, {result.bills} bills{result.created ? ' — new trip' : ''}</span>}
       </div>
     </form>

@@ -225,22 +225,62 @@ func TestBreakdownSettleThroughAndDayCosts(t *testing.T) {
 	if len(tr) != 2 || tr[0].From != 1 || tr[0].To != 2 || tr[0].Amount != 10000 || tr[1].From != 3 || tr[1].To != 1 || tr[1].Amount != 10000 {
 		t.Fatalf("through me = %+v", tr)
 	}
-	// a 3-night stay is spread over its nights, a flight on its day, an early booking before the trip
+	// the stay and the flight are spread over every day, dinner sits on its day, an early museum ticket before the trip
 	trip := &store.Trip{StartDate: "2025-07-01", EndDate: "2025-07-04"}
-	stays := []store.Lodging{{ID: 7, CheckIn: "2025-07-01T15:00", CheckOut: "2025-07-04"}}
 	ex := []store.Expense{
-		{Kind: "actual", AmountHome: 30001, Category: "lodging", LinkKind: "lodging", LinkID: 7, Date: "2025-07-01"},
-		{Kind: "planned", AmountHome: 9000, Category: "transport", Date: "2025-07-04"},
-		{Kind: "actual", AmountHome: 500, Category: "food", Date: "2025-06-20"},
+		{Kind: "actual", AmountHome: 40001, Category: "lodging", LinkKind: "lodging", LinkID: 7, Date: "2025-07-01", PayerID: p(1), Owers: []int64{1, 2}},
+		{Kind: "planned", AmountHome: 8000, Category: "transport", LinkKind: "transport", Date: "2025-07-04"},
+		{Kind: "actual", AmountHome: 500, Category: "activities", Date: "2025-06-20"},
+		{Kind: "actual", AmountHome: 3000, Category: "food", Date: "2025-07-02", PayerID: p(2), Owers: []int64{1, 2, 3}},
 		{Kind: "actual", AmountHome: 999, Category: store.ReimbursementKey, Date: "2025-07-02"},
 	}
-	dc := dayCosts(trip, ex, stays)
+	dc := dayCosts(trip, ex, people)
 	got := map[string]DayCost{}
 	for _, d := range dc {
 		got[d.Date] = d
 	}
-	if len(dc) != 5 || dc[0].Date != "before" || got["before"].Actual["food"] != 500 || got["2025-07-01"].Actual["lodging"] != 10001 || got["2025-07-03"].Actual["lodging"] != 10000 ||
-		got["2025-07-04"].Actual["lodging"] != 0 || got["2025-07-04"].Planned["transport"] != 9000 || len(got["2025-07-02"].Actual) != 1 {
+	if len(dc) != 5 || dc[0].Date != "before" || got["before"].Actual["activities"] != 500 || got["2025-07-01"].Actual["lodging"] != 10001 || got["2025-07-04"].Actual["lodging"] != 10000 ||
+		got["2025-07-01"].Planned["transport"] != 2000 || got["2025-07-02"].Actual["food"] != 3000 || len(got["2025-07-02"].Actual) != 2 ||
+		got["2025-07-02"].People[3]["food"] != 1000 || got["2025-07-02"].People[2]["lodging"] != 5000 || got["2025-07-02"].People[3]["lodging"] != 0 {
 		t.Fatalf("day costs = %+v", dc)
+	}
+}
+
+func TestBudgetPlanAndOnThisDay(t *testing.T) {
+	h := newIsoHarness(t)
+	tr := h.create(h.ownerTok, "/api/v1/trips", map[string]any{"name": "London", "start_date": "2025-11-03", "end_date": "2025-11-07", "currency": "EUR"})
+	base := fmt.Sprintf("/api/v1/trips/%d", tr)
+	// 400 for the flat in all, 50 a day for food over 5 days: a budget of 650
+	code, b := h.do(h.ownerTok, http.MethodPut, base+"/budget/plan", map[string]any{"lines": []map[string]any{
+		{"category": "lodging", "amount": 40000}, {"category": "food", "amount": 5000, "per_day": true}, {"category": "fun", "amount": 0}}})
+	if code != http.StatusOK {
+		t.Fatalf("plan: %d %s", code, b)
+	}
+	var ov struct {
+		Trip       store.Trip       `json:"trip"`
+		BudgetPlan []store.PlanLine `json:"budget_plan"`
+	}
+	_, b = h.do(h.ownerTok, http.MethodGet, base+"/overview", nil)
+	_ = json.Unmarshal(b, &ov)
+	if len(ov.BudgetPlan) != 2 || ov.Trip.Budget != 65000 || !ov.BudgetPlan[1].PerDay {
+		t.Fatalf("overview plan = %+v budget %d", ov.BudgetPlan, ov.Trip.Budget)
+	}
+	// a viewer can't plan
+	if code, _ := h.do(h.memberTok, http.MethodPut, base+"/budget/plan", map[string]any{"lines": []any{}}); code == http.StatusOK {
+		t.Fatalf("a stranger planned the budget")
+	}
+
+	// on 5 November 2026, this was its 3rd day a year before
+	s := h.srv
+	trips, _ := s.store.ListTrips(t.Context(), store.TripFilter{UserID: h.owner.ID})
+	got := s.onThisDay(t.Context(), trips, "2026-11-05")
+	if len(got) != 1 || got[0].DayNumber != 3 || got[0].YearsAgo != 1 || got[0].Date != "2025-11-05" {
+		t.Fatalf("on this day = %+v", got)
+	}
+	if got := s.onThisDay(t.Context(), trips, "2026-11-09"); len(got) != 0 {
+		t.Fatalf("nothing on 9 Nov, got %+v", got)
+	}
+	if got := s.onThisDay(t.Context(), trips, "2025-11-05"); len(got) != 0 {
+		t.Fatalf("the trip itself is not an earlier year: %+v", got)
 	}
 }
