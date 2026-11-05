@@ -1,6 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { polyfillCountryFlagEmojis } from 'country-flag-emoji-polyfill'
+import flagFont from './assets/TwemojiCountryFlags.woff2?url'
 import './styles/base.css'
 import './styles/travel.css'
 import './styles/app.css'
@@ -10,6 +12,10 @@ import { Loading, ToastProvider } from './components/ui'
 import Layout from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import Login from './pages/Login'
+
+// Windows has no flag emoji (🇮🇹 shows as "IT"): there, and only there, load a
+// small flags-only font served from this box. --font lists it first.
+polyfillCountryFlagEmojis('Twemoji Country Flags', flagFont)
 import Home from './pages/Home'
 import Trips from './pages/Trips'
 import Stats from './pages/Stats'
