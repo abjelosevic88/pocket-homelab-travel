@@ -336,12 +336,15 @@ type Settings struct {
 	// Pocket Movement while Travel is connected to Core and the link is on,
 	// else Dawarich.
 	LocationSource string `json:"location_source"`
-	OpenAIKey      string `json:"openai_api_key"`
-	OpenAIModel    string `json:"openai_model"`
-	OpenAIBaseURL  string `json:"openai_base_url"` // any OpenAI-compatible endpoint
-	MapTiles       string `json:"map_tiles"`       // osm | carto | topo
-	AutoPhotos     bool   `json:"auto_photos"`     // look up Wikipedia/Commons pictures for new places
-	CheckInTime    string `json:"checkin_time"`    // HH:MM a new stay starts with (15:00)
-	CheckOutTime   string `json:"checkout_time"`   // HH:MM a new stay ends with (11:00)
-	SetupComplete  bool   `json:"setup_complete"`
+	// Pocket Places on the trip page (through Pocket Core only): core | off;
+	// "" = core.
+	PlacesMode    string `json:"places_mode"`
+	OpenAIKey     string `json:"openai_api_key"`
+	OpenAIModel   string `json:"openai_model"`
+	OpenAIBaseURL string `json:"openai_base_url"` // any OpenAI-compatible endpoint
+	MapTiles      string `json:"map_tiles"`       // osm | carto | topo
+	AutoPhotos    bool   `json:"auto_photos"`     // look up Wikipedia/Commons pictures for new places
+	CheckInTime   string `json:"checkin_time"`    // HH:MM a new stay starts with (15:00)
+	CheckOutTime  string `json:"checkout_time"`   // HH:MM a new stay ends with (11:00)
+	SetupComplete bool   `json:"setup_complete"`
 }
