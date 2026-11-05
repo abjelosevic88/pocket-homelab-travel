@@ -643,7 +643,7 @@ button.bal-row.sel { background: color-mix(in srgb, var(--accent) 10%, var(--sur
 .bs-bar i { display: block; width: 100%; background: var(--accent); border-radius: 3px; }
 .bs-day.on .bs-bar { background: rgba(255,255,255,.3); }
 .bs-day.on .bs-bar i { background: #fff; }
-.bill-scroll { position: relative; max-height: 420px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 2px; }
+.bill-scroll { position: relative; max-height: 420px; overflow-y: auto; overscroll-behavior: auto; scrollbar-width: thin; padding-right: 2px; }
 .bill-scroll .bill-day-head { position: sticky; top: 0; z-index: 1; background: var(--surface); }
 
 /* ---- budget: plan vs actual ---- */

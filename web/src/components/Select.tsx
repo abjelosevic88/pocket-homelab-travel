@@ -86,7 +86,10 @@ export function Select({ value, onChange, options, placeholder = 'Choose…', on
 
   let group = ''
   return (
-    <div ref={root} className={`sel ${className} ${open ? 'open' : ''}`} onKeyDown={open ? onKey : undefined}>
+    <div ref={root} className={`sel ${className} ${open ? 'open' : ''}`} onKeyDown={open ? onKey : undefined}
+      // Selects often sit inside a <label> (Field): a click in the list would then also
+      // "activate" the label, which clicks the toggle button and reopens the list.
+      onClick={e => { if ((e.target as HTMLElement).closest('.sel-pop')) e.preventDefault() }}>
       <button type="button" className={`sel-btn ${current ? '' : 'is-empty'}`} onClick={() => !disabled && setOpen(o => !o)} aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel} aria-controls={id} disabled={disabled}
         onKeyDown={e => { if (!open && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setOpen(true) } }}>
         <span className="sel-val">{current ? current.label : placeholder}</span>
