@@ -62,7 +62,7 @@ func (s *Server) publicSettings(ctx context.Context, st store.Settings, u *store
 		"immich_mode": imMode, "immich_via": imVia, "immich_detail": imDetail, "immich_source": imSource,
 		"places_mode": plMode, "places_via": plVia, "places_detail": plDetail,
 		"title": st.Title, "home_currency": st.HomeCurrency, "date_format": st.DateFormat, "time_format": st.TimeFormat,
-		"distance_unit": st.DistanceUnit, "fx_auto": st.FXAuto, "fx_provider": s.cfg.FXProvider, "map_tiles": st.MapTiles, "auto_photos": st.AutoPhotos,
+		"distance_unit": st.DistanceUnit, "fx_auto": st.FXAuto, "fx_provider": s.cfg.FXProvider, "map_tiles": st.MapTiles, "auto_photos": st.AutoPhotos, "checkin_time": st.CheckInTime, "checkout_time": st.CheckOutTime,
 		"firefly_url": st.FireflyURL, "firefly_token": mask(st.FireflyToken), "firefly_configured": moneyVia != "",
 		"dawarich_url": st.DawarichURL, "dawarich_api_key": mask(st.DawarichAPIKey), "dawarich_configured": dwVia != "",
 		"immich_url": st.ImmichURL, "immich_public_url": st.ImmichPublicURL, "immich_api_key": mask(st.ImmichAPIKey), "immich_configured": imVia != "",
@@ -133,6 +133,17 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if keys["auto_photos"] {
 		cur.AutoPhotos = in.AutoPhotos
+	}
+	for k, dst := range map[string]*string{"checkin_time": &cur.CheckInTime, "checkout_time": &cur.CheckOutTime} {
+		if !keys[k] {
+			continue
+		}
+		v := strings.TrimSpace(map[string]string{"checkin_time": in.CheckInTime, "checkout_time": in.CheckOutTime}[k])
+		if !validClock(v) {
+			writeErr(w, http.StatusBadRequest, "times are HH:MM")
+			return
+		}
+		*dst = v
 	}
 	// Secrets: a masked value (contains ••) means "keep".
 	secret := func(k string, dst *string, v string) {
@@ -450,12 +461,12 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := userFrom(ctx)
-	stats, err := s.store.HomeStats(ctx, u.ID)
+	stats, err := s.store.HomeStats(ctx, u.ID, withPeople(ctx)...)
 	if err != nil {
 		s.fail(w, err, "stats")
 		return
 	}
-	trips, _ := s.store.ListTrips(ctx, store.TripFilter{UserID: u.ID})
+	trips, _ := s.store.ListTrips(ctx, s.visibleTrips(ctx, u.ID))
 	today := store.Today()
 	var current, next *store.Trip
 	recent := []store.Trip{}
@@ -505,7 +516,9 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	journal, _ := s.store.LatestJournal(ctx, u.ID, 6)
-	// Pins for the "where you've been" map: the trip's centre, else its first located place.
+	// Pins for the "where you've been" map: one per stay when the trip moved
+	// between several stays (a road trip shows each base), else one for the
+	// trip: its centre, else its first located stay or place.
 	type pin struct {
 		ID     int64   `json:"id"`
 		Name   string  `json:"name"`
@@ -515,11 +528,30 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		Lat    float64 `json:"lat"`
 		Lng    float64 `json:"lng"`
 		Cover  bool    `json:"has_cover"`
+		Stay   string  `json:"stay,omitempty"` // the stay this pin stands for
+		StayID int64   `json:"stay_id,omitempty"`
+		From   string  `json:"stay_from,omitempty"`
+		To     string  `json:"stay_to,omitempty"`
 	}
 	pins := []pin{}
 	for i := range trips {
 		t := &trips[i]
 		if t.Archived || t.Status == store.StatusCancelled {
+			continue
+		}
+		var located []store.Lodging
+		if stays, err := s.store.ListLodging(ctx, t.ID); err == nil {
+			for _, l := range stays {
+				if l.Lat != nil && l.Lng != nil {
+					located = append(located, l)
+				}
+			}
+		}
+		if len(located) > 1 {
+			for _, l := range located {
+				pins = append(pins, pin{ID: t.ID, Name: t.Name, Status: t.Status, Start: t.StartDate, End: t.EndDate, Lat: *l.Lat, Lng: *l.Lng, Cover: t.HasCover,
+					Stay: l.Name, StayID: l.ID, From: dateOnly(l.CheckIn), To: dateOnly(l.CheckOut)})
+			}
 			continue
 		}
 		if lat, lng, ok := s.tripCenter(ctx, t); ok {
@@ -560,7 +592,8 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out := map[string]any{"stats": stats, "current": current, "next": next, "upcoming": upcoming, "recent": recent,
-		"recorded_km": recordedKm, "photos": photosN, "journal": journal, "pins": pins, "hero_weather": heroWx}
+		"recorded_km": recordedKm, "photos": photosN, "journal": journal, "pins": pins, "hero_weather": heroWx,
+		"on_this_day": s.onThisDay(ctx, trips, today)}
 	// Today's plan for a running trip.
 	if current != nil {
 		places, _ := s.store.ListPlaces(ctx, current.ID)

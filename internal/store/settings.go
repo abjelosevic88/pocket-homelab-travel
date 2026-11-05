@@ -21,7 +21,7 @@ func (s *Store) GetSettings(ctx context.Context, userID int64) (Settings, error)
 	if home == "" {
 		home = "EUR"
 	}
-	st := Settings{Title: DefaultTitle, HomeCurrency: home, DateFormat: "auto", TimeFormat: "auto", DistanceUnit: "km", FXAuto: true, MapTiles: "osm", AutoPhotos: true}
+	st := Settings{Title: DefaultTitle, HomeCurrency: home, DateFormat: "auto", TimeFormat: "auto", DistanceUnit: "km", FXAuto: true, MapTiles: "osm", AutoPhotos: true, CheckInTime: "15:00", CheckOutTime: "11:00"}
 	kv := map[string]string{}
 	rows, err := s.DB.QueryContext(ctx, `SELECT key, value FROM settings`)
 	if err != nil {
@@ -119,6 +119,14 @@ func (s *Store) GetSettings(ctx context.Context, userID int64) (Settings, error)
 			if v != "" {
 				st.MapTiles = v
 			}
+		case "checkin_time":
+			if v != "" {
+				st.CheckInTime = v
+			}
+		case "checkout_time":
+			if v != "" {
+				st.CheckOutTime = v
+			}
 		case "setup_complete":
 			st.SetupComplete = v == "1"
 		}
@@ -150,6 +158,8 @@ func personalKV(st Settings) map[string]string {
 		"openai_model":    st.OpenAIModel,
 		"openai_base_url": st.OpenAIBaseURL,
 		"map_tiles":       st.MapTiles,
+		"checkin_time":    st.CheckInTime,
+		"checkout_time":   st.CheckOutTime,
 		"auto_photos":     b[st.AutoPhotos],
 	}
 }

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, V1 } from '../lib/api'
 import { useApp } from '../lib/app-context'
+import { CospendImport } from '../components/CospendImport'
 import type { APIToken, ConnMode, Settings as SettingsT, User } from '../lib/types'
 import { DATE_FORMATS, TIME_FORMATS, fmtBytes, fmtDateTime, type DateFormat, type TimeFormat } from '../lib/format'
 import { Avatar, Confirm, Field, Loading, Modal, Segmented, SettingRow, Switch, Tabs, useAsync, useIsMobile, useToast } from '../components/ui'
@@ -19,7 +20,7 @@ type TabId = 'general' | 'integrations' | 'import' | 'profile' | 'users' | 'api'
 const TABS: { id: TabId; label: string; icon: string; sub: string }[] = [
   { id: 'general', label: 'General', icon: 'settings', sub: 'Currency, distances, maps, date and time formats, and the app title.' },
   { id: 'integrations', label: 'Integrations', icon: 'layers', sub: 'Pocket Money, Pocket Movement or Dawarich, Pocket Places, Immich and OpenAI — your own accounts, through Pocket Core or directly.' },
-  { id: 'import', label: 'Import', icon: 'download', sub: 'Bring collections over from AdventureLog, or restore a trip from a JSON backup.' },
+  { id: 'import', label: 'Import', icon: 'download', sub: 'Bring projects over from Nextcloud Cospend, collections from AdventureLog, or restore a trip from a JSON backup.' },
   { id: 'profile', label: 'Profile', icon: 'user', sub: 'Your name, email and password.' },
   { id: 'users', label: 'People', icon: 'users', sub: 'Everyone who has an account on this box.' },
   { id: 'api', label: 'API tokens', icon: 'key', sub: 'Personal tokens for widgets, scripts and calendar subscriptions.' },
@@ -137,6 +138,10 @@ function General() {
       <Section title="Date & time">
         <SettingRow title="Date format"><Select value={f.date_format} onChange={v => setF({ ...f, date_format: v as DateFormat })} options={DATE_FORMATS.map(d => ({ value: d.id, label: d.label }))} /></SettingRow>
         <SettingRow title="Time format"><Select value={f.time_format} onChange={v => setF({ ...f, time_format: v as TimeFormat })} options={TIME_FORMATS.map(d => ({ value: d.id, label: d.label }))} /></SettingRow>
+      </Section>
+      <Section title="Stays" sub="What a new stay starts with; each stay can still have its own times.">
+        <SettingRow title="Default check-in" help="Also used for stays saved without a time."><input type="time" value={f.checkin_time || '15:00'} onChange={e => setF({ ...f, checkin_time: e.target.value })} style={{ width: 130 }} aria-label="Default check-in time" /></SettingRow>
+        <SettingRow title="Default check-out"><input type="time" value={f.checkout_time || '11:00'} onChange={e => setF({ ...f, checkout_time: e.target.value })} style={{ width: 130 }} aria-label="Default check-out time" /></SettingRow>
       </Section>
       <Section title="Maps & places">
         <SettingRow title="Map tiles" help="All free and keyless. Satellite is Esri imagery with a labels layer on top."><Select value={f.map_tiles} onChange={v => setF({ ...f, map_tiles: v })} options={Object.entries(TILES).map(([v, t]) => ({ value: v, label: t.label }))} /></SettingRow>
@@ -351,6 +356,9 @@ function Import() {
   }
   return (
     <div className="stack loose">
+      <Section title="From Nextcloud Cospend" icon="download" sub="A Cospend project's people, bills, categories and payment methods, through its share link — into a new trip or one of yours. Import again any time: it updates instead of doubling.">
+        <CospendImport />
+      </Section>
       <Section title="From AdventureLog" icon="download" sub="Collections become trips; locations, lodging, transportation, notes and checklists come along, with their images. Re-running skips what is already here. Legs that AdventureLog imported from Dawarich are left out — the route is live here.">
         <form onSubmit={list} className="grid" style={{ gap: 12 }}>
           <Field label="AdventureLog URL"><input value={al.url} onChange={e => setAL({ ...al, url: e.target.value })} placeholder="https://adventurelog.example.com" required /></Field>
