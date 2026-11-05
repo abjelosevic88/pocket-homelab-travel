@@ -361,6 +361,13 @@ a.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow); te
 .pp-more:hover { color: var(--text); text-decoration: none; }
 @media (max-width: 700px) { .pp-cols { grid-template-columns: minmax(0, 1fr); } }
 
+/* Trip overview → Pocket Wallet: the trip's tickets and boarding passes (rows as in Pocket Places) */
+.pw-row .pp-when { width: 96px; }
+.pw-row .pp-ico { color: var(--text-2); }
+.pw-row.pw-old { opacity: .6; }
+.pw-meta b { font-weight: 650; color: var(--text); }
+@media (max-width: 520px) { .pw-row .pp-when { width: 64px; } .pw-meta { flex-direction: column; align-items: flex-end; gap: 0; } }
+
 /* phones and narrow windows */
 html, body { overflow-x: hidden; }
 .card, .card-body, .day-items, .item, .item .txt, .row > *, .toolbar > * { min-width: 0; }
