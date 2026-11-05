@@ -76,11 +76,23 @@ export interface Settings {
   money_mode: ConnMode; money_via: '' | 'core' | 'direct'; money_detail: string
   dawarich_mode: ConnMode; dawarich_via: '' | 'core' | 'direct'; dawarich_detail: string; dawarich_source: '' | 'personal' | 'box'
   immich_mode: ConnMode; immich_via: '' | 'core' | 'direct'; immich_detail: string; immich_source: '' | 'personal' | 'box'
+  /** Pocket Places on the trip page: through Pocket Core only */
+  places_mode: 'core' | 'off'; places_via: '' | 'core'; places_detail: string
   firefly_url: string; firefly_token: string; firefly_configured: boolean
   dawarich_url: string; dawarich_api_key: string; dawarich_configured: boolean
   immich_url: string; immich_public_url: string; immich_api_key: string; immich_configured: boolean
   openai_api_key: string; openai_model: string; openai_base_url: string; openai_configured: boolean; ai_configured: boolean
   max_upload_bytes: number; setup_complete: boolean; can_edit_global?: boolean
+}
+/** Pocket Places, the person's own list of places, as the trip page shows it. */
+export interface PPPlace { id: number; name: string; kind: string; cuisine: string; city: string; status: 'want' | 'been'; favourite: boolean; rating: number; price: number; lat: number | null; lng: number | null; notes: string }
+export interface PPList { id: number; name: string; emoji: string; count: number; been: number }
+export interface PPVisit { id: number; place_id: number; date: string; time: string; planned: boolean; rating: number; with_whom: string; spent: number; currency: string; place_name: string; place_kind: string }
+export interface PocketPlaces {
+  /** ok, or why there is nothing: no_core (no Pocket Core), off (switched off in Settings), unavailable (Core refused the link), error (no answer) */
+  status: 'ok' | 'no_core' | 'off' | 'unavailable' | 'error'; reason?: string; detail?: string
+  places_url?: string; trip_url?: string
+  lists: PPList[]; want: PPPlace[]; been: PPPlace[]; visits: PPVisit[]; spent: { currency: string; total: number; visits: number }[]
 }
 export interface Meta { place_categories: string[]; expense_categories: string[]; discover_categories: string[]; packing_templates: string[]; lodging_types: string[]; transport_types: string[] }
 export interface HomeData {

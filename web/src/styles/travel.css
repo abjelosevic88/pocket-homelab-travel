@@ -334,6 +334,33 @@ a.stat:hover { border-color: var(--border-strong); box-shadow: var(--shadow); te
 .set-fresh pre { margin: 0; background: var(--surface); }
 .setting-control .sel { min-width: 200px; }
 
+/* Trip overview → Pocket Places: the places on your list at the destination */
+.pp-card.pp-dim .card-head h2 { color: var(--muted); }
+.pp-wait { margin: 0; min-height: 22px; }
+.pp-body { display: grid; gap: 16px; }
+.pp-lists { display: grid; gap: 6px; }
+.pp-lists .chip { color: var(--text-2); }
+.pp-lists .chip .muted { font-weight: 500; }
+.pp-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.pp-col, .pp-visits { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.pp-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12.5px; font-weight: 650; color: var(--muted); }
+.pp-none { margin: 0; }
+.pp-rows { display: grid; gap: 2px; }
+.pp-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; margin: 0 -8px; border-radius: 9px; color: var(--text); min-width: 0; }
+.pp-row:hover { background: var(--hover); color: var(--text); text-decoration: none; }
+.pp-ico { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-2); font-size: 14px; flex-shrink: 0; }
+.pp-txt { flex: 1; min-width: 0; display: grid; }
+.pp-name { font-weight: 600; font-size: 13.5px; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-fav { color: #c5352c; flex-shrink: 0; }
+.pp-sub { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 12.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.pp-meta > span { display: inline-flex; align-items: center; gap: 3px; }
+.pp-meta .icon { color: var(--warning); }
+.pp-when { width: 76px; flex-shrink: 0; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.pp-more { font-size: 12.5px; color: var(--muted); padding: 4px 0 0; }
+.pp-more:hover { color: var(--text); text-decoration: none; }
+@media (max-width: 700px) { .pp-cols { grid-template-columns: minmax(0, 1fr); } }
+
 /* phones and narrow windows */
 html, body { overflow-x: hidden; }
 .card, .card-body, .day-items, .item, .item .txt, .row > *, .toolbar > * { min-width: 0; }
