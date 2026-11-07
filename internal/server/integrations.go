@@ -10,7 +10,6 @@ import (
 
 	"encoding/json"
 	"fmt"
-	"github.com/go-chi/chi/v5"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,6 +26,7 @@ import (
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/firefly"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/geo"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/immich"
+	"github.com/abjelosevic88/pocket-homelab-travel/internal/photoprism"
 	"github.com/abjelosevic88/pocket-homelab-travel/internal/store"
 )
 
@@ -66,10 +66,12 @@ func (s *Server) publicSettings(ctx context.Context, st store.Settings, u *store
 		"wallet_mode": wlMode, "wallet_via": wlVia, "wallet_detail": wlDetail,
 		"trails_mode": trMode, "trails_via": trVia, "trails_detail": trDetail,
 		"title": st.Title, "home_currency": st.HomeCurrency, "date_format": st.DateFormat, "time_format": st.TimeFormat,
-		"distance_unit": st.DistanceUnit, "fx_auto": st.FXAuto, "fx_provider": s.cfg.FXProvider, "map_tiles": st.MapTiles, "auto_photos": st.AutoPhotos,
+		"distance_unit": st.DistanceUnit, "fx_auto": st.FXAuto, "fx_provider": s.cfg.FXProvider, "map_tiles": st.MapTiles, "auto_photos": st.AutoPhotos, "checkin_time": st.CheckInTime, "checkout_time": st.CheckOutTime,
 		"firefly_url": st.FireflyURL, "firefly_token": mask(st.FireflyToken), "firefly_configured": moneyVia != "",
 		"dawarich_url": st.DawarichURL, "dawarich_api_key": mask(st.DawarichAPIKey), "dawarich_configured": dwVia != "",
 		"immich_url": st.ImmichURL, "immich_public_url": st.ImmichPublicURL, "immich_api_key": mask(st.ImmichAPIKey), "immich_configured": imVia != "",
+		"photoprism_url": st.PhotoPrismURL, "photoprism_public_url": st.PhotoPrismPublicURL, "photoprism_token": mask(st.PhotoPrismToken), "photoprism_configured": st.PhotoPrismURL != "",
+		"home_name": st.HomeName, "home_lat": st.HomeLat, "home_lng": st.HomeLng,
 		"openai_api_key": mask(st.OpenAIKey), "openai_model": st.OpenAIModel, "openai_base_url": st.OpenAIBaseURL, "openai_configured": st.OpenAIKey != "",
 		"max_upload_bytes": s.cfg.MaxUploadBytes, "setup_complete": st.SetupComplete, "can_edit_global": u != nil && u.Role == "admin",
 	}
@@ -138,6 +140,17 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if keys["auto_photos"] {
 		cur.AutoPhotos = in.AutoPhotos
 	}
+	for k, dst := range map[string]*string{"checkin_time": &cur.CheckInTime, "checkout_time": &cur.CheckOutTime} {
+		if !keys[k] {
+			continue
+		}
+		v := strings.TrimSpace(map[string]string{"checkin_time": in.CheckInTime, "checkout_time": in.CheckOutTime}[k])
+		if !validClock(v) {
+			writeErr(w, http.StatusBadRequest, "times are HH:MM")
+			return
+		}
+		*dst = v
+	}
 	// Secrets: a masked value (contains ••) means "keep".
 	secret := func(k string, dst *string, v string) {
 		if keys[k] && !strings.Contains(v, "••") {
@@ -200,6 +213,25 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		cur.ImmichURL = strings.TrimRight(strings.TrimSpace(in.ImmichURL), "/")
 	}
 	secret("immich_api_key", &cur.ImmichAPIKey, in.ImmichAPIKey)
+	if keys["photoprism_url"] {
+		cur.PhotoPrismURL = strings.TrimRight(strings.TrimSpace(in.PhotoPrismURL), "/")
+	}
+	secret("photoprism_token", &cur.PhotoPrismToken, in.PhotoPrismToken)
+	if keys["home_lat"] || keys["home_lng"] || keys["home_name"] {
+		was := store.Settings{HomeName: cur.HomeName, HomeLat: cur.HomeLat, HomeLng: cur.HomeLng}
+		cur.HomeName = strings.TrimSpace(in.HomeName)
+		cur.HomeLat, cur.HomeLng = in.HomeLat, in.HomeLng
+		if cur.HomeLat == nil || cur.HomeLng == nil || *cur.HomeLat < -90 || *cur.HomeLat > 90 || *cur.HomeLng < -180 || *cur.HomeLng > 180 {
+			cur.HomeName, cur.HomeLat, cur.HomeLng = "", nil, nil // cleared: detected again
+		}
+		same := func(a, b *float64) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
+		if !same(was.HomeLat, cur.HomeLat) || !same(was.HomeLng, cur.HomeLng) || was.HomeName != cur.HomeName {
+			_ = s.store.CacheDeleteLike(r.Context(), "user:"+strconv.FormatInt(u.ID, 10)+":photo-trips")
+		}
+	}
+	if keys["photoprism_public_url"] {
+		cur.PhotoPrismPublicURL = strings.TrimRight(strings.TrimSpace(in.PhotoPrismPublicURL), "/")
+	}
 	secret("openai_api_key", &cur.OpenAIKey, in.OpenAIKey)
 	if keys["ai_pocket_model"] {
 		if !validPocketModel(in.AIPocketModel) {
@@ -430,6 +462,14 @@ func (s *Server) handleIntegrationTest(w http.ResponseWriter, r *http.Request) {
 			v, err = c.Version(ctx)
 			msg = "Immich " + v + ", " + how
 		}
+	case "photoprism":
+		key := in.Key
+		if strings.Contains(key, "••") || key == "" {
+			key = st.PhotoPrismToken
+		}
+		var v string
+		v, err = photoprism.New(firstNonEmpty(strings.TrimSpace(in.URL), st.PhotoPrismURL), key, 15*time.Second).Version(ctx)
+		msg = "PhotoPrism " + v + ", direct connection"
 	default:
 		writeErr(w, http.StatusBadRequest, "unknown integration")
 		return
@@ -506,12 +546,12 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	u := userFrom(ctx)
-	stats, err := s.store.HomeStats(ctx, u.ID)
+	stats, err := s.store.HomeStats(ctx, u.ID, withPeople(ctx)...)
 	if err != nil {
 		s.fail(w, err, "stats")
 		return
 	}
-	trips, _ := s.store.ListTrips(ctx, store.TripFilter{UserID: u.ID})
+	trips, _ := s.store.ListTrips(ctx, s.visibleTrips(ctx, u.ID))
 	today := store.Today()
 	var current, next *store.Trip
 	recent := []store.Trip{}
@@ -553,15 +593,19 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 				recordedKm += rr.DistanceKm
 			}
 		}
-		if v, _, ok := s.store.CacheGet(ctx, userCacheKey(trips[i].ID, u.ID, "immich-photos")); ok {
-			var ph []json.RawMessage
-			if json.Unmarshal([]byte(v), &ph) == nil {
-				photosN += len(ph)
+		for _, lib := range []string{"immich-photos", "photoprism-photos"} {
+			if v, _, ok := s.store.CacheGet(ctx, userCacheKey(trips[i].ID, u.ID, lib)); ok {
+				var ph []json.RawMessage
+				if json.Unmarshal([]byte(v), &ph) == nil {
+					photosN += len(ph)
+				}
 			}
 		}
 	}
 	journal, _ := s.store.LatestJournal(ctx, u.ID, 6)
-	// Pins for the "where you've been" map: the trip's centre, else its first located place.
+	// Pins for the "where you've been" map: one per stay when the trip moved
+	// between several stays (a road trip shows each base), else one for the
+	// trip: its centre, else its first located stay or place.
 	type pin struct {
 		ID     int64   `json:"id"`
 		Name   string  `json:"name"`
@@ -571,11 +615,30 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		Lat    float64 `json:"lat"`
 		Lng    float64 `json:"lng"`
 		Cover  bool    `json:"has_cover"`
+		Stay   string  `json:"stay,omitempty"` // the stay this pin stands for
+		StayID int64   `json:"stay_id,omitempty"`
+		From   string  `json:"stay_from,omitempty"`
+		To     string  `json:"stay_to,omitempty"`
 	}
 	pins := []pin{}
 	for i := range trips {
 		t := &trips[i]
 		if t.Archived || t.Status == store.StatusCancelled {
+			continue
+		}
+		var located []store.Lodging
+		if stays, err := s.store.ListLodging(ctx, t.ID); err == nil {
+			for _, l := range stays {
+				if l.Lat != nil && l.Lng != nil {
+					located = append(located, l)
+				}
+			}
+		}
+		if len(located) > 1 {
+			for _, l := range located {
+				pins = append(pins, pin{ID: t.ID, Name: t.Name, Status: t.Status, Start: t.StartDate, End: t.EndDate, Lat: *l.Lat, Lng: *l.Lng, Cover: t.HasCover,
+					Stay: l.Name, StayID: l.ID, From: dateOnly(l.CheckIn), To: dateOnly(l.CheckOut)})
+			}
 			continue
 		}
 		if lat, lng, ok := s.tripCenter(ctx, t); ok {
@@ -616,7 +679,8 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out := map[string]any{"stats": stats, "current": current, "next": next, "upcoming": upcoming, "recent": recent,
-		"recorded_km": recordedKm, "photos": photosN, "journal": journal, "pins": pins, "hero_weather": heroWx}
+		"recorded_km": recordedKm, "photos": photosN, "journal": journal, "pins": pins, "hero_weather": heroWx,
+		"on_this_day": s.onThisDay(ctx, trips, today)}
 	// Today's plan for a running trip.
 	if current != nil {
 		places, _ := s.store.ListPlaces(ctx, current.ID)
@@ -1107,61 +1171,6 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_, _ = w.Write(b)
-}
-
-// ---- Immich ----
-
-func (s *Server) handleTripPhotos(w http.ResponseWriter, r *http.Request) {
-	t := tripFrom(r.Context()).trip
-	if !t.Immich {
-		writeJSON(w, http.StatusOK, []any{})
-		return
-	}
-	// the viewer's own Immich (a trip shared with them shows their photos)
-	im, _, err := s.immichFor(r.Context(), actorID(r.Context()))
-	if err != nil {
-		writeJSON(w, http.StatusOK, []any{})
-		return
-	}
-	b, err := s.cached(r, t, "immich-photos", func() (any, error) {
-		from, to, ok := tripWindow(t)
-		if !ok {
-			return []any{}, nil
-		}
-		a, err := im.Search(r.Context(), from, to, 5000)
-		if err != nil {
-			return nil, err
-		}
-		if a == nil {
-			a = []immich.Asset{}
-		}
-		return a, nil
-	})
-	if err != nil {
-		writeErr(w, http.StatusBadGateway, "immich: "+err.Error())
-		return
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_, _ = w.Write(b)
-}
-
-func (s *Server) handlePhotoThumb(w http.ResponseWriter, r *http.Request) {
-	// the viewer's own Immich, resolved for every thumbnail (the key never
-	// reaches the browser, and a switch-off applies at once)
-	im, _, err := s.immichFor(r.Context(), actorID(r.Context()))
-	if err != nil {
-		writeErr(w, http.StatusNotFound, "immich: "+err.Error())
-		return
-	}
-	id := strings.Map(func(c rune) rune {
-		if c == '-' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') {
-			return c
-		}
-		return -1
-	}, chi.URLParam(r, "id"))
-	if err := im.Thumbnail(r.Context(), w, id, r.URL.Query().Get("size")); err != nil {
-		writeErr(w, http.StatusBadGateway, err.Error())
-	}
 }
 
 // ---- exports ----

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"strconv"
 )
 
 // DefaultTitle is the app title until someone changes it.
@@ -21,7 +22,7 @@ func (s *Store) GetSettings(ctx context.Context, userID int64) (Settings, error)
 	if home == "" {
 		home = "EUR"
 	}
-	st := Settings{Title: DefaultTitle, HomeCurrency: home, DateFormat: "auto", TimeFormat: "auto", DistanceUnit: "km", FXAuto: true, MapTiles: "osm", AutoPhotos: true}
+	st := Settings{Title: DefaultTitle, HomeCurrency: home, DateFormat: "auto", TimeFormat: "auto", DistanceUnit: "km", FXAuto: true, MapTiles: "osm", AutoPhotos: true, CheckInTime: "15:00", CheckOutTime: "11:00"}
 	kv := map[string]string{}
 	rows, err := s.DB.QueryContext(ctx, `SELECT key, value FROM settings`)
 	if err != nil {
@@ -99,6 +100,22 @@ func (s *Store) GetSettings(ctx context.Context, userID int64) (Settings, error)
 			st.ImmichAPIKey = v
 		case "immich_public_url":
 			st.ImmichPublicURL = v
+		case "photoprism_url":
+			st.PhotoPrismURL = v
+		case "photoprism_token":
+			st.PhotoPrismToken = v
+		case "photoprism_public_url":
+			st.PhotoPrismPublicURL = v
+		case "home_name":
+			st.HomeName = v
+		case "home_lat", "home_lng":
+			if f, err := strconv.ParseFloat(v, 64); err == nil && v != "" {
+				if k == "home_lat" {
+					st.HomeLat = &f
+				} else {
+					st.HomeLng = &f
+				}
+			}
 		case "location_source":
 			st.LocationSource = v
 		case "places_mode":
@@ -123,6 +140,14 @@ func (s *Store) GetSettings(ctx context.Context, userID int64) (Settings, error)
 			if v != "" {
 				st.MapTiles = v
 			}
+		case "checkin_time":
+			if v != "" {
+				st.CheckInTime = v
+			}
+		case "checkout_time":
+			if v != "" {
+				st.CheckOutTime = v
+			}
 		case "setup_complete":
 			st.SetupComplete = v == "1"
 		}
@@ -133,29 +158,37 @@ func (s *Store) GetSettings(ctx context.Context, userID int64) (Settings, error)
 func personalKV(st Settings) map[string]string {
 	b := map[bool]string{true: "1", false: "0"}
 	return map[string]string{
-		"home_currency":     st.HomeCurrency,
-		"date_format":       st.DateFormat,
-		"time_format":       st.TimeFormat,
-		"distance_unit":     st.DistanceUnit,
-		"money_mode":        st.MoneyMode,
-		"firefly_url":       st.FireflyURL,
-		"firefly_token":     st.FireflyToken,
-		"dawarich_mode":     st.DawarichMode,
-		"immich_mode":       st.ImmichMode,
-		"dawarich_url":      st.DawarichURL,
-		"dawarich_api_key":  st.DawarichAPIKey,
-		"immich_url":        st.ImmichURL,
-		"immich_api_key":    st.ImmichAPIKey,
-		"immich_public_url": st.ImmichPublicURL,
-		"location_source":   st.LocationSource,
-		"places_mode":       st.PlacesMode,
-		"wallet_mode":       st.WalletMode,
-		"trails_mode":       st.TrailsMode,
-		"ai_provider":       st.AIProvider, "ai_pocket_model": st.AIPocketModel,
+		"home_currency":         st.HomeCurrency,
+		"date_format":           st.DateFormat,
+		"time_format":           st.TimeFormat,
+		"distance_unit":         st.DistanceUnit,
+		"money_mode":            st.MoneyMode,
+		"firefly_url":           st.FireflyURL,
+		"firefly_token":         st.FireflyToken,
+		"dawarich_mode":         st.DawarichMode,
+		"immich_mode":           st.ImmichMode,
+		"dawarich_url":          st.DawarichURL,
+		"dawarich_api_key":      st.DawarichAPIKey,
+		"immich_url":            st.ImmichURL,
+		"immich_api_key":        st.ImmichAPIKey,
+		"immich_public_url":     st.ImmichPublicURL,
+		"photoprism_url":        st.PhotoPrismURL,
+		"photoprism_token":      st.PhotoPrismToken,
+		"photoprism_public_url": st.PhotoPrismPublicURL,
+		"home_name":             st.HomeName,
+		"home_lat":              fstr(st.HomeLat),
+		"home_lng":              fstr(st.HomeLng),
+		"location_source":       st.LocationSource,
+		"places_mode":           st.PlacesMode,
+		"wallet_mode":           st.WalletMode,
+		"trails_mode":           st.TrailsMode,
+		"ai_provider":           st.AIProvider, "ai_pocket_model": st.AIPocketModel,
 		"openai_api_key":  st.OpenAIKey,
 		"openai_model":    st.OpenAIModel,
 		"openai_base_url": st.OpenAIBaseURL,
 		"map_tiles":       st.MapTiles,
+		"checkin_time":    st.CheckInTime,
+		"checkout_time":   st.CheckOutTime,
 		"auto_photos":     b[st.AutoPhotos],
 	}
 }
@@ -274,4 +307,11 @@ func (s *Store) GetFXRate(ctx context.Context, base, quote, date string) (float6
 func (s *Store) PutFXRate(ctx context.Context, base, quote, date string, rate float64, source string) error {
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO fx_cache (base, quote, date, rate, source) VALUES (?, ?, ?, ?, ?) ON CONFLICT(base, quote, date) DO UPDATE SET rate = excluded.rate, source = excluded.source`, base, quote, date, rate, source)
 	return err
+}
+
+func fstr(f *float64) string {
+	if f == nil {
+		return ""
+	}
+	return strconv.FormatFloat(*f, 'f', 6, 64)
 }

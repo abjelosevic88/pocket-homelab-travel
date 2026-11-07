@@ -19,6 +19,8 @@ type Client struct {
 	BaseURL string
 	APIKey  string
 	HTTP    *http.Client
+	// Progress, when set, hears how many assets a search has seen so far.
+	Progress func(seen int)
 }
 
 // New creates a client.
@@ -42,6 +44,8 @@ type Asset struct {
 	Thumbhash string   `json:"thumbhash"`
 	Favorite  bool     `json:"favorite"`
 	Duration  string   `json:"duration,omitempty"`
+	Camera    string   `json:"camera,omitempty"`
+	Path      string   `json:"path,omitempty"` // folder of the original
 }
 
 func (c *Client) req(ctx context.Context, method, path string, body any) (*http.Response, error) {
@@ -90,8 +94,8 @@ func (c *Client) Version(ctx context.Context) (string, error) {
 // Search returns every asset taken between two instants (inclusive start, exclusive end).
 func (c *Client) Search(ctx context.Context, after, before time.Time, limit int) ([]Asset, error) {
 	var out []Asset
-	for page := 1; page < 200; page++ {
-		body := map[string]any{"takenAfter": after.UTC().Format(time.RFC3339), "takenBefore": before.UTC().Format(time.RFC3339), "size": 500, "page": page, "withExif": true, "order": "asc", "visibility": "timeline"}
+	for page := 1; page < 400; page++ {
+		body := map[string]any{"takenAfter": after.UTC().Format(time.RFC3339), "takenBefore": before.UTC().Format(time.RFC3339), "size": 1000, "page": page, "withExif": true, "order": "asc", "visibility": "timeline"}
 		res, err := c.req(ctx, http.MethodPost, "/api/search/metadata", body)
 		if err != nil {
 			return nil, err
@@ -110,7 +114,10 @@ func (c *Client) Search(ctx context.Context, after, before time.Time, limit int)
 					Thumbhash        string          `json:"thumbhash"`
 					IsFavorite       bool            `json:"isFavorite"`
 					Duration         json.RawMessage `json:"duration"`
+					OriginalPath     string          `json:"originalPath"`
 					ExifInfo         *struct {
+						Make      *string  `json:"make"`
+						Model     *string  `json:"model"`
 						Latitude  *float64 `json:"latitude"`
 						Longitude *float64 `json:"longitude"`
 						City      *string  `json:"city"`
@@ -130,7 +137,17 @@ func (c *Client) Search(ctx context.Context, after, before time.Time, limit int)
 			if it.Type == "VIDEO" {
 				a.Duration = durationText(it.Duration)
 			}
+			if i := strings.LastIndex(it.OriginalPath, "/"); i > 0 {
+				a.Path = it.OriginalPath[:i]
+			}
 			if it.ExifInfo != nil {
+				if it.ExifInfo.Model != nil && *it.ExifInfo.Model != "" {
+					mk := ""
+					if it.ExifInfo.Make != nil {
+						mk = *it.ExifInfo.Make
+					}
+					a.Camera = strings.TrimSpace(mk + " " + *it.ExifInfo.Model)
+				}
 				a.Lat, a.Lng = it.ExifInfo.Latitude, it.ExifInfo.Longitude
 				if it.ExifInfo.City != nil {
 					a.City = *it.ExifInfo.City
@@ -143,6 +160,9 @@ func (c *Client) Search(ctx context.Context, after, before time.Time, limit int)
 			if limit > 0 && len(out) >= limit {
 				return out, nil
 			}
+		}
+		if c.Progress != nil {
+			c.Progress(len(out))
 		}
 		if r.Assets.NextPage == nil || len(r.Assets.Items) == 0 {
 			break
@@ -175,6 +195,27 @@ func (c *Client) Thumbnail(ctx context.Context, w http.ResponseWriter, id, size 
 	_, err = io.Copy(w, res.Body)
 	return err
 }
+
+// ThumbnailBytes returns a thumbnail (size thumbnail|preview) and its type.
+func (c *Client) ThumbnailBytes(ctx context.Context, id, size string) ([]byte, string, error) {
+	var b bufWriter
+	err := c.Thumbnail(ctx, &b, id, size)
+	return b.buf.Bytes(), b.h.Get("Content-Type"), err
+}
+
+type bufWriter struct {
+	buf bytes.Buffer
+	h   http.Header
+}
+
+func (b *bufWriter) Header() http.Header {
+	if b.h == nil {
+		b.h = http.Header{}
+	}
+	return b.h
+}
+func (b *bufWriter) Write(p []byte) (int, error) { return b.buf.Write(p) }
+func (b *bufWriter) WriteHeader(int)             {}
 
 // durationText accepts Immich's duration as "0:00:12.000" (older) or milliseconds (3.x).
 func durationText(raw json.RawMessage) string {

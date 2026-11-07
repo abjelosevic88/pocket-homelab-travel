@@ -1,0 +1,335 @@
+package server
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"testing"
+	"time"
+)
+
+// A fake PhotoPrism: Bratislava (home) most days, Rome for four days in May
+// 2025 with one photo-less day inside, and a trip already covering August.
+func fakePhotoPrism(t *testing.T) *httptest.Server {
+	type ph struct {
+		UID          string
+		Type         string
+		TakenAtLocal string
+		Hash         string
+		Lat, Lng     float64
+		PlaceCity    string
+		PlaceCountry string
+		FileName     string
+	}
+	var all []ph
+	add := func(day string, n int, lat, lng float64, city, cc string) {
+		for i := 0; i < n; i++ {
+			k := len(all)
+			all = append(all, ph{UID: fmt.Sprintf("pq%04d", k), Type: "image", TakenAtLocal: fmt.Sprintf("%sT1%d:00:00Z", day, i%10), Hash: fmt.Sprintf("%040x", k+1), Lat: lat, Lng: lng, PlaceCity: city, PlaceCountry: cc, FileName: fmt.Sprintf("2025/IMG_%d.jpg", k)})
+		}
+	}
+	for d := 1; d <= 28; d++ {
+		add(fmt.Sprintf("2025-04-%02d", d), 2, 48.1486, 17.1077, "Bratislava", "sk")
+	}
+	add("2025-05-01", 3, 48.15, 17.11, "Bratislava", "sk") // the morning at home
+	add("2025-05-01", 6, 41.9028, 12.4964, "Rome", "it")
+	add("2025-05-02", 10, 41.9028, 12.4964, "Rome", "it")
+	// 05-03 no photos
+	add("2025-05-04", 8, 41.89, 12.49, "Rome", "it")
+	add("2025-05-05", 2, 48.1486, 17.1077, "Bratislava", "sk")
+	add("2025-06-10", 4, 48.30, 17.20, "Pezinok", "sk")    // a 20 km day out: not a trip
+	add("2025-08-02", 9, 45.8150, 15.9819, "Zagreb", "hr") // covered by a trip
+	add("2025-08-03", 9, 45.8150, 15.9819, "Zagreb", "hr")
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer app-pass" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.URL.Path == "/api/v1/photos":
+			w.Header().Set("X-Preview-Token", "prev123")
+			w.Header().Set("X-Version", "240915")
+			q := r.URL.Query()
+			var out []ph
+			for _, p := range all {
+				d := p.TakenAtLocal[:10]
+				if a := q.Get("after"); a != "" && d < a {
+					continue
+				}
+				if b := q.Get("before"); b != "" && d >= b {
+					continue
+				}
+				out = append(out, p)
+			}
+			off, _ := strconv.Atoi(q.Get("offset"))
+			cnt, _ := strconv.Atoi(q.Get("count"))
+			if off > len(out) {
+				off = len(out)
+			}
+			end := off + cnt
+			if cnt == 0 || end > len(out) {
+				end = len(out)
+			}
+			_ = json.NewEncoder(w).Encode(out[off:end])
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+}
+
+func TestPhotoPrismPhotosHiddenAndFoundTrips(t *testing.T) {
+	h := newIsoHarness(t)
+	pp := fakePhotoPrism(t)
+	defer pp.Close()
+	tok := h.ownerTok
+
+	if c, b := h.do(tok, "PUT", "/api/v1/settings", map[string]any{"photoprism_url": pp.URL, "photoprism_token": "app-pass"}); c != 200 {
+		t.Fatalf("settings %d %s", c, b)
+	}
+	var tr struct{ OK bool }
+	if c, b := h.do(tok, "POST", "/api/v1/integrations/test", map[string]any{"which": "photoprism"}); c != 200 || json.Unmarshal(b, &tr) != nil || !tr.OK {
+		t.Fatalf("connection test %d %s", c, b)
+	}
+
+	// Rome trip: the photos of its days, the home ones from the first morning too
+	c, b := h.do(tok, "POST", "/api/v1/trips", map[string]any{"name": "Rome", "start_date": "2025-05-01", "end_date": "2025-05-04"})
+	if c != 201 {
+		t.Fatalf("create %d %s", c, b)
+	}
+	var trip struct{ ID int64 }
+	_ = json.Unmarshal(b, &trip)
+	base := fmt.Sprintf("/api/v1/trips/%d", trip.ID)
+	var photos []tripPhoto
+	c, b = h.do(tok, "GET", base+"/photos", nil)
+	if c != 200 || json.Unmarshal(b, &photos) != nil {
+		t.Fatalf("photos %d %s", c, b)
+	}
+	if len(photos) != 27 {
+		t.Fatalf("want 27 photos (3 home + 24 Rome), got %d", len(photos))
+	}
+	p0 := photos[0]
+	if p0.Src != "photoprism" || p0.Hash == "" || p0.Country != "Slovakia" || p0.FileName != "IMG_56.jpg" || p0.TakenAt != "2025-05-01T10:00:00" {
+		t.Fatalf("photo shape: %+v", p0)
+	}
+
+	// hide the three taken at home; they come back marked hidden, for this user only
+	keys := []string{}
+	for _, p := range photos {
+		if p.City == "Bratislava" {
+			keys = append(keys, p.key())
+		}
+	}
+	if c, b := h.do(tok, "PUT", base+"/photos/hidden", map[string]any{"photos": keys, "hidden": true}); c != 200 {
+		t.Fatalf("hide %d %s", c, b)
+	}
+	_, b = h.do(tok, "GET", base+"/photos", nil)
+	_ = json.Unmarshal(b, &photos)
+	hidden := 0
+	for _, p := range photos {
+		if p.Hidden {
+			hidden++
+		}
+	}
+	if hidden != 3 {
+		t.Fatalf("want 3 hidden, got %d", hidden)
+	}
+	if c, _ := h.do(tok, "PUT", base+"/photos/hidden", map[string]any{"photos": keys[:1], "hidden": false}); c != 200 {
+		t.Fatal("unhide")
+	}
+
+	// thumbnails go through Travel with the preview token
+	thumbHits := 0
+	pp.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/t/"+p0.Hash+"/prev123/tile_500" {
+			thumbHits++
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Write([]byte("jpeg"))
+			return
+		}
+		w.WriteHeader(404)
+	})
+	if c, b := h.do(tok, "GET", base+"/photos/"+p0.ID+"/thumb?src=photoprism&h="+p0.Hash, nil); c != 200 || string(b) != "jpeg" || thumbHits != 1 {
+		t.Fatalf("thumb %d %s hits=%d", c, b, thumbHits)
+	}
+	pp.Close()
+
+	// found trips: Rome is covered by the trip above, so add Zagreb's trip
+	// and check what is left with a fresh library
+	pp2 := fakePhotoPrism(t)
+	defer pp2.Close()
+	h.do(tok, "PUT", "/api/v1/settings", map[string]any{"photoprism_url": pp2.URL})
+	h.do(tok, "DELETE", base, nil)
+	h.do(tok, "POST", "/api/v1/trips", map[string]any{"name": "Zagreb", "start_date": "2025-08-01", "end_date": "2025-08-04"})
+	var res struct {
+		Trips     []PhotoTrip
+		Connected bool
+		State     string
+		Seen      int
+		Located   int
+	}
+	// the scan runs in the background: the first answer says so, later ones
+	// how far it got, then the result
+	c, b = h.do(tok, "GET", "/api/v1/photo-trips?refresh=1", nil)
+	if c != 200 || json.Unmarshal(b, &res) != nil || res.State != "scanning" {
+		t.Fatalf("photo-trips start %d %s", c, b)
+	}
+	for i := 0; i < 200 && res.State == "scanning"; i++ {
+		time.Sleep(20 * time.Millisecond)
+		_, b = h.do(tok, "GET", "/api/v1/photo-trips", nil)
+		res.State = ""
+		_ = json.Unmarshal(b, &res)
+	}
+	if res.State != "done" || res.Seen == 0 || res.Located != res.Seen {
+		t.Fatalf("scan did not finish: %s", b)
+	}
+	if !res.Connected || len(res.Trips) != 1 {
+		t.Fatalf("want only Rome, got %s", b)
+	}
+	f := res.Trips[0]
+	if f.Start != "2025-05-01" || f.End != "2025-05-04" || f.Days != 4 || f.Photos != 24 || f.Name != "Rome 2025" || f.Place != "Rome, Italy" || len(f.Countries) != 1 || f.Countries[0] != "IT" || f.Cover == nil {
+		t.Fatalf("found trip: %+v", f)
+	}
+	if f.Km < 700 || f.Km > 900 {
+		t.Fatalf("km from home %d", f.Km)
+	}
+	// the preview: the trip's days with three on each side, each said to be
+	// home, away or without photos
+	var pv struct {
+		Days []PreviewDay
+		Home *PhotoHome
+	}
+	c, b = h.do(tok, "GET", "/api/v1/photo-trips/preview?start=2025-05-01&end=2025-05-04", nil)
+	if c != 200 || json.Unmarshal(b, &pv) != nil || len(pv.Days) != 10 || pv.Home == nil {
+		t.Fatalf("preview %d %.300s", c, b)
+	}
+	byDate := map[string]PreviewDay{}
+	for _, d := range pv.Days {
+		byDate[d.Date] = d
+	}
+	if d := byDate["2025-04-28"]; d.Away || d.Photos != 2 || d.Km > 5 || len(d.Cities) != 1 || d.Cities[0] != "Bratislava" {
+		t.Fatalf("home day before: %+v", d)
+	}
+	if d := byDate["2025-05-02"]; !d.Away || d.Photos != 10 || d.Km < 700 || d.Lat == nil || len(d.Sample) != 6 || len(d.All) != 10 {
+		t.Fatalf("away day: %+v", d)
+	}
+	if d := byDate["2025-05-01"]; !d.Away || d.Photos != 9 { // 3 at home in the morning, 6 in Rome
+		t.Fatalf("travel day: %+v", d)
+	}
+	if d := byDate["2025-05-03"]; d.Photos != 0 || d.Away {
+		t.Fatalf("day without photos: %+v", d)
+	}
+	if d := byDate["2025-05-05"]; d.Away || d.Photos != 2 {
+		t.Fatalf("back home: %+v", d)
+	}
+
+	// split: the Rome trip is really two (1–2 May and 4 May); then joined back
+	if c, b := h.do(tok, "POST", "/api/v1/photo-trips/split", map[string]any{"date": "2025-05-03"}); c != 200 {
+		t.Fatalf("split %d %s", c, b)
+	}
+	var sp struct{ Trips []PhotoTrip }
+	_, b = h.do(tok, "GET", "/api/v1/photo-trips", nil)
+	_ = json.Unmarshal(b, &sp)
+	if len(sp.Trips) != 2 || sp.Trips[0].Start != "2025-05-04" || !sp.Trips[0].SplitBefore || sp.Trips[0].Photos != 8 ||
+		sp.Trips[1].Start != "2025-05-01" || sp.Trips[1].End != "2025-05-02" || sp.Trips[1].Photos != 16 || sp.Trips[1].SplitBefore || sp.Trips[0].DayInfo != nil {
+		t.Fatalf("after split: %s", b)
+	}
+	h.do(tok, "POST", "/api/v1/photo-trips/join", map[string]any{"date": "2025-05-04"})
+	_, b = h.do(tok, "GET", "/api/v1/photo-trips", nil)
+	sp.Trips = nil
+	_ = json.Unmarshal(b, &sp)
+	if len(sp.Trips) != 1 || sp.Trips[0].Start != "2025-05-01" || sp.Trips[0].End != "2025-05-04" {
+		t.Fatalf("after join: %s", b)
+	}
+
+	// dismissed: gone, from the cache too
+	h.do(tok, "POST", "/api/v1/photo-trips/dismiss", map[string]any{"start_date": "2025-05-01"})
+	_, b = h.do(tok, "GET", "/api/v1/photo-trips", nil)
+	_ = json.Unmarshal(b, &res)
+	if len(res.Trips) != 0 {
+		t.Fatalf("dismissed trip still listed: %s", b)
+	}
+	// another user's library is their own: nothing connected
+	_, b = h.do(h.memberTok, "GET", "/api/v1/photo-trips", nil)
+	_ = json.Unmarshal(b, &res)
+	if res.Connected {
+		t.Fatalf("member sees owner's PhotoPrism: %s", b)
+	}
+}
+
+func TestDeviceLabel(t *testing.T) {
+	for _, c := range [][4]string{
+		{"IMG-20250719-WA0012.jpg", "", "", "WhatsApp"},
+		{"IMG_1234.jpg", "Pictures/WhatsApp Images", "", "WhatsApp"},
+		{"viber_image_2025-07-19_10-12-01-123.jpg", "", "", "Viber"},
+		{"FB_IMG_1690000000.jpg", "", "", "Messenger"},
+		{"Screenshot_20250719-101010.png", "", "Samsung SM-S911B", "Screenshots"},
+		{"IMG_1234.HEIC", "2025/07", "Apple iPhone 15 Pro", "iPhone 15 Pro"},
+		{"20250719_101010.jpg", "", "samsung SM-S911B", "Samsung SM-S911B"},
+		{"20250719_101010.jpg", "", "SAMSUNG SM-S911B", "Samsung SM-S911B"},
+		{"PXL_1.jpg", "", "Google Pixel 8", "Pixel 8"},
+		{"DSC0001.jpg", "", "", "Unknown camera"},
+	} {
+		if got := deviceLabel(c[0], c[1], c[2]); got != c[3] {
+			t.Errorf("deviceLabel(%q, %q, %q) = %q, want %q", c[0], c[1], c[2], got, c[3])
+		}
+	}
+}
+
+// Nitra → Belgrade → Novi Sad → Nitra is one trip, named after both cities;
+// a home set by hand wins over the detected one.
+func TestFindPhotoTripsMultiCityAndSetHome(t *testing.T) {
+	var pts []geoPhoto
+	add := func(day string, n int, lat, lng float64, city, cc string) {
+		for i := 0; i < n; i++ {
+			pts = append(pts, geoPhoto{day: day, lat: lat, lng: lng, city: city, country: cc, photo: tripPhoto{ID: day + city + strconv.Itoa(i), Type: "IMAGE"}})
+		}
+	}
+	for d := 1; d <= 20; d++ {
+		add(fmt.Sprintf("2025-06-%02d", d), 3, 48.3069, 18.0864, "Nitra", "SK")
+	}
+	add("2025-06-21", 2, 48.3069, 18.0864, "Nitra", "SK")
+	add("2025-06-21", 6, 44.7866, 20.4489, "Belgrade", "RS")
+	add("2025-06-22", 10, 44.7866, 20.4489, "Belgrade", "RS")
+	// 23rd–25th no photos (still away)
+	add("2025-06-26", 8, 45.2671, 19.8335, "Novi Sad", "RS")
+	add("2025-06-27", 3, 48.3069, 18.0864, "Nitra", "SK")
+	trips, home := findPhotoTrips(pts, nil)
+	if home.Name != "Nitra" || home.Set || len(trips) != 1 {
+		t.Fatalf("home %+v trips %+v", home, trips)
+	}
+	f := trips[0]
+	if f.Start != "2025-06-21" || f.End != "2025-06-26" || f.Days != 6 || f.Name != "Belgrade & Novi Sad 2025" || len(f.Countries) != 1 || f.Countries[0] != "RS" {
+		t.Fatalf("trip %+v", f)
+	}
+	// split where Novi Sad starts: two trips, each named after its own stop
+	parts := splitPhotoTrips(trips, map[string]bool{"2025-06-24": true})
+	if len(parts) != 2 || parts[0].Name != "Novi Sad 2025" || !parts[0].SplitBefore || parts[0].Start != "2025-06-26" ||
+		parts[1].Name != "Belgrade 2025" || parts[1].End != "2025-06-22" || parts[1].Days != 2 {
+		t.Fatalf("split parts: %+v", parts)
+	}
+	// Home set to Belgrade: Nitra days are now the trips
+	trips, home = findPhotoTrips(pts, &[2]float64{44.7866, 20.4489})
+	if home.Name != "Belgrade" || home.Lat != 44.7866 {
+		t.Fatalf("set home %+v", home)
+	}
+	if len(trips) == 0 || trips[len(trips)-1].Start != "2025-06-01" {
+		t.Fatalf("with home in Belgrade the Nitra days should be a trip: %+v", trips)
+	}
+}
+
+func TestPhotoFolder(t *testing.T) {
+	for in, want := range map[string]string{
+		"Photos/Camera-Jarka/2025/07": "Photos/Camera-Jarka",
+		"Photos/Camera/2025-07-19":    "Photos/Camera",
+		"/Photos/Camera/":             "Photos/Camera",
+		"2025/07":                     "",
+		"":                            "",
+		"WhatsApp Images":             "WhatsApp Images",
+	} {
+		if got := photoFolder(in); got != want {
+			t.Errorf("photoFolder(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

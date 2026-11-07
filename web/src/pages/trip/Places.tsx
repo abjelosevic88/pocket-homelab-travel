@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { api, uploadForm, V1 } from '../../lib/api'
+import { api, photoThumb, uploadForm, V1 } from '../../lib/api'
 import { useApp } from '../../lib/app-context'
 import type { GeoResult, Place, PlacePhoto, PlaceStatus, Trip } from '../../lib/types'
 import { PLACE_ICONS, PLACE_STATUS_LABEL } from '../../lib/types'
 import { appleMaps, cap, dateRange, fmtClock, fmtDate, gmaps, stars } from '../../lib/format'
-import { Confirm, Empty, Field, Modal, Segmented, useToast } from '../../components/ui'
+import { Confirm, Empty, Field, Modal, Segmented, useAsync, useToast } from '../../components/ui'
 import { Icon } from '../../components/icons'
 import { Select } from '../../components/Select'
 import { AmountInput, Money } from '../../components/Money'
@@ -75,15 +75,19 @@ const RATINGS = [1, 2, 3, 4, 5]
 export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { trip: Trip; item: Place | null; defaults?: Record<string, unknown>; onClose: () => void; onSaved: () => void }) {
   const { meta } = useApp()
   const { toast } = useToast()
-  const [f, setF] = useState<Partial<Place>>(item ? { ...item } : { name: '', category: 'sight', status: 'idea', currency: trip.currency, price: 0, day_date: '', start_time: '', duration_min: 0, address: '', link: '', phone: '', notes: '', description: '', tags: '', booking_ref: '', lat: null, lng: null, rating: null, ...defaults })
+  // a photo from Immich / PhotoPrism to attach once the place is saved ("Create place" in the photo viewer)
+  const { _photo: libPhoto, ...initial } = defaults as Record<string, unknown> & { _photo?: { src: 'immich' | 'photoprism'; id: string; hash: string } }
+  const [attach, setAttach] = useState(!!libPhoto)
+  const [f, setF] = useState<Partial<Place>>(item ? { ...item } : { name: '', category: 'sight', status: 'idea', currency: trip.currency, price: 0, day_date: '', start_time: '', duration_min: 0, address: '', link: '', phone: '', notes: '', description: '', tags: '', booking_ref: '', lat: null, lng: null, rating: null, ...initial })
   const [busy, setBusy] = useState(false)
   const [del, setDel] = useState(false)
   const [tab, setTab] = useState<'main' | 'more'>('main')
   const [wikiBusy, setWikiBusy] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [catTouched, setCatTouched] = useState(!!item)
-  const [picked, setPicked] = useState<string>('')
+  const [picked, setPicked] = useState<string>(item ? '' : String(initial.address || ''))
   const { settings } = useApp()
+  const { edit } = useTrip()
   const set = <K extends keyof Place>(k: K, v: Place[K]) => setF(x => ({ ...x, [k]: v }))
   const base = `${V1}/trips/${trip.id}/places`
   useEffect(() => { if (f.day_date && f.status === 'idea') set('status', 'planned') }, [f.day_date]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -91,7 +95,13 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
     e.preventDefault(); setBusy(true)
     try {
       const body = { ...f, price: f.price || 0, duration_min: f.duration_min || 0 }
-      if (item) await api.put(`${base}/${item.id}`, body); else await api.post(base, body)
+      if (item) await api.put(`${base}/${item.id}`, body)
+      else {
+        const created = await api.post<Place>(base, body)
+        if (libPhoto && attach) {
+          try { await api.post(`${base}/${created.id}/photos/from-library`, libPhoto) } catch (e) { toast(`Place added, but the photo could not be attached: ${(e as Error).message}`, 'err') }
+        }
+      }
       toast(item ? 'Place saved' : 'Place added'); onSaved()
     } catch (e) { toast((e as Error).message, 'err') } finally { setBusy(false) }
   }
@@ -119,6 +129,8 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
       <form onSubmit={save} className="grid" style={{ gap: 14 }}>
         <div className="tabs sub"><button type="button" className={tab === 'main' ? 'active' : ''} onClick={() => setTab('main')}>Details</button><button type="button" className={tab === 'more' ? 'active' : ''} onClick={() => setTab('more')}>Location, notes & photo</button></div>
         {tab === 'main' && <>
+          {libPhoto && <label className="row lib-photo"><img src={photoThumb(libPhoto)} alt="" /><input type="checkbox" checked={attach} onChange={e => setAttach(e.target.checked)} style={{ width: 'auto' }} /><span>Attach this photo to the place</span></label>}
+          {!item && !libPhoto && <SavedPlacePick tripId={trip.id} onPick={sp => { setCatTouched(true); setPicked(sp.address); setF(x => ({ ...x, ...reuse(sp) })) }} />}
           <div className="two-col tight">
             <Field label="Name"><input value={f.name || ''} onChange={e => set('name', e.target.value)} required autoFocus={!item} maxLength={120} /></Field>
             <Field label="Category"><Select value={f.category || 'sight'} onChange={v => { setCatTouched(true); set('category', v) }} options={(meta?.place_categories || []).map(c => ({ value: c, label: `${PLACE_ICONS[c] || ''} ${cap(c)}` }))} /></Field>
@@ -158,6 +170,7 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
         </>}
         <div className="form-actions">
           {item && <button type="button" className="btn ghost danger-text" onClick={() => setDel(true)}>Delete</button>}
+          {item && <button type="button" className="btn ghost sm" title="Add this place again on another day, without typing it again" onClick={() => edit('place', null, reuse(f))}><Icon name="plus" size={13} />Visit again</button>}
           {item && f.lat != null && <><a className="btn ghost sm" href={gmaps(f.lat, f.lng!)} target="_blank" rel="noreferrer"><Icon name="external" size={13} />Google Maps</a><a className="btn ghost sm" href={appleMaps(f.lat, f.lng!)} target="_blank" rel="noreferrer"><Icon name="external" size={13} />Apple Maps</a></>}
           <span className="spacer" />
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
@@ -166,6 +179,25 @@ export function PlaceModal({ trip, item, defaults = {}, onClose, onSaved }: { tr
       </form>
       {del && <Confirm title={`Remove ${item?.name}?`} message="The place and its photo are deleted from this trip." onCancel={() => setDel(false)} onConfirm={remove} />}
     </Modal>
+  )
+}
+
+/** What carries over when a place is added again: where and what it is, not when or whether it was visited. */
+function reuse(p: Partial<Place>): Partial<Place> {
+  return { name: p.name, category: p.category, description: p.description, address: p.address, lat: p.lat ?? null, lng: p.lng ?? null, link: p.link, phone: p.phone, rating: p.rating ?? null, tags: p.tags, notes: p.notes, price: p.price, currency: p.currency, duration_min: p.duration_min }
+}
+
+type SavedPlace = Place & { trip_name: string; visits: number; last_date: string }
+
+/** "From your places": every place of every trip, so a beach or café you go back to is picked, not typed again. */
+function SavedPlacePick({ tripId, onPick }: { tripId: number; onPick: (p: SavedPlace) => void }) {
+  const { data } = useAsync(() => api.get<SavedPlace[]>(`${V1}/places/saved?trip=${tripId}`), [tripId])
+  if (!data || data.length === 0) return null
+  const options = data.map(p => ({ value: String(p.id), label: `${PLACE_ICONS[p.category] || '📍'} ${p.name}`, hint: [p.trip_id === tripId ? 'this trip' : p.trip_name, p.visits > 1 ? `${p.visits}×` : '', p.address].filter(Boolean).join(' · '), group: p.trip_id === tripId ? 'This trip' : 'Other trips' }))
+  return (
+    <Field label="Been there, or going back?" help="Pick a place from this or another trip to copy it — then just choose the day.">
+      <Select value="" onChange={v => { const p = data.find(x => String(x.id) === v); if (p) onPick(p) }} options={options} placeholder="From your places…" ariaLabel="From your places" />
+    </Field>
   )
 }
 
