@@ -52,6 +52,12 @@ func newIsoHarness(t *testing.T) *isoHarness {
 					"user": map[string]any{"id": 7, "email": "member@example.com", "name": "M", "role": "member"}, "app": map[string]any{"id": 3, "slug": "garage", "name": "Pocket Garage"}})
 				return
 			}
+			// Pocket Move links: pcx_<owner|member>_<export|import>
+			if who, what, ok := strings.Cut(strings.TrimPrefix(in.Token, "pcx_"), "_"); ok && (what == "export" || what == "import") {
+				_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "kind": "delegated", "scope": "move:" + what, "audience": "travel",
+					"user": map[string]any{"id": map[string]int{"owner": 1, "member": 7}[who], "email": who + "@example.com", "name": who, "role": "member"}, "app": map[string]any{"id": 5, "slug": "move", "name": "Pocket Move"}})
+				return
+			}
 			if in.Token == "pcd_member_phone" {
 				_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "kind": "device", "user": map[string]any{"id": 7, "email": "member@example.com", "name": "M", "role": "member"}})
 				return

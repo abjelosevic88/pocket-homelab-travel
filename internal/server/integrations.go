@@ -1276,9 +1276,25 @@ func (s *Server) handleImportJSON(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "not a Pocket Travel trip export")
 		return
 	}
-	ctx := r.Context()
+	t, err := s.importTrip(r.Context(), u, ex, false)
+	if err != nil {
+		s.fail(w, err, "create trip")
+		return
+	}
+	out, _ := s.store.GetTrip(r.Context(), t.ID, u.ID)
+	writeJSON(w, http.StatusCreated, out)
+}
+
+// importTrip adds one exported trip as a new trip of u. keepExternal keeps
+// the trip's own external id (where it first came from) so it is found again.
+func (s *Server) importTrip(ctx context.Context, u *store.User, ex TripExport, keepExternal bool) (*store.Trip, error) {
 	t := *ex.Trip
+	ext := t.ExternalID
 	t.ID, t.OwnerID, t.CoverPath, t.ExternalID = 0, u.ID, "", ""
+	if keepExternal {
+		t.ExternalID = ext
+	}
+	t.Members, t.Role, t.Counts = nil, "", nil
 	if t.Currency == "" || !currency.Valid(t.Currency) {
 		t.Currency = "EUR"
 	}
@@ -1286,8 +1302,7 @@ func (s *Server) handleImportJSON(w http.ResponseWriter, r *http.Request) {
 		t.Status = store.StatusPlanning
 	}
 	if err := s.store.CreateTrip(ctx, &t); err != nil {
-		s.fail(w, err, "create trip")
-		return
+		return nil, err
 	}
 	for _, p := range ex.Places {
 		p.ID, p.TripID, p.ImagePath = 0, t.ID, ""
@@ -1321,8 +1336,7 @@ func (s *Server) handleImportJSON(w http.ResponseWriter, r *http.Request) {
 		_ = s.store.CreateJournal(ctx, &j)
 	}
 	s.store.LogActivity(ctx, t.ID, u.ID, "imported", "from JSON")
-	out, _ := s.store.GetTrip(ctx, t.ID, u.ID)
-	writeJSON(w, http.StatusCreated, out)
+	return &t, nil
 }
 
 var (

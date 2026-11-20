@@ -224,6 +224,7 @@ func (s *Server) registerWithCore(ctx context.Context) error {
 		URL: s.cfg.CoreAppURL, PublicURL: s.cfg.BaseURL, HealthPath: "/healthz", EnvPrefix: "TRAVEL",
 		Publishes: []string{"travel.trip_created", "travel.trip_updated", "travel.expense_linked"},
 		Offers:    linkOffers,
+		Portable:  portable,
 		Uses:      append(append(append(append(append(append([]core.Use{}, moneyUses...), movementUses...), placesUses...), walletUses...), trailsUses...), core.InferenceUse()),
 		Services:  serviceUses,
 	}
@@ -437,6 +438,9 @@ func (s *Server) Router() http.Handler {
 			r.Post("/import/adventurelog/collections", s.handleALCollections)
 			r.Post("/import/adventurelog", s.handleALImport)
 			r.Post("/import/trip", s.handleImportJSON)
+			r.Get("/export.json", s.handleExportAll)
+			r.Post("/import", s.handleImportAll)
+			r.Get(strings.TrimPrefix(core.PortablePath, "/api/v1"), portable.Handler())
 
 			r.Get("/users", s.handleListUsers)
 			r.Post("/users", s.handleCreateUser)

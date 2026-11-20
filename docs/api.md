@@ -67,6 +67,7 @@ Add `?refresh=1` to the Dawarich / Immich / weather endpoints to bypass the cach
 - `GET /cal/{id}.ics?token=pt_…` — calendar subscription URL for phones
 - `POST /import/adventurelog/collections {url, username, password}` → list; `POST /import/adventurelog {…, collections:[ids], images:true}`
 - `POST /import/trip` — a JSON export
+- `GET /export.json` — every trip you made in one file; `POST /import` takes it (or one trip's file) back and skips trips you already have (same name and dates). Pocket Move can copy your trips out and bring them in (`GET /pocket/portable`, links `move:export` / `move:import`).
 
 ## Misc
 
