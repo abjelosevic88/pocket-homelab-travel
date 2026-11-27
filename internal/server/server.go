@@ -220,13 +220,14 @@ func (s *Server) registerWithCore(ctx context.Context) error {
 	m := core.Manifest{
 		Slug: "travel", Name: "Pocket Travel",
 		Description: "A trip planner that keeps the whole trip on one page: the plan, what it really cost, where you actually went and what you photographed.",
-		Icon:        "/favicon.svg", Version: Version,
+		Icon:        "/favicon.svg", Category: "Places", Version: Version,
 		URL: s.cfg.CoreAppURL, PublicURL: s.cfg.BaseURL, HealthPath: "/healthz", EnvPrefix: "TRAVEL",
-		Publishes: []string{"travel.trip_created", "travel.trip_updated", "travel.expense_linked"},
-		Offers:    linkOffers,
-		Portable:  portable,
-		Uses:      append(append(append(append(append(append([]core.Use{}, moneyUses...), movementUses...), placesUses...), walletUses...), trailsUses...), core.InferenceUse()),
-		Services:  serviceUses,
+		Publishes:    []string{"travel.trip_created", "travel.trip_updated", "travel.expense_linked"},
+		Offers:       linkOffers,
+		Portable:     portable,
+		Capabilities: capabilities,
+		Uses:         append(append(append(append(append(append([]core.Use{}, moneyUses...), movementUses...), placesUses...), walletUses...), trailsUses...), core.InferenceUse()),
+		Services:     serviceUses,
 	}
 	// Ask Core for a relying-party client so "Sign in with Pocket Core" needs no configuration.
 	if s.cfg.BaseURL != "" {
@@ -441,6 +442,10 @@ func (s *Server) Router() http.Handler {
 			r.Get("/export.json", s.handleExportAll)
 			r.Post("/import", s.handleImportAll)
 			r.Get(strings.TrimPrefix(core.PortablePath, "/api/v1"), portable.Handler())
+			// what Pocket Search, Pocket Day and Pocket Hub ask (capabilities.go)
+			r.Get("/pocket/search", core.SearchHandler(s.pocketSearch))
+			r.Get("/pocket/day/{date}", core.DayHandler(s.pocketDay))
+			r.Get("/pocket/widget", core.WidgetHandler(s.pocketWidget))
 
 			r.Get("/users", s.handleListUsers)
 			r.Post("/users", s.handleCreateUser)

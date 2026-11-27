@@ -69,6 +69,13 @@ With an OpenAI key (or any compatible endpoint) five more buttons appear: **sugg
 
 **Offers app links** (Pocket Core 0.5+): another Pocket app the person allowed in Core can read their trips (`trips:read`: `GET /api/v1/trips`, `GET /api/v1/trips/{id}`) with a five-minute `pcx_` token; every other route answers 403. Pocket Garage uses it to show each trip's fuel, costs and kilometres.
 
+**Search, Day and Hub** (v0.15.0, Pocket Core 0.49+): Travel tells Core what it can do for the apps that bring everything together, and answers each on one route in the shape every Pocket app uses. Each has its own link (`pocket:search`, `pocket:day`, `pocket:widget`) that opens that one route and nothing else, always as the person asking: their own trips and the ones shared with them. Nothing is changed and nothing is fetched from outside.
+- **Pocket Search** (`GET /api/v1/pocket/search?q=&limit=`, also `!trips`, `!trip`, `!travel`): trips by name, destination and description, and the stays, travel and places in them by their own names, addresses and booking numbers. "lisbon hotel" finds the hotel of the Lisbon trip. The trip you are on and the ones ahead come before past ones.
+- **Pocket Day** (`GET /api/v1/pocket/day/{YYYY-MM-DD}`): the trip you are on that day and what its itinerary says, for example "Day 2 of 5 in Lisbon: Train to Sintra 09:10, check-in at Hotel Lisboa, Dinner at Ramiro 20:00". Archived and cancelled trips say nothing.
+- **Pocket Hub** (`GET /api/v1/pocket/widget`): a **Next trip** widget with the trip you are on ("Day 2 of 5 in Lisbon") or the next one ("Lisbon in 12 days") and the next five things on its itinerary; empty when nothing is planned.
+
+There is no quick capture: a trip needs dates and a place, which one line cannot give. Other apps keep reading trips with `trips:read` exactly as before.
+
 **Uses app links** (v0.6.0): trip costs come from Pocket Money with `transactions:read` ("Trip costs from the transactions tagged with the trip"). Settings → Integrations → Pocket Money has three modes per person:
 
 - **Pocket Core** (default when Travel is registered with Core and you saved no token): at every sync Travel asks Core for a five-minute `pcx_` token for you and reads `<money>/firefly/api/v1/…` with it. Nothing to paste; switching the link off in Core (yours under *Apps acting for me*, or the admin's under *Links*) shows *not connected* and stops the sync at once.

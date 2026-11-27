@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,11 +30,13 @@ type isoHarness struct {
 	owner, member, admin2   *store.User
 	ownerTok, memberTok     string
 	admin2Tok, memberDevice string
+	manifest                *atomic.Pointer[map[string]any] // what Travel last registered with
 }
 
 func newIsoHarness(t *testing.T) *isoHarness {
 	t.Helper()
 	// A fake Pocket Core that vouches for the member's paired phone.
+	manifest := &atomic.Pointer[map[string]any]{}
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/links/status" && r.URL.Query().Get("app") == "ai" {
 			w.Header().Set("Content-Type", "application/json")
@@ -58,11 +61,22 @@ func newIsoHarness(t *testing.T) *isoHarness {
 					"user": map[string]any{"id": map[string]int{"owner": 1, "member": 7}[who], "email": who + "@example.com", "name": who, "role": "member"}, "app": map[string]any{"id": 5, "slug": "move", "name": "Pocket Move"}})
 				return
 			}
+			// Pocket Search, Day and Hub: pcx_<owner|member|admin2>_<search|day|widget>
+			if who, what, ok := strings.Cut(strings.TrimPrefix(in.Token, "pcx_"), "_"); ok && (what == "search" || what == "day" || what == "widget") {
+				_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "kind": "delegated", "scope": "pocket:" + what, "audience": "travel",
+					"user": map[string]any{"id": map[string]int{"owner": 1, "member": 7, "admin2": 8}[who], "email": who + "@example.com", "name": who, "role": "member"}, "app": map[string]any{"id": 9, "slug": "hub", "name": "Pocket Hub"}})
+				return
+			}
 			if in.Token == "pcd_member_phone" {
 				_ = json.NewEncoder(w).Encode(map[string]any{"active": true, "kind": "device", "user": map[string]any{"id": 7, "email": "member@example.com", "name": "M", "role": "member"}})
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"active": false})
+		case "/api/v1/apps/register": // kept for the tests that read the manifest
+			var m map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&m)
+			manifest.Store(&m)
+			_ = json.NewEncoder(w).Encode(map[string]any{})
 		default:
 			_ = json.NewEncoder(w).Encode(map[string]any{})
 		}
@@ -83,7 +97,7 @@ func newIsoHarness(t *testing.T) *isoHarness {
 	}
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
-	h := &isoHarness{t: t, ts: ts, st: st, srv: srv, memberDevice: "pcd_member_phone"}
+	h := &isoHarness{t: t, ts: ts, st: st, srv: srv, memberDevice: "pcd_member_phone", manifest: manifest}
 	ctx := context.Background()
 	mk := func(email, role string) (*store.User, string) {
 		u := &store.User{Email: email, Name: strings.Split(email, "@")[0], Role: role}

@@ -69,6 +69,16 @@ Add `?refresh=1` to the Dawarich / Immich / weather endpoints to bypass the cach
 - `POST /import/trip` — a JSON export
 - `GET /export.json` — every trip you made in one file; `POST /import` takes it (or one trip's file) back and skips trips you already have (same name and dates). Pocket Move can copy your trips out and bring them in (`GET /pocket/portable`, links `move:export` / `move:import`).
 
+## Pocket Search, Day and Hub
+
+Three read-only routes in the shape every Pocket app answers in (Pocket Core's `docs/capabilities.md`). A signed-in person or a token can call them; another Pocket app needs the link named below, which opens that one route only. All three run as the person asking and cover their own trips and the ones shared with them.
+
+| Method | Path | Link | |
+|---|---|---|---|
+| GET | `/pocket/search?q=&limit=8` | `pocket:search` | `{items: [{id, title, snippet, kind, date, url}]}`. `kind` is `trip`, `booking` (a stay or a leg) or `stop` (a place); `id` is `trip:1`, `stay:3`, `transport:5`, `place:9`. Trips match on name, destination and description; stays, legs and places on their own names, addresses, carrier, flight number and booking numbers, where some words may be the trip's name or destination. Every word must be found; a query without a letter or digit finds nothing. Order: trips found by name or destination (the one you are on, the ones ahead soonest first, without dates, past ones newest first, archived and cancelled last), then what is inside trips in the same order, then trips found only by their description. `url` opens the trip, or its *Stay & transport*, *Itinerary* or *Places* tab |
+| GET | `/pocket/day/{YYYY-MM-DD}` | `pocket:day` | `{date, summary, items: [{id, time, end, title, sub, kind, done, url, note}]}` for each trip that runs that day (not archived, not cancelled): one `trip day` row ("Day 2 of 5 in Lisbon", with where you sleep), then the itinerary's rows in its order: legs leaving or landing that day (`kind` = `flight`, `train`, `bus`, `car`, `ferry`, `taxi`, `bike`, `walk`, `travel`), check-in and check-out (`stay`) and the places with that day (`plan`; `done` when visited; skipped ones are left out). `time` is the local clock where it happens, absent when none was entered (a stay has dates only). No trip that day: no summary and no items. `?tz=` is accepted and not used |
+| GET | `/pocket/widget` | `pocket:widget` | `{line, items: [{id, title, detail, url}], url}`: the trip you are on (`line` = "Day 2 of 5 in Lisbon") or else the next one ("Lisbon in 12 days", "Lisbon tomorrow") with the next five itinerary rows from today on, without the places already visited (`detail` = "Today · 15:00", "Tomorrow", "Sat 14 Aug · 07:30"). No trip now or ahead: empty |
+
 ## Misc
 
 `GET /home` (home page data), `GET /dashboard` (flat numbers for a Homepage widget: `trips`, `upcoming`, `days_traveled`, `places`, `next_trip_text`), `GET /meta` (category lists), `/users`, `/settings` (the caller's own preferences and integrations; title and `fx_auto` are box-wide, admin only), `/settings/system` (admin), `/tokens`, `GET /backup` (SQLite download, admin), `/healthz`, `/readyz`, `/metrics`.
